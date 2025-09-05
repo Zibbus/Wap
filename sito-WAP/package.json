@@ -9,10 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "tw:build": "tailwindcss -i ./src/tw.css -o ./src/tailwind.css --minify --content ./index.html ./src/**/*.{js,jsx,ts,tsx}",
-    "tw:watch": "tailwindcss -i ./src/tw.css -o ./src/tailwind.css --watch --content ./index.html ./src/**/*.{js,jsx,ts,tsx}",
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "tw:watch": "tailwindcss -i ./src/tw.css -o ./src/tailwind.css --watch --content ./index.html ./src/**/*.{js,jsx,ts,tsx}"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.12",
