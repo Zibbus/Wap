@@ -1,4 +1,4 @@
-# MyFit
+# Coach Connect
 
 Applicazione full-stack con **React + Vite + Tailwind (frontend)** e **Node.js + TypeScript + MySQL (backend)**.  
 Supporta chat realtime via WebSocket, autenticazione con username/JWT e gestione conversazioni persistite su MySQL.
@@ -8,7 +8,7 @@ Supporta chat realtime via WebSocket, autenticazione con username/JWT e gestione
 ## 📂 Struttura progetto
 
 ```
-MyFit/
+coach-connect/
 ├── client/                # Frontend React (Vite + TS + Tailwind)
 ├── react-vis-ts-backend/  # Backend Node + Express + MySQL + WS
 └── README.md
@@ -21,7 +21,7 @@ MyFit/
 ### 1. Clona il repo
 ```bash
 git clone https://github.com/<tuo-user>/<repo>.git
-cd MyFit
+cd coach-connect
 ```
 
 ---
@@ -105,4 +105,4 @@ npm run build
 ---
 
 ## 👨‍💻 Autore
-MyFit — progetto full-stack React + Node + MySQL
+Coach Connect — progetto full-stack React + Node + MySQL
