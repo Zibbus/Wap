@@ -1,17 +1,16 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Card from "../components/Card";
-import { useAuth } from "../hooks/useAuth";
 import LoginModal from "../components/LoginModal";
 import { motion } from "framer-motion";
-import { useRef } from "react";
 import GameRunner from "../components/GameRunner";
 
-export default function HomePage() {
-  const { auth, login } = useAuth();
-  const [showLogin, setShowLogin] = useState(false);
+type HomePageProps = {
+  auth: { username: string } | null;
+  onLogin: () => void;
+};
 
-  // 👇 questa funzione apre il popup di login
-  const handleLoginOpen = () => setShowLogin(true);
+export default function HomePage({ auth, onLogin }: HomePageProps) {
+  const [showLogin, setShowLogin] = useState(false);
   const ref = useRef(null);
 
   return (
@@ -26,7 +25,6 @@ export default function HomePage() {
         className="relative w-full h-[620px] flex flex-col items-center justify-center text-center overflow-hidden mb-20 bg-black rounded-2xl -mt-[2px]
                   transition-transform duration-700 ease-in-out hover:scale-[1.03] hover:-translate-y-1 hover:shadow-2xl"
       >
-
         {/* Immagine con effetto zoom on hover */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -71,7 +69,7 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4, duration: 0.8 }}
-            onClick={() => setShowLogin(true)}
+            onClick={onLogin}
             className="px-8 py-3 rounded-lg bg-indigo-600 text-white font-semibold text-lg 
                       hover:bg-indigo-700 hover:scale-105 transform transition-all duration-200 
                       shadow-md cursor-pointer focus:ring-2 focus:ring-indigo-300 focus:outline-none"
@@ -81,13 +79,14 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* 🔹 Schede funzionalità */}
       <section className="mt-16 flex flex-col sm:flex-row justify-center gap-8 pb-20">
         <Card
           image="https://via.placeholder.com/300x200?text=Allenamento"
           title="Crea la tua scheda di allenamento"
           description="Personalizza gli esercizi e organizza la tua scheda per raggiungere i tuoi obiettivi con il supporto della piattaforma."
           isLoggedIn={!!auth}
-          onLogin={handleLoginOpen} // ✅ uso la funzione dichiarata sopra
+          onLogin={onLogin}
           goTo="/workout/new"
         />
 
@@ -96,7 +95,7 @@ export default function HomePage() {
           title="Parla con l'IA"
           description="Interagisci con l’intelligenza artificiale per ricevere risposte immediate e consigli mirati su allenamento e nutrizione."
           isLoggedIn={!!auth}
-          onLogin={handleLoginOpen}
+          onLogin={onLogin}
           goTo="/ai-chat"
         />
 
@@ -105,19 +104,23 @@ export default function HomePage() {
           title="Confrontati con i professionisti"
           description="Accedi a personal trainer e nutrizionisti reali per costruire piani su misura e ricevere supporto diretto."
           isLoggedIn={!!auth}
-          onLogin={handleLoginOpen}
+          onLogin={onLogin}
           goTo="/professionisti"
         />
       </section>
 
+      {/* 🕹️ Minigioco */}
       <section className="mt-24">
         <GameRunner />
       </section>
 
+      {/* Modal login */}
       {showLogin && (
         <LoginModal
           onClose={() => setShowLogin(false)}
-          onLoggedIn={(p) => login(p)}
+          onLoggedIn={() => {
+            setShowLogin(false);
+          }}
         />
       )}
     </main>

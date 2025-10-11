@@ -8,7 +8,6 @@ export type AuthData = {
 
 export function useAuth() {
   const [auth, setAuth] = useState<AuthData | null>(null);
-
   useEffect(() => {
     const raw = localStorage.getItem("auth");
     if (raw) {
@@ -19,12 +18,23 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    if (auth) localStorage.setItem("auth", JSON.stringify(auth));
-    else localStorage.removeItem("auth");
-  }, [auth]);
-
+  const savedAuth = localStorage.getItem("authData");
+  if (savedAuth) {
+    try {
+      const parsed = JSON.parse(savedAuth);
+      setAuth(parsed);
+    } catch {
+      localStorage.removeItem("authData");
+    }
+  }
+}, []);
+ 
   const login = (data: AuthData) => setAuth(data);
-  const logout = () => setAuth(null);
+  const logout = () =>
+    {
+      localStorage.removeItem("authData");
+      setAuth(null);
+  }
 
   return { auth, login, logout };
 }
