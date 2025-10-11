@@ -4,6 +4,7 @@ import { useAuth } from "../hooks/useAuth";
 import LoginModal from "../components/LoginModal";
 import { motion } from "framer-motion";
 import { useRef } from "react";
+import GameRunner from "../components/GameRunner";
 
 export default function HomePage() {
   const { auth, login } = useAuth();
@@ -20,29 +21,37 @@ export default function HomePage() {
       </h1>
 
       {/* 🌟 HERO SECTION ANIMATA */}
-      <section ref={ref} className="relative w-full h-[600px] flex flex-col items-center justify-center text-center overflow-hidden mb-20 bg-black rounded-2xl">
+      <section
+        ref={ref}
+        className="relative w-full h-[620px] flex flex-col items-center justify-center text-center overflow-hidden mb-20 bg-black rounded-2xl -mt-[2px]
+                  transition-transform duration-700 ease-in-out hover:scale-[1.03] hover:-translate-y-1 hover:shadow-2xl"
+      >
 
-        {/* Immagine di sfondo dinamica */}
-        <motion.img
-          src="https://images.unsplash.com/photo-1605296867304-46d5465a13f1?auto=format&fit=crop&w=1600&q=80"
-          alt="Healthy lifestyle background"
-          className="absolute inset-0 w-full h-full object-cover brightness-75 translate-x-[-33px] translate-y-[-20px]"
-        />
-
-        {/* Overlay trasparente */}
-        <div className="absolute inset-0 bg-indigo-900/40" />
-
-        {/* Contenuto */}
+        {/* Immagine con effetto zoom on hover */}
         <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 1.2, ease: "easeOut" }}
-          className="relative z-10 text-white max-w-2xl px-6"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 1.5 }}
+          className="absolute inset-0 w-full h-full"
         >
+          <motion.img
+            ref={ref}
+            src="https://images.unsplash.com/photo-1554284126-aa88f22d8b74?auto=format&fit=crop&w=1600&q=80"
+            alt="Allenamento al tramonto sul lungomare"
+            className="w-full h-full object-cover brightness-75 translate-x-[-25px] translate-y-[-20px] 
+                      transition-transform duration-700 ease-in-out group-hover:scale-105"
+          />
+        </motion.div>
+
+        {/* Overlay */}
+        <div className="absolute inset-0 bg-indigo-900/40 transition-opacity duration-700 group-hover:bg-indigo-900/30"></div>
+
+        {/* Testo e bottone */}
+        <div className="relative z-10 text-white max-w-2xl px-6">
           <motion.h1
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.8 }}
+            transition={{ duration: 0.8 }}
             className="text-5xl font-extrabold mb-4 tracking-tight drop-shadow-lg"
           >
             Il tuo benessere, il nostro obiettivo
@@ -51,7 +60,7 @@ export default function HomePage() {
           <motion.p
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.8 }}
+            transition={{ delay: 0.2, duration: 0.8 }}
             className="text-lg mb-8 text-indigo-100 leading-relaxed drop-shadow-md"
           >
             Crea la tua scheda di allenamento e nutrizione personalizzata con
@@ -59,19 +68,18 @@ export default function HomePage() {
           </motion.p>
 
           <motion.button
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6, duration: 0.8 }}
+            transition={{ delay: 0.4, duration: 0.8 }}
             onClick={() => setShowLogin(true)}
             className="px-8 py-3 rounded-lg bg-indigo-600 text-white font-semibold text-lg 
-                       hover:bg-indigo-700 hover:scale-105 transform transition-all duration-200 
-                       shadow-md cursor-pointer focus:ring-2 focus:ring-indigo-300 focus:outline-none"
+                      hover:bg-indigo-700 hover:scale-105 transform transition-all duration-200 
+                      shadow-md cursor-pointer focus:ring-2 focus:ring-indigo-300 focus:outline-none"
           >
             Inizia ora
           </motion.button>
-        </motion.div>
+        </div>
       </section>
-
 
       <section className="mt-16 flex flex-col sm:flex-row justify-center gap-8 pb-20">
         <Card
@@ -100,6 +108,10 @@ export default function HomePage() {
           onLogin={handleLoginOpen}
           goTo="/professionisti"
         />
+      </section>
+
+      <section className="mt-24">
+        <GameRunner />
       </section>
 
       {showLogin && (

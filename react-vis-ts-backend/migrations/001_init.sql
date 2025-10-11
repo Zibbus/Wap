@@ -1,8 +1,18 @@
 CREATE TABLE IF NOT EXISTS users (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  username VARCHAR(32) NOT NULL UNIQUE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      username VARCHAR(32) NOT NULL UNIQUE,
+      password VARCHAR(255) NOT NULL,
+      first_name VARCHAR(100) NULL,
+      last_name VARCHAR(100) NULL,
+      dob DATE NULL,
+      sex ENUM('M','F','O') NULL,
+      type ENUM('utente','professionista') DEFAULT 'utente',
+      email VARCHAR(150) NULL,
+      weight FLOAT NULL,
+      height FLOAT NULL,
+      vat VARCHAR(30) NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
 CREATE TABLE IF NOT EXISTS conversations (
   id INT AUTO_INCREMENT PRIMARY KEY,
