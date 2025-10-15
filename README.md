@@ -70,12 +70,14 @@ La home mostra logo, login/logout e schede introduttive. Dopo il login puoi coll
 - ws (WebSocket)
 - jsonwebtoken
 - typescript, tsx
+- bcryptjs
 
 ### Frontend
 - react, react-dom
 - vite, typescript
 - tailwindcss, postcss, autoprefixer
 - react-router-dom (per routing futuro)
+- framer-motion
 
 ---
 
