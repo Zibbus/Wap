@@ -198,7 +198,7 @@ export default function HomePage({ auth, onLogin }: HomePageProps) {
           description="Personalizza gli esercizi e organizza la tua scheda per raggiungere i tuoi obiettivi con il supporto della piattaforma."
           isLoggedIn={!!auth}
           onLogin={onLogin}
-          goTo="/workout/new"
+          goTo="/workout"
         />
         <Card
           image="https://via.placeholder.com/300x200?text=AI"

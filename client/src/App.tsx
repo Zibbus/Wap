@@ -4,6 +4,7 @@ import { useAuth } from "./hooks/useAuth";
 import Header from "./components/Header";
 import HomePage from "./pages/HomePage";
 import LoginModal from "./components/LoginModal.tsx";
+import WorkoutPage from "./pages/WorkoutPage.tsx"
 
 export default function App() {
   const { auth, login, logout } = useAuth();
@@ -26,7 +27,7 @@ export default function App() {
 
         <Routes>
           <Route path="/" element={<HomePage auth={auth} onLogin={() => setShowLogin(true)} />} />
-          {/* altre route */}
+          <Route path="/workout" element={<WorkoutPage />} />
         </Routes>
 
         {showLogin && (

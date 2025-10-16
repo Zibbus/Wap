@@ -9,7 +9,7 @@ export default function LoginModal({ onClose, onLoggedIn }: Props) {
   const [isRegister, setIsRegister] = useState(false);
 
   // campi comuni
-  const [username, setUsername] = useState("lello");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
@@ -198,7 +198,7 @@ export default function LoginModal({ onClose, onLoggedIn }: Props) {
               <input
                 className="w-full border border-indigo-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500"
                 placeholder="Username"
-                value={username ? username : "giacomo"}
+                value={username ? username : ""}
                 onChange={(e) => setUsername(e.target.value)}
               />
               <input
