@@ -29,10 +29,6 @@ export default function App() {
           {/* altre route */}
         </Routes>
 
-        <footer className="py-4 border-t border-indigo-100 text-center text-sm text-gray-500">
-          © {new Date().getFullYear()} MyFit · React + TypeScript
-        </footer>
-
         {showLogin && (
           <LoginModal
             onClose={() => setShowLogin(false)}
