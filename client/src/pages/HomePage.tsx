@@ -5,7 +5,7 @@ import { Menu, User, ArrowLeft, Mail, Phone, Facebook, Instagram, Linkedin } fro
 import Card from "../components/Card";
 import LoginModal from "../components/LoginModal";
 import GameRunner from "../components/GameRunner";
-import logo from "../assets/logo.png";
+import logo from "../assets/IconaMyFitNoBG.png";
 import logoecommerce from "../assets/logoecommerce.png";
 
 type HomePageProps = {

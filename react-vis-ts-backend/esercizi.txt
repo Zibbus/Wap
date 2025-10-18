@@ -1,0 +1,158 @@
+Esercizi spalle:
+1	Military Press	Esercizio con bilanciere
+2	Alzate laterali	Esercizio con manubrio
+3	Lento Avanti con bilanciere	Esercizio con bilanciere
+4	Lento Avanti con manubri	Esercizio con manubrio
+5	Alzate laterali ai cavi	Esercizio ai cavi
+6	Shoulder press	Esercizio alle macchine
+7	Lento Dietro con bilanciere	Esercizio con bilanciere
+8	Alzate frontali	Esercizio con manubrio
+9	Alzate frontali ai cavi	Esercizio alle macchine
+10	Alzate frontali con bilanciere	Esercizio con bilanciere
+11	Crossover ai cavi inverso	Esercizio ai cavi
+12	Alzate a 90 gradi	Esercizio con manubrio
+13	Alzate a 90 gradi ai cavi	Esercizio ai cavi
+14	Rematore verticale con bilanciere	Esercizio con bilanciere
+15	Rematore verticale con manubri	Esercizio con manubrio
+16	Shrug con bilanciere	Esercizio con bilanciere
+17	Shrug con manubri	Esercizio con manubrio
+18	Shrug al multipower	Esercizio alle macchine
+19	Alzate frontali con manubrio da seduto	Esercizio con manubrio
+20	Alzate laterali con manubrio da seduto	Esercizio con manubrio
+21	Panca piana presa inversa	Esercizio con bilanciere
+22	Arnold press	Esercizio con manubrio
+23	Alzate frontali con corda	Esercizio ai cavi
+Esercizio per i dorsali:
+1	Stacchi da terra	Esercizio con bilanciere
+2	Trazioni alla sbarra (chin up)	Esercizio a corpo libero
+3	Rematore con bilanciere	Esercizio con bilanciere
+4	Rematore con manubrio	Esercizio con manubrio
+5	Rematore ai cavi (unilaterale o bilaterale)	Esercizio ai cavi
+6	Pulldown alla lat machine	Esercizio alle macchine
+7	Pulldown alla lat machine presa inversa	Esercizio alle macchine
+8	Pulldown alla lat machine con triangolo	Esercizio alle macchine
+9	Pulldown alla lat machine con trazibar	Esercizio alle macchine
+10	href="https://www.superpalestra.it/pullover-manubrio/">Pullover con manubrio	Esercizio con manubrio
+11	Pullover ai cavi	Esercizio ai cavi
+12	Lateral Pulley (orizzontale o inclinato)	Esercizio alle macchine
+13	Lateral Pulley (orizzontale o inclinato) presa larga	Esercizio alle macchine
+14	Lateral Pulley (orizzontale o inclinato) con trazybar	Esercizio alle macchine
+15	Lateral Pulley con maniglia unilaterale	Esercizio alle macchine
+16	Lat machine con maniglia	Esercizio alle macchine
+17	Iperestensioni alla panca romana	Esercizi a corpo libero
+18	Rematore su panca inclinata con manubrio	Esercizio con manubrio
+19	Rematore su panca inclinata con bilanciere	Rematore su panca inclinata con bilanciere
+20	Trazioni alla sbarra presa inversa (chin up)	Esercizio a corpo libero
+21	Rematore con bilanciere presa inversa	Esercizio con bilanciere
+22	Rematore al multipower	Esercizio alle macchine
+23	Goodmorning con bilanciere	Esercizio con bilanciere
+24	Dorsy Machine	Esercizio alle macchine
+25	Nautilus Machine	Esercizio alle macchine
+Esercizio per le gambe:
+1	Squat	Esercizio con bilanciere
+2	Pressa 45 gradi	Esercizio alle macchine
+3	Pressa Orizzontale	Esercizio alle macchine
+4	Pressa Verticale	Esercizio alle macchine
+5	Leg Extension	Esercizio alle macchine
+6	Leg Curl	Esercizio alle macchine
+7	Stacchi da terra gambe tese	Esercizio con bilanciere
+8	Stacchi da terra gambe tese con manubri	Esercizio con manubrio
+9	Standing leg curl	Esercizio alle macchine
+10	Sitting leg curl	Esercizio alle macchine
+11	Affondi frontali (con manubri)	Esercizio a corpo libero o con manubri
+12	Affondi laterali (con manubri)	Esercizio a corpo libero o con manubri
+13	Affondi rumeni (al multipower)	Esercizio alle macchine
+14	Squat Bulgaro	Esercizio con bilanciere
+15	Front Squat	Esercizio con bilanciere
+16	Hack Squat	Esercizio alle macchine
+17	Slanci posteriori della gamba	Esercizio ai cavi
+18	Gluteus Machine	Esercizio alle macchine
+19	Adductor Machine	Esercizio alle macchine
+20	Abductor Machine	Esercizio alle macchine
+21	Ponte per glutei	Esercizio a corpo libero
+22	Slanci laterali della gamba	Esercizio ai cavi
+23	Calf raises in piedi	Esercizio alle macchine
+24	Calf raises seduto	Esercizio alle macchine
+25	Calf raises alla leg press	Esercizio alle macchine
+26	Calf raises alla multipower	Esercizio alle macchine
+27	Squat al multipower	Esercizio alle macchine
+28	Hack Squat con bilanciere	Esercizio con bilanciere
+29	Affondi frontali con bilanciere	Esercizio con bilanciere
+30	Affondi laterali con bilanciere	Esercizio con bilanciere
+31	 Jefferson squat	Esercizio con bilanciere
+32	Stacchi da terra con trap bar	Esercizio con bilanciere
+33	Sissy Squat	Esercizio a corpo libero o con manubri
+34	Sumo Squat	Esercizio a corpo libero o con manubri
+Esercizio per i pettorali:
+1	Distensioni con bilanciere su panca inclinata	Esercizio con bilanciere
+2	Distensioni con bilanciere su panca piana	Esercizio con bilanciere
+3	Distensioni con bilanciere su panca reclinata	Esercizio con bilanciere
+4	Distensioni con manubri su panca inclinata	Esercizio con manubrio
+5	Distensioni con manubri su panca piana	Esercizio con manubrio
+6	Distensioni con manubri su panca reclinata	Esercizio con manubrio
+7	Dip alle parallele per i pettorali	Esercizio a corpo libero
+8	Chest Press	Esercizio alle macchine
+9	Chest Press Incline	Esercizio alle macchine
+10	Pectoral Machine	Esercizio alle macchine
+11	Croci con manubri su panca inclinata	Esercizio con manubrio
+12	Croci con manubri su panca piana	Esercizio con manubrio
+13	Croci con manubri su panca reclinata	Esercizio con manubrio
+14	Croci con manubri around the world	Esercizio con manubrio
+15	Piegamenti sulle braccia	Esercizio a corpo libero
+16	Croci ai cavi	Esercizio ai cavi
+17	Croci ai cavi su panca piana	Esercizio ai cavi
+18	Croci ai cavi su panca inclinata	Esercizio ai cavi
+19	Distensioni su panca inclinata alla smith machine	Esercizio alle macchine
+20	Distensioni su panca piana alla smith machine	Esercizio alle macchine
+21	Distensioni su panca reclinata alla smith machine	Esercizio alle macchine
+22	Croci ai cavi dal basso	Esercizio ai cavi
+23	Chest press per il petto basso	Esercizio alle macchine
+Esercizio per i bicipiti:
+1	Curl con bilanciere	Esercizio con bilanciere
+2	Curl con manubri	Esercizio con manubrio
+3	Curl a martello	Esercizio con manubrio
+4	Curl con bilanciere alla panca Scott	Esercizio con bilanciere
+5	Curl con manubri alla panca Scott	Esercizio con manubrio
+6	Curl con manubri su panca inclinata	Esercizio con manubrio
+7	Bicipiti alla macchina (arm curl)	Esercizio alle macchine
+8	Spider curl con bilanciere	Esercizio con bilanciere
+9	Spider curl con manubrio	Esercizio con manubrio
+10	Curl ai cavi unilaterali e bilaterali	Esercizio ai cavi
+11	Curl con bilanciere presa inversa Esercizio con bilanciere
+12	Curl di concentrazione con manubrio	Esercizio con manubrio
+13	Curl di concentrazione ai cavi	Esercizio ai cavi
+14	Curl con corda	Esercizio ai cavi
+15	Curl a martello frontali	Esercizio con manubrio
+16	Curl ai cavi da sdraiato	Esercizio ai cavi
+17	Curl ai cavi sopra la testa	Esercizio ai cavi
+18	Curl con bilanciere alla panca Scott presa inversa	Esercizio con bilanciere
+Esercizio per i tricipiti:
+1	French Press (o skull crusher)	Esercizio con bilanciere
+2	French Press con manubri	Esercizio con manubrio
+3	Pushdown ai cavi	Esercizio ai cavi
+4	Pushdown ai cavi con corda	Esercizio ai cavi
+5	Estensioni con corda sopra la testa	Esercizio ai cavi
+6	Estensioni con manubrio sopra la testa	Esercizio con manubrio
+7	Dip alle parallele per i tricipiti	Esercizio a corpo libero
+8	Dip tra panche per i tricipiti	Esercizio a corpo libero
+9	Spinte inverse ai cavi (unilaterali o bilaterali)	Esercizio ai cavi
+10	Panca presa stretta	Esercizio con bilanciere
+11	Panca presa stretta al multipower	Esercizio alle macchine
+12	Flessioni presa stretta per i tricipiti	Esercizio a corpo libero
+13	Estensioni sopra la testa ai cavi da seduto	Esercizio ai cavi
+14	French press su panca inclinata	Esercizio con Esercizio con bilanciere
+15	French press verticale	Esercizio con bilanciere
+16	Macchina per i dip	Esercizio alle macchine
+17	Estensioni con manubrio busto flesso	Esercizio con manubrio
+18	Press per i tricipiti sopra la testa con manubrio	Esercizio con manubrio
+Esercizio per l'addome:
+1 Crunch
+2 Crunch inverso
+3 Sit-up
+4 Plank
+5 Side Plank
+6 L-sit
+7 Barchetta
+8 Leg Raise 
+9 Dragon Flag
+10 AB Wheel Roller

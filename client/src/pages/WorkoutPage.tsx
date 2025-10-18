@@ -2,13 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, PlusCircle } from "lucide-react";
 import html2canvas from "html2canvas";
+import MyFitLogo from "/src/assets/IconaMyFit.png";
 
 type Esercizio = {
   nome: string;
   serie: string;
   ripetizioni: string;
   recupero: string;
-  // in futuro: peso (kg) per esercizi che lo richiedono
 };
 
 type GiornoAllenamento = {
@@ -18,6 +18,8 @@ type GiornoAllenamento = {
   gruppiConfermati: boolean;
 };
 
+type Goal = "peso_costante" | "perdita_peso" | "aumento_peso";
+
 export default function WorkoutPage() {
   const [modalita, setModalita] = useState<"iniziale" | "allenamento" | "nutrizione">("iniziale");
   const [giorni, setGiorni] = useState<number | null>(null);
@@ -25,47 +27,163 @@ export default function WorkoutPage() {
   const [giorniAllenamento, setGiorniAllenamento] = useState<GiornoAllenamento[]>([]);
   const [mostraEsercizi, setMostraEsercizi] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [expireDate, setExpireDate] = useState<string>("");
+  const [goal, setGoal] = useState<Goal | "">("");
+  const [loadingEx, setLoadingEx] = useState<boolean>(false);
+  const [availableExercises, setAvailableExercises] = useState<DBExercise[]>([]);
 
   const previewRef = useRef<HTMLDivElement | null>(null);
 
   const gruppiMuscolari = ["Petto", "Dorso", "Gambe", "Spalle", "Braccia", "Addome", "Full Body"];
-  const eserciziPlaceholder = ["Panca piana", "Squat", "Stacchi da terra", "Trazioni", "Addominali"];
 
-  // helper per ottenere/creare il giorno corrente
-  const getOrCreateDay = (day: number): GiornoAllenamento => {
-    const found = giorniAllenamento.find((g) => g.giorno === day);
-    if (found) return found;
-    const fresh: GiornoAllenamento = { giorno: day, gruppi: [], esercizi: [], gruppiConfermati: false };
-    setGiorniAllenamento((prev) => [...prev, fresh]);
-    return fresh;
+  // Inizializza i giorni quando l’utente sceglie il numero
+  useEffect(() => {
+    if (giorni && giorni > 0) {
+      setGiorniAllenamento(
+        Array.from({ length: giorni }, (_, i) => ({
+          giorno: i + 1,
+          gruppi: [],
+          esercizi: [],
+          gruppiConfermati: false,
+        }))
+      );
+      setCurrentDay(1);
+      setMostraEsercizi(false);
+    }
+  }, [giorni]);
+
+
+  // Inizializza i giorni quando l’utente sceglie il numero (evita setState in render)
+  useEffect(() => {
+    const d = giorniAllenamento.find((g) => g.giorno === currentDay);
+    if (!d || !d.gruppiConfermati || !d.gruppi.length) return;
+
+    (async () => {
+      try {
+        setLoadingEx(true);
+        const data = await fetchExercisesForGroups(d.gruppi);
+        setAvailableExercises(data); // solo opzioni per la tendina
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingEx(false);
+      }
+    })();
+  }, [currentDay, giorniAllenamento]);
+
+
+
+  const giornoCorrente = giorniAllenamento.find((g) => g.giorno === currentDay);
+
+  const GROUP_NAME_TO_ID: Record<string, number> = {
+    Spalle: 1,
+    Dorso: 2,
+    Gambe: 3,
+    Petto: 4,
+    Braccia: 5,
+    Addome: 6,
   };
-  const giornoCorrente = getOrCreateDay(currentDay);
 
-  // selezione gruppi (Full Body esclusivo)
+  const ID_TO_GROUP_NAME = Object.fromEntries(
+    Object.entries(GROUP_NAME_TO_ID).map(([k, v]) => [v, k])
+  );
+
+  type DBExercise = {
+    id: number;
+    name: string;
+    musclegroups_id: number;
+    groupLabel: string;           // es. "Braccia"
+    defaultSerie?: string;
+    defaultRipetizioni?: string;
+    defaultRecupero?: string;
+  };
+
+  const namesToGroupIds = (names: string[]) => {
+    const expanded = names.includes("Full Body")
+      ? Array.from(new Set([...names, ...Object.keys(GROUP_NAME_TO_ID)]))
+      : names;
+    return Array.from(
+      new Set(expanded.map(n => GROUP_NAME_TO_ID[n]).filter(Boolean))
+    );
+  };
+
+  const fetchExercisesForGroups = async (groupNames: string[]): Promise<DBExercise[]> => {
+    const ids = namesToGroupIds(groupNames);
+    if (!ids.length) return [];
+
+    // /api/exercises?groupIds=3&groupIds=6
+    const qs = ids.map(id => `groupIds=${encodeURIComponent(String(id))}`).join("&");
+    const res = await fetch(`/api/exercises?${qs}`);
+    if (!res.ok) throw new Error(`Errore fetch esercizi: ${res.status}`);
+
+    const raw = await res.json() as { id:number; title:string; musclegroups_id:number }[];
+
+    return raw.map(r => ({
+      id: r.id,
+      name: r.title,
+      musclegroups_id: r.musclegroups_id,
+      groupLabel: ID_TO_GROUP_NAME[r.musclegroups_id] || String(r.musclegroups_id),
+    }));
+  };
+
+  // Selezione gruppi (Total Body esclusivo con sostituzione corretta)
   const handleSelezionaGruppo = (gruppo: string) => {
     setGiorniAllenamento((prev) =>
       prev.map((g) => {
         if (g.giorno !== currentDay) return g;
+
+        // se gruppi già confermati, non permettere cambio senza passare da "Modifica gruppi"
+        if (g.gruppiConfermati) return g;
+
         let nuoviGruppi = [...g.gruppi];
+
         if (gruppo === "Full Body") {
+          // clic su Full Body -> esclude tutto il resto
           nuoviGruppi = ["Full Body"];
-        } else {
-          if (nuoviGruppi.includes("Full Body")) return g;
-          if (nuoviGruppi.includes(gruppo)) nuoviGruppi = nuoviGruppi.filter((x) => x !== gruppo);
-          else nuoviGruppi.push(gruppo);
+        } else {  
+          // clic su un gruppo "muscolare"
+          if (nuoviGruppi.includes("Full Body")) {
+            // se c'era Full Body, rimuovilo e metti il nuovo
+            nuoviGruppi = [gruppo];
+          } else {
+            // toggle: aggiungi o rimuovi
+            if (nuoviGruppi.includes(gruppo)) {
+              nuoviGruppi = nuoviGruppi.filter((x) => x !== gruppo);
+            } else {
+              nuoviGruppi.push(gruppo);
+            }
+          }
         }
+
         return { ...g, gruppi: nuoviGruppi };
       })
     );
   };
 
-  const handleConfermaGruppi = () => {
-    if (!giornoCorrente.gruppi.length) return;
-    setGiorniAllenamento((prev) =>
-      prev.map((g) => (g.giorno === currentDay ? { ...g, gruppiConfermati: true } : g))
-    );
-    setMostraEsercizi(true);
+  const handleConfermaGruppi = async () => {
+    if (!giornoCorrente || !giornoCorrente.gruppi.length) return;
+
+    try {
+      setLoadingEx(true);
+      const data = await fetchExercisesForGroups(giornoCorrente.gruppi);
+      setAvailableExercises(data);
+
+      // Conferma i gruppi ma NON toccare g.esercizi
+      setGiorniAllenamento(prev =>
+        prev.map(g =>
+          g.giorno === currentDay ? { ...g, gruppiConfermati: true } : g
+        )
+      );
+      setMostraEsercizi(true);
+    } catch (e) {
+      console.error(e);
+      alert("Non sono riuscito a caricare gli esercizi dal database.");
+    } finally {
+      setLoadingEx(false);
+    }
   };
+
+
 
   const handleCambiaGruppo = () => {
     if (!confirm("Cambiando i gruppi di questo giorno, gli esercizi inseriti verranno eliminati. Continuare?")) return;
@@ -74,6 +192,7 @@ export default function WorkoutPage() {
         g.giorno === currentDay ? { ...g, gruppi: [], esercizi: [], gruppiConfermati: false } : g
       )
     );
+    setAvailableExercises([]);
     setMostraEsercizi(false);
   };
 
@@ -94,6 +213,7 @@ export default function WorkoutPage() {
   };
 
   const handleAggiornaEsercizio = (index: number, field: keyof Esercizio, value: string) => {
+    if (field === "nome" && value === "") return; // non permettere di reimpostare il placeholder
     setGiorniAllenamento((prev) =>
       prev.map((g) =>
         g.giorno === currentDay
@@ -102,6 +222,7 @@ export default function WorkoutPage() {
       )
     );
   };
+
 
   // --- Anteprima, Download JPEG, Salvataggio DB ---
   const handleGoToPreview = () => {
@@ -119,36 +240,53 @@ export default function WorkoutPage() {
     link.click();
   };
 
-  const handleSaveToDb = async () => {
-    try {
-      // 1) cattura anteprima
-      if (!previewRef.current) return;
-      const canvas = await html2canvas(previewRef.current, { backgroundColor: "#ffffff", scale: 2 });
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.92); // "data:image/jpeg;base64,...."
-      const base64Image = dataUrl.split(",")[1];
+    const handleSaveToDb = async () => {
+      try {
+        if (!previewRef.current) return;
 
-      // 2) payload da salvare (esempio)
-      const payload = {
-        userId: 123, // <-- Sostituisci con l'ID utente autenticato
-        title: "Scheda Allenamento",
-        days: giorni,
-        plan: giorniAllenamento, // JSON completo
-        previewImageBase64: base64Image, // opzionale: puoi salvare su storage esterno e mettere solo l'URL
-      };
+        const canvas = await html2canvas(previewRef.current, { backgroundColor: "#ffffff", scale: 2, useCORS: true });
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+        const base64Image = dataUrl.split(",")[1];
 
-      // 3) chiamata API backend
-      const res = await fetch("/api/workout-plans", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: "Bearer REPLACE_WITH_TOKEN" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(`Errore salvataggio: ${res.status}`);
-      alert("Piano salvato con successo!");
-    } catch (err: any) {
-      console.error(err);
-      alert("Si è verificato un errore durante il salvataggio.");
-    }
-  };
+        // 1) Salva il piano
+        const planPayload = {
+          userId: 123, // TODO: ID reale utente
+          title: "Scheda Allenamento",
+          days: giorni,
+          plan: giorniAllenamento,
+          previewImageBase64: base64Image,
+        };
+
+        const planRes = await fetch("/api/workout-plans", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer REPLACE_WITH_TOKEN" },
+          body: JSON.stringify(planPayload),
+        });
+        if (!planRes.ok) throw new Error(`Errore salvataggio piano: ${planRes.status}`);
+        /* const planData = await planRes.json(); */ // mi aspetto { id: number, ... }
+
+        // 2) Salva la schedule (expire + goal). Il timestamp lo mette il DB (DEFAULT CURRENT_TIMESTAMP).
+        const schedulePayload = {
+          userId: 123,                         // TODO: ID reale utente
+          expire: expireDate,                  // "YYYY-MM-DD" da <input type="date">
+          goal: goal as Goal,                  // "peso_costante" | "perdita_peso" | "aumento_peso"
+          // planId: planData?.id,             // <-- decommenta se vuoi relazionare schedule al piano
+        };
+
+        const schedRes = await fetch("/api/schedule", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer REPLACE_WITH_TOKEN" },
+          body: JSON.stringify(schedulePayload),
+        });
+        if (!schedRes.ok) throw new Error(`Errore salvataggio schedule: ${schedRes.status}`);
+
+        alert("Piano e schedule salvati con successo!");
+      } catch (err: any) {
+        console.error(err);
+        alert("Si è verificato un errore durante il salvataggio.");
+      }
+    };
+
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-indigo-50 px-8 py-12">
@@ -160,21 +298,21 @@ export default function WorkoutPage() {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -30 }}
-            className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-6xl w-full"
+            className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-7xl w-full"
           >
             {/* Nutrizione */}
             <div
               onClick={() => setModalita("nutrizione")}
-              className="relative h-[600px] rounded-3xl overflow-hidden group cursor-pointer shadow-lg"
+              className="relative h-[680px] md:h-[760px] rounded-3xl overflow-hidden group cursor-pointer shadow-lg"
             >
               <img
-                src="https://images.unsplash.com/photo-1601050690597-1a3c4d99d6b2?auto=format&fit=crop&w=700&q=80"
+                src="https://images.unsplash.com/photo-1601050690597-1a3c4d99d6b2?auto=format&fit=crop&w=1200&q=80"
                 alt="Scheda nutrizionale"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 blur-[1px]"
               />
               <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white px-6 text-center">
                 <h2 className="text-3xl font-bold mb-3">Vuoi creare la tua scheda nutrizionale?</h2>
-                <p className="max-w-md text-gray-200">
+                <p className="max-w-xl text-gray-200">
                   Genera un piano alimentare personalizzato per i tuoi obiettivi di salute e forma fisica.
                 </p>
               </div>
@@ -183,16 +321,16 @@ export default function WorkoutPage() {
             {/* Allenamento */}
             <div
               onClick={() => setModalita("allenamento")}
-              className="relative h-[600px] rounded-3xl overflow-hidden group cursor-pointer shadow-lg"
+              className="relative h-[680px] md:h-[760px] rounded-3xl overflow-hidden group cursor-pointer shadow-lg"
             >
               <img
-                src="https://images.unsplash.com/photo-1599058917212-d750089bc07e?auto=format&fit=crop&w=700&q=80"
+                src="https://images.unsplash.com/photo-1599058917212-d750089bc07e?auto=format&fit=crop&w=1200&q=80"
                 alt="Scheda allenamento"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 blur-[1px]"
               />
               <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white px-6 text-center">
                 <h2 className="text-3xl font-bold mb-3">Vuoi creare la tua scheda di allenamento?</h2>
-                <p className="max-w-md text-gray-200">
+                <p className="max-w-xl text-gray-200">
                   Crea la tua scheda personalizzata scegliendo giorni e gruppi muscolari.
                 </p>
               </div>
@@ -274,11 +412,12 @@ export default function WorkoutPage() {
               <p className="text-indigo-700 mb-6">Seleziona i gruppi muscolari da allenare</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-md mb-8">
                 {gruppiMuscolari.map((g) => {
-                  const selezionato = giornoCorrente.gruppi.includes(g);
+                  const selezionato = !!giornoCorrente?.gruppi.includes(g);
                   return (
                     <button
                       key={g}
                       onClick={() => handleSelezionaGruppo(g)}
+                      disabled={!!giornoCorrente?.gruppiConfermati}
                       className={`py-3 px-4 rounded-xl border text-sm font-semibold transition-all ${
                         selezionato
                           ? "bg-indigo-600 text-white border-indigo-600"
@@ -290,14 +429,14 @@ export default function WorkoutPage() {
                   );
                 })}
               </div>
-              {giornoCorrente.gruppi.length > 0 && (
+              {giornoCorrente?.gruppi.length ? (
                 <button
                   onClick={handleConfermaGruppi}
                   className="bg-indigo-600 text-white font-semibold px-6 py-3 rounded-xl hover:bg-indigo-700 transition-all"
                 >
                   Conferma gruppi del giorno
                 </button>
-              )}
+              ) : null}
             </>
           ) : (
             <>
@@ -308,19 +447,41 @@ export default function WorkoutPage() {
                 </button>
               </div>
 
-              {giornoCorrente.esercizi.map((ex, i) => (
+              {/* Banner di caricamento esercizi */}
+              {loadingEx && (
+                <div className="w-full mb-3 text-sm text-indigo-700">
+                  Caricamento esercizi dal database…
+                </div>
+              )}
+
+              {/* Righe esercizi */}
+              {giornoCorrente?.esercizi.map((ex, i) => (
                 <div key={i} className="flex flex-col sm:flex-row items-center gap-3 mb-3 bg-indigo-50 p-3 rounded-lg">
                   <select
-                    className="flex-1 p-2 rounded-md border border-indigo-200"
-                    value={ex.nome}
-                    onChange={(e) => handleAggiornaEsercizio(i, "nome", e.target.value)}
+                    className="w-56 sm:w-64 md:w-72 p-2 rounded-md border border-indigo-200"
+                    value={ex.nome || ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "") return; // evita di tornare al placeholder
+                      handleAggiornaEsercizio(i, "nome", v);
+                    }}
                   >
-                    <option value="">Seleziona esercizio</option>
-                    {eserciziPlaceholder.map((e) => (
-                      <option key={e} value={e}>
-                        {e}
-                      </option>
-                    ))}
+                    <option value="" disabled hidden>Seleziona esercizio</option>
+
+                    {/* optgroup per gruppi */}
+                    {namesToGroupIds(giornoCorrente?.gruppi ?? []).map((gid) => {
+                      const items = availableExercises.filter(opt => opt.musclegroups_id === gid);
+                      if (!items.length) return null;
+                      return (
+                        <optgroup key={gid} label={ID_TO_GROUP_NAME[gid] ?? `Gruppo ${gid}`}>
+                          {items.map(opt => (
+                            <option key={opt.id} value={opt.name}>
+                              {opt.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
                   </select>
                   <input
                     type="number"
@@ -346,6 +507,7 @@ export default function WorkoutPage() {
                 </div>
               ))}
 
+
               <button
                 onClick={handleAggiungiEsercizio}
                 className="mt-4 flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-semibold"
@@ -366,7 +528,9 @@ export default function WorkoutPage() {
                 return (
                   <div key={i} className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 text-sm">
                     Giorno {i + 1}:{" "}
-                    <span className="font-semibold text-indigo-700">{g?.gruppi.length ? g.gruppi.join(", ") : "-"}</span>
+                    <span className="font-semibold text-indigo-700">
+                      {g?.gruppi.length ? g.gruppi.join(", ") : "-"}
+                    </span>
                     {g?.gruppiConfermati ? (
                       <span className="ml-2 text-xs text-green-700">
                         (confermato{eserciziCount ? `, ${eserciziCount} esercizi` : ""})
@@ -375,6 +539,39 @@ export default function WorkoutPage() {
                   </div>
                 );
               })}
+            </div>
+
+            {/* —— FORM: scadenza + obiettivo —— */}
+            <div className="max-w-2xl mx-auto bg-indigo-50/60 border border-indigo-100 rounded-xl p-5 mb-6">
+              <h4 className="text-base font-semibold text-indigo-800 mb-4">Impostazioni scheda</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex flex-col">
+                  <label className="text-sm text-indigo-700 mb-1">Scadenza scheda</label>
+                  <input
+                    type="date"
+                    className="p-2 rounded-md border border-indigo-200 bg-white"
+                    value={expireDate}
+                    onChange={(e) => setExpireDate(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label className="text-sm text-indigo-700 mb-1">Obiettivo</label>
+                  <select
+                    className="p-2 rounded-md border border-indigo-200 bg-white"
+                    value={goal}
+                    onChange={(e) => setGoal(e.target.value as Goal)}
+                  >
+                    <option value="" disabled hidden>Seleziona obiettivo</option>
+                    <option value="peso_costante">Peso costante</option>
+                    <option value="perdita_peso">Perdita peso</option>
+                    <option value="aumento_peso">Aumento peso</option>
+                    <option value="altro">Altro</option>
+                  </select>
+                </div>
+              </div>
+              <p className="text-xs text-indigo-600 mt-3">
+                La scadenza indica fino a quando seguire questa scheda. L’obiettivo verrà salvato nella tua schedule.
+              </p>
             </div>
 
             <div className="flex justify-center">
@@ -388,6 +585,8 @@ export default function WorkoutPage() {
           </div>
         </motion.div>
       )}
+      
+      
 
       {/* --- ANTEPRIMA --- */}
       {showPreview && (
@@ -399,9 +598,30 @@ export default function WorkoutPage() {
         >
           <h2 className="text-3xl font-bold text-indigo-700 mb-6 text-center">Anteprima scheda allenamento</h2>
 
-          {/* wrapper fisso per cattura immagine */}
-          <div ref={previewRef} className="bg-white p-6 rounded-xl border border-gray-200">
-            <h3 className="text-xl font-semibold mb-4">Piano settimanale</h3>
+          {/* IMPORTANTE: relative per posizionamenti assoluti */}
+          <div ref={previewRef} className="relative bg-white p-6 rounded-xl border border-gray-200">
+            {/* ===== HEADER ===== */}
+            <div className="relative h-28 mb-4">
+              {/* Spazio bianco in alto a sinistra */}
+              <div className="absolute top-0 left-0 w-24 h-24 bg-white rounded-md" />
+
+              {/* Titolo in basso a sinistra (dentro l’header) */}
+              <h3 className="absolute bottom-2 left-0 text-xl font-semibold">
+                Piano settimanale
+              </h3>
+
+              {/* Logo MyFit in alto a destra */}
+              <img
+                src={MyFitLogo}
+                alt="MyFit"
+                className="absolute top-0 right-0 w-24 h-24 object-contain pointer-events-none select-none"
+                loading="eager"
+                crossOrigin="anonymous"
+              />
+            </div>
+            {/* ===== /HEADER ===== */}
+
+            {/* Contenuto della scheda */}
             <div className="grid md:grid-cols-2 gap-6">
               {Array.from({ length: giorni ?? 0 }).map((_, i) => {
                 const g = giorniAllenamento.find((x) => x.giorno === i + 1);
@@ -409,9 +629,7 @@ export default function WorkoutPage() {
                   <div key={i} className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="font-bold">Giorno {i + 1}</h4>
-                      <span className="text-sm text-gray-500">
-                        {g?.gruppi?.length ? g.gruppi.join(", ") : "—"}
-                      </span>
+                      <span className="text-sm text-gray-500">{g?.gruppi?.length ? g.gruppi.join(", ") : "—"}</span>
                     </div>
                     <div className="space-y-2">
                       {g?.esercizi?.length ? (
@@ -455,6 +673,7 @@ export default function WorkoutPage() {
           </div>
         </motion.div>
       )}
+
     </div>
   );
 }

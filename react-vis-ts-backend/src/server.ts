@@ -8,6 +8,7 @@ import { router as chatRouter } from './routes/chat.js';
 import { attachWs } from './ws.js';
 import bodyParser from "body-parser";
 import authRoutes from "./routes/auth";
+import { exercisesRouter } from "./routes/exercises.js";
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use(bodyParser.json());
 app.use("/api/auth", authRoutes);
 app.use("/api/auth", authRouter);
 app.use("/api/chat", chatRouter);
+app.use("/api/exercises", exercisesRouter);
 
 // 🔹 Healthcheck
 app.get('/health', (_req, res) => res.json({ ok: true }));

@@ -111,8 +111,8 @@ export default function LoginModal({ onClose, onLoggedIn }: Props) {
           password,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          dob,
-          sex,
+          dob: dob,
+          sex: sex,
           type: userType,
           email: email.trim(),
         };
@@ -122,7 +122,7 @@ export default function LoginModal({ onClose, onLoggedIn }: Props) {
         } else {
           payload.vat = vat.trim();
         }
-
+        console.log(payload);
         const res = await fetch("http://localhost:4000/api/auth/register", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
