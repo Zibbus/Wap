@@ -5,22 +5,29 @@ interface HeroSectionProps {
 
 export default function HeroSection({ isLoggedIn, onLogin }: HeroSectionProps) {
   return (
-    <section className="text-center py-16 px-6 bg-white shadow-inner">
-      <h1 className="text-4xl font-extrabold text-indigo-700 mb-4">
-        Benvenuto su MyFit!
-      </h1>
-      <p className="text-gray-600 max-w-2xl mx-auto mb-6">
-        Migliora la tua forma fisica e segui i tuoi progressi con i nostri strumenti
-        intelligenti e il supporto di professionisti qualificati.
-      </p>
-      {!isLoggedIn && (
-        <button
-          onClick={onLogin}
-          className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-transform hover:scale-105"
-        >
-          Accedi o Registrati
-        </button>
-      )}
+    <section className="relative w-full flex items-center justify-center py-24 px-6">
+      <div className="text-center space-y-6 max-w-3xl">
+        {/* Titolo con highlight dietro */}
+        <h1 className="text-5xl font-extrabold leading-tight relative inline-block">
+          <span className="relative z-10 text-gray-900">
+            Raggiungi i tuoi obiettivi con MyFit
+          </span>
+          <span className="absolute inset-0 bg-indigo-100 -rotate-1 rounded-xl -z-10"></span>
+        </h1>
+
+        <p className="text-lg text-gray-600">
+          Scopri come creare piani di allenamento personalizzati e segui i tuoi progressi passo dopo passo.
+        </p>
+
+        {!isLoggedIn && (
+          <button
+            onClick={onLogin}
+            className="mt-6 bg-indigo-600 text-white font-semibold px-8 py-3 rounded-xl shadow-md hover:bg-indigo-700 hover:scale-105 transform transition-all duration-300"
+          >
+            Inizia ora
+          </button>
+        )}
+      </div>
     </section>
   );
 }
