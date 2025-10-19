@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useAuth } from "./hooks/useAuth";
 import Header from "./components/Header";
 import HomePage from "./pages/HomePage";
@@ -9,11 +9,6 @@ import WorkoutPage from "./pages/WorkoutPage.tsx";
 export default function App() {
   const { auth, login, logout } = useAuth();
   const [showLogin, setShowLogin] = useState(false);
-
-  const initials = useMemo(
-    () => auth?.username?.slice(0, 2).toUpperCase() ?? "",
-    [auth]
-  );
 
   return (
     <BrowserRouter>
