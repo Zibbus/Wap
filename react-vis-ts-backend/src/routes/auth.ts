@@ -6,7 +6,7 @@ import db from "../db"; // mysql2/promise Pool
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-key";
 
-// helpers
+// Helpers
 const isNonEmpty = (v: any) => typeof v === "string" && v.trim() !== "";
 const normSex = (s?: string | null) => {
   if (!s) return null;
@@ -16,14 +16,6 @@ const normSex = (s?: string | null) => {
 const normType = (t?: string | null) =>
   t === "professionista" ? "professionista" : "utente";
 
-/**
- * POST /auth/register
- * Body richiesto:
- *  - username, email, password (obbligatori)
- *  - first_name?, last_name?, dob?('YYYY-MM-DD'), sex?('M'|'F'|'O'), type?('utente'|'professionista')
- *  - weight?, height?  (solo se type='utente')
- *  - vat?              (solo se type='professionista')
- */
 router.post("/register", async (req, res) => {
   const {
     username,
@@ -47,13 +39,12 @@ router.post("/register", async (req, res) => {
   const finalSex = normSex(sex);
 
   try {
-    // username già usato?
+    // Controllo username/email già esistenti
     const [uRows] = await db.query("SELECT id FROM users WHERE username = ?", [username.trim()]);
     if ((uRows as any[]).length > 0) {
       return res.status(409).json({ error: "Username già registrato" });
     }
 
-    // email già usata?
     const [eRows] = await db.query("SELECT id FROM users WHERE email = ?", [email.trim()]);
     if ((eRows as any[]).length > 0) {
       return res.status(409).json({ error: "Email già registrata" });
@@ -61,13 +52,14 @@ router.post("/register", async (req, res) => {
 
     const hashed = await bcryptjs.hash(password, 10);
 
-    // usa transazione se disponibile
+    // Transazione (se disponibile)
     const hasGetConnection = typeof (db as any).getConnection === "function";
     const conn = hasGetConnection ? await (db as any).getConnection() : (db as any);
+
     try {
       if (hasGetConnection) await conn.beginTransaction();
 
-      // 1) inserisci in USERS
+      // Inserimento in users
       const [result] = await conn.query(
         `
         INSERT INTO users
@@ -80,15 +72,15 @@ router.post("/register", async (req, res) => {
           hashed,
           isNonEmpty(firstName) ? firstName.trim() : null,
           isNonEmpty(lastName) ? lastName.trim() : null,
-          isNonEmpty(dob) ? dob : null, // 'YYYY-MM-DD' o null
-          finalSex,                     // ENUM o null
-          finalType,                    // 'utente' | 'professionista'
+          isNonEmpty(dob) ? dob : null,
+          finalSex,
+          finalType,
           email.trim(),
         ]
       );
       const userId = (result as any).insertId;
 
-      // 2) profilo in base al type
+      // Inserimento profilo aggiuntivo
       if (finalType === "utente") {
         await conn.query(
           `INSERT INTO customers (user_id, weight, height) VALUES (?, ?, ?)`,
@@ -99,15 +91,14 @@ router.post("/register", async (req, res) => {
           ]
         );
       } else {
-        // professionista
         if (!isNonEmpty(vat)) {
           if (hasGetConnection) await conn.rollback();
           if (hasGetConnection) conn.release();
-          return res.status(400).json({ error: "VAT è obbligatorio per i professionisti" });
+          return res.status(400).json({ error: "VAT obbligatorio per professionisti" });
         }
         await conn.query(
           `INSERT INTO freelancers (user_id, vat) VALUES (?, ?)`,
-          [userId, (vat as string).trim()]
+          [userId, vat.trim()]
         );
       }
 
@@ -133,8 +124,8 @@ router.post("/register", async (req, res) => {
 
 /**
  * POST /auth/login
- *  - usernameOrEmail, password
- *  Accetta username **o** email nello stesso campo.
+ * Body: usernameOrEmail, password
+ * Restituisce: token + userId + username
  */
 router.post("/login", async (req, res) => {
   const { usernameOrEmail, password } = req.body || {};
@@ -157,7 +148,7 @@ router.post("/login", async (req, res) => {
       { id: user.id, username: user.username, type: user.type },
       JWT_SECRET,
       { expiresIn: "1d" }
-    );  
+    );
 
     res.json({
       token,
@@ -165,8 +156,8 @@ router.post("/login", async (req, res) => {
         id: user.id,
         username: user.username,
         email: user.email,
-        first_name: user.firstName,
-        last_name: user.lastName,
+        firstName: user.first_name,
+        lastName: user.last_name,
         type: user.type,
       },
     });

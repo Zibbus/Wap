@@ -4,7 +4,7 @@ import { useAuth } from "./hooks/useAuth";
 import Header from "./components/Header";
 import HomePage from "./pages/HomePage";
 import LoginModal from "./components/LoginModal.tsx";
-import WorkoutPage from "./pages/WorkoutPage.tsx"
+import WorkoutPage from "./pages/WorkoutPage.tsx";
 
 export default function App() {
   const { auth, login, logout } = useAuth();
@@ -17,26 +17,28 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-50 to-white text-gray-800">
+      <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-50 to-white text-gray-800 pt-20">
         <Header
-          auth={auth}
-          initials={initials}
+          isLoggedIn={!!auth}
+          username={auth?.username}
           onLogin={() => setShowLogin(true)}
           onLogout={logout}
         />
 
         <Routes>
-          <Route path="/" element={<HomePage auth={auth} onLogin={() => setShowLogin(true)} />} />
+          <Route
+            path="/"
+            element={<HomePage auth={auth} onLogin={() => setShowLogin(true)} />}
+          />
           <Route path="/workout" element={<WorkoutPage />} />
         </Routes>
 
         {showLogin && (
           <LoginModal
             onClose={() => setShowLogin(false)}
-            onLoggedIn={(p) => login(p)}   // usa login
+            onLoggedIn={(data) => login(data)}
           />
         )}
-
       </div>
     </BrowserRouter>
   );
