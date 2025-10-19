@@ -78,6 +78,7 @@ La home mostra logo, login/logout e schede introduttive. Dopo il login puoi coll
 - tailwindcss, postcss, autoprefixer
 - react-router-dom (per routing futuro)
 - framer-motion
+- jspdf
 
 ---
 
