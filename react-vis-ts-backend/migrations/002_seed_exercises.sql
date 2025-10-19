@@ -615,43 +615,43 @@ WHERE mg.type='braccia' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title=
 -- =========================
 
 INSERT INTO exercises (title, musclegroups_id, weight_required)
-SELECT 'Crunch', mg.id, 'y' FROM muscle_groups mg
+SELECT 'Crunch', mg.id, 'n' FROM muscle_groups mg
 WHERE mg.type='addome' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title='Crunch' AND e.musclegroups_id=mg.id);
 
 INSERT INTO exercises (title, musclegroups_id, weight_required)
-SELECT 'Crunch inverso', mg.id, 'y' FROM muscle_groups mg
+SELECT 'Crunch inverso', mg.id, 'n' FROM muscle_groups mg
 WHERE mg.type='addome' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title='Crunch inverso' AND e.musclegroups_id=mg.id);
 
 INSERT INTO exercises (title, musclegroups_id, weight_required)
-SELECT 'Sit-up', mg.id, 'y' FROM muscle_groups mg
+SELECT 'Sit-up', mg.id, 'n' FROM muscle_groups mg
 WHERE mg.type='addome' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title='Sit-up' AND e.musclegroups_id=mg.id);
 
 INSERT INTO exercises (title, musclegroups_id, weight_required)
-SELECT 'Plank', mg.id, 'y' FROM muscle_groups mg
+SELECT 'Plank', mg.id, 'n' FROM muscle_groups mg
 WHERE mg.type='addome' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title='Plank' AND e.musclegroups_id=mg.id);
 
 INSERT INTO exercises (title, musclegroups_id, weight_required)
-SELECT 'Side Plank', mg.id, 'y' FROM muscle_groups mg
+SELECT 'Side Plank', mg.id, 'n' FROM muscle_groups mg
 WHERE mg.type='addome' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title='Side Plank' AND e.musclegroups_id=mg.id);
 
 INSERT INTO exercises (title, musclegroups_id, weight_required)
-SELECT 'L-sit', mg.id, 'y' FROM muscle_groups mg
+SELECT 'L-sit', mg.id, 'n' FROM muscle_groups mg
 WHERE mg.type='addome' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title='L-sit' AND e.musclegroups_id=mg.id);
 
 INSERT INTO exercises (title, musclegroups_id, weight_required)
-SELECT 'Barchetta', mg.id, 'y' FROM muscle_groups mg
+SELECT 'Barchetta', mg.id, 'n' FROM muscle_groups mg
 WHERE mg.type='addome' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title='Barchetta' AND e.musclegroups_id=mg.id);
 
 INSERT INTO exercises (title, musclegroups_id, weight_required)
-SELECT 'Leg Raise', mg.id, 'y' FROM muscle_groups mg
+SELECT 'Leg Raise', mg.id, 'n' FROM muscle_groups mg
 WHERE mg.type='addome' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title='Leg Raise' AND e.musclegroups_id=mg.id);
 
 INSERT INTO exercises (title, musclegroups_id, weight_required)
-SELECT 'Dragon Flag', mg.id, 'y' FROM muscle_groups mg
+SELECT 'Dragon Flag', mg.id, 'n' FROM muscle_groups mg
 WHERE mg.type='addome' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title='Dragon Flag' AND e.musclegroups_id=mg.id);
 
 INSERT INTO exercises (title, musclegroups_id, weight_required)
-SELECT 'AB Wheel Roller', mg.id, 'y' FROM muscle_groups mg
+SELECT 'AB Wheel Roller', mg.id, 'n' FROM muscle_groups mg
 WHERE mg.type='addome' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title='AB Wheel Roller' AND e.musclegroups_id=mg.id);
 
 INSERT INTO exercises (title, musclegroups_id, weight_required)
