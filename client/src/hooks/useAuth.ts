@@ -8,33 +8,24 @@ export type AuthData = {
 
 export function useAuth() {
   const [auth, setAuth] = useState<AuthData | null>(null);
+
   useEffect(() => {
-    const raw = localStorage.getItem("auth");
-    if (raw) {
-      try {
-        setAuth(JSON.parse(raw));
-      } catch {}
+    const saved = localStorage.getItem("authData");
+    if (saved) {
+      try { setAuth(JSON.parse(saved)); }
+      catch { localStorage.removeItem("authData"); }
     }
   }, []);
 
-  useEffect(() => {
-  const savedAuth = localStorage.getItem("authData");
-  if (savedAuth) {
-    try {
-      const parsed = JSON.parse(savedAuth);
-      setAuth(parsed);
-    } catch {
-      localStorage.removeItem("authData");
-    }
-  }
-}, []);
- 
-  const login = (data: AuthData) => setAuth(data);
-  const logout = () =>
-    {
-      localStorage.removeItem("authData");
-      setAuth(null);
-  }
+  const login = (data: AuthData) => {
+    localStorage.setItem("authData", JSON.stringify(data));
+    setAuth(data);
+  };
+
+  const logout = () => {
+    localStorage.removeItem("authData");
+    setAuth(null);
+  };
 
   return { auth, login, logout };
 }
