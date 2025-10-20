@@ -1,35 +1,34 @@
-import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import http from 'http';
-import { json } from 'express';
-import authRouter from './routes/auth.js';
-import { router as chatRouter } from './routes/chat.js';
-import { attachWs } from './ws.js';
+import "dotenv/config";
+import express from "express";
+import cors from "cors";
+import http from "http";
 import bodyParser from "body-parser";
+
 import authRoutes from "./routes/auth";
-import { exercisesRouter } from "./routes/exercises.js";
+import exercisesRoutes from "./routes/exercises";
+import schedulesRoutes from "./routes/schedules";
+
+import { router as chatRouter } from "./routes/chat.js";
+import { attachWs } from "./ws.js";
 
 const app = express();
 
-// 🔧 Middleware
+// Middleware
 app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 app.use(bodyParser.json());
 
-// 🔹 API routes
+// API
 app.use("/api/auth", authRoutes);
-app.use("/api/auth", authRouter);
+app.use("/api/exercises", exercisesRoutes);
+app.use("/api/schedules", schedulesRoutes);
 app.use("/api/chat", chatRouter);
-app.use("/api/exercises", exercisesRouter);
 
-// 🔹 Healthcheck
-app.get('/health', (_req, res) => res.json({ ok: true }));
+// Health
+app.get("/health", (_req, res) => res.json({ ok: true }));
 
-// 🔹 HTTP + WebSocket server
 const server = http.createServer(app);
 attachWs(server);
 
-// ✅ Avvio unico del server
 const PORT = process.env.PORT || 4000;
 server.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);

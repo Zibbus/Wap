@@ -39,36 +39,37 @@ CREATE TABLE IF NOT EXISTS exercises (
   FOREIGN KEY (musclegroups_id) REFERENCES muscle_groups(id)  
 );
 
+/* Scheda creata dal cliente o dal professionista */
 CREATE TABLE IF NOT EXISTS schedules (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  user_id INT NULL,
+  customer_id INT NOT NULL,
+  freelancer_id INT NULL, -- se NULL vuol dire che il cliente si è creato la scheda da solo
   expire DATE NULL,
   goal ENUM('peso_costante','aumento_peso','perdita_peso','altro'),
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
+  FOREIGN KEY (freelancer_id) REFERENCES freelancers(id) ON DELETE SET NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS days (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  schedule_id INT NOT NULL,
+  FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE,
+  day TINYINT NOT NULL CHECK (day BETWEEN 1 AND 7),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 /* tabella ponte tra scheda e esercizi */
 CREATE TABLE IF NOT EXISTS schedule_exercise (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  schedules_id INT NOT NULL,
-  exercises_id INT NOT NULL,
-  sets TINYINT NULL,
-  reps TINYINT NULL,
-  rest_seconds SMALLINT NULL,
-  weight_value DECIMAL(6,2) NULL,
-  FOREIGN KEY (exercises_id) REFERENCES exercises(id),
-  FOREIGN KEY (schedules_id) REFERENCES schedules(id)
-);
-
-/* tabella ponte tra scheda clienti e professionisti */
-CREATE TABLE IF NOT EXISTS freelancer_customer_schedule (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  schedule_id INT NOT NULL,
-  customer_id INT NOT NULL,
-  freelancer_id INT NOT NULL,
-  FOREIGN KEY (schedule_id) REFERENCES schedules(id) ON DELETE CASCADE,
-  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
-  FOREIGN KEY (freelancer_id) REFERENCES freelancers(id) ON DELETE CASCADE,
-  vat VARCHAR(30) NOT NULL,
-  UNIQUE KEY uq_triplet (schedule_id, customer_id, freelancer_id)
+  day_id INT NOT NULL,
+  exercise_id INT NOT NULL,
+  position INT DEFAULT 1,           -- ordine nel giorno
+  sets TINYINT,
+  reps TINYINT,
+  rest_seconds SMALLINT,
+  weight_value DECIMAL(6,2),
+  notes TEXT,
+  FOREIGN KEY (day_id) REFERENCES days(id) ON DELETE CASCADE,
+  FOREIGN KEY (exercise_id) REFERENCES exercises(id)
 );
