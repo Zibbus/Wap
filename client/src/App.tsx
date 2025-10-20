@@ -1,11 +1,12 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useState } from "react";
 import { useAuth } from "./hooks/useAuth";
-import Header from "./components/Header";
+import Header from "./components/homepage/Header";
 import HomePage from "./pages/HomePage";
-import LoginModal from "./components/LoginModal.tsx";
-import WorkoutPage from "./pages/WorkoutPage.tsx";
-import ShopPage from "./pages/ShopPage.tsx"; // 🛒 Import nuova pagina e-commerce
+import LoginModal from "./components/homepage/LoginModal";
+import WorkoutPage from "./pages/WorkoutPage";
+import ShopPage from "./pages/ShopPage";
+import ScrollToTop from "./components/ScrollToTop"; // ✅ percorso corretto
 
 export default function App() {
   const { auth, login, logout } = useAuth();
@@ -13,6 +14,9 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      {/* ✅ forza lo scroll in alto a ogni cambio pagina */}
+      <ScrollToTop />
+
       <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-50 to-white text-gray-800 pt-20">
         {/* ✅ Header visibile su tutte le pagine */}
         <Header

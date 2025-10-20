@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ChevronDown, User } from "lucide-react";
-import logo from "../assets/IconaMyFitNoBG.png";
+import logo from "../../assets/IconaMyFitNoBG.png";
 
 interface HeaderProps {
   isLoggedIn: boolean;
@@ -76,32 +76,30 @@ export default function Header({
       <nav className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-10 font-semibold text-lg">
         {[
           { label: "Home", path: "/" },
-          { label: "Chi siamo", path: "#chi-siamo" },
+          { label: "Chi siamo", path: "chi-siamo" },
           { label: "Shop", path: "/shop" },
         ].map((link) => (
           <button
             key={link.path}
             onClick={(e) => {
               e.stopPropagation();
+
               if (link.path === "/") {
+                // 🔹 Torna alla home
                 navigate("/");
                 window.scrollTo({ top: 0, behavior: "smooth" });
-              } else if (link.path === "#chi-siamo") {
-                // scrolla alla sezione chi-siamo nella homepage
-                if (location.pathname !== "/") {
-                  navigate("/");
-                  setTimeout(() => {
-                    document
-                      .getElementById("chi-siamo")
-                      ?.scrollIntoView({ behavior: "smooth" });
-                  }, 300);
-                } else {
-                  document
-                    .getElementById("chi-siamo")
-                    ?.scrollIntoView({ behavior: "smooth" });
+              } 
+              else if (link.path === "chi-siamo") {
+                // 🔹 Scrolla al footer della pagina attuale (Home, Shop, ecc.)
+                const footer = document.getElementById("footer");
+                if (footer) {
+                  footer.scrollIntoView({ behavior: "smooth" });
                 }
-              } else {
+              } 
+              else {
+                // 🔹 Naviga verso le altre pagine
                 navigate(link.path);
+                window.scrollTo({ top: 0, behavior: "smooth" });
               }
             }}
             className="
@@ -113,7 +111,7 @@ export default function Header({
               {link.label}
             </span>
 
-            {/* 🔹 Effetto sfondo gradiente */}
+            {/* 🔹 Effetto gradiente hover */}
             <span
               className="
                 absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg

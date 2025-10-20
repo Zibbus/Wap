@@ -21,14 +21,14 @@ export default function GameRunner() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // 🔹 Carichiamo le immagini
     const runSprite = new Image();
-    runSprite.src = new URL("../assets/AtletaCorsa.png", import.meta.url).href;
-
     const jumpSprite = new Image();
-    jumpSprite.src = new URL("../assets/AtletaSalto.png", import.meta.url).href;
-
     const hurdleSprite = new Image();
-    hurdleSprite.src = new URL("../assets/Ostacoli.png", import.meta.url).href;
+
+    runSprite.src = new URL("../../assets/AtletaCorsa.png", import.meta.url).href;
+    jumpSprite.src = new URL("../../assets/AtletaSalto.png", import.meta.url).href;
+    hurdleSprite.src = new URL("../../assets/Ostacoli.png", import.meta.url).href;
 
     const frameW = 128;
     const frameH = 128;
@@ -54,19 +54,18 @@ export default function GameRunner() {
     let velocity = 0;
     let frame = 0;
     let speed = 7;
-
     let obstacles: { x: number; type: "low" | "high" }[] = [];
 
+    /** 🟩 Avvia il gioco */
     const startGame = () => {
-      if (runningRef.current) return;
-      if (reqIdRef.current) cancelAnimationFrame(reqIdRef.current);
-      setScore(0);
+      console.log("▶️ Gioco avviato!");
       setIsGameOver(false);
       setIsStarted(true);
       startedRef.current = true;
-      gameOverRef.current = false;
       runningRef.current = true;
+      gameOverRef.current = false;
       jumpingRef.current = false;
+      setScore(0);
       playerBottom = GROUND_TOP;
       velocity = 0;
       obstacles = [];
@@ -74,15 +73,19 @@ export default function GameRunner() {
       speed = 7;
       currentFrame = 0;
       frameTimer = 0;
+
+      if (reqIdRef.current) cancelAnimationFrame(reqIdRef.current);
       reqIdRef.current = requestAnimationFrame(update);
     };
 
+    /** 🟥 Fine del gioco */
     const endGame = () => {
       runningRef.current = false;
       gameOverRef.current = true;
       setIsGameOver(true);
     };
 
+    /** 🟦 Salto */
     const jump = () => {
       if (!runningRef.current || gameOverRef.current) return;
       if (!jumpingRef.current) {
@@ -92,6 +95,7 @@ export default function GameRunner() {
       }
     };
 
+    /** 🧍‍♂️ Disegna atleta */
     const drawAthlete = () => {
       const sprite = jumpingRef.current ? jumpSprite : runSprite;
       const f = !jumpingRef.current ? runFrames[currentFrame] : { x: 0, y: 0 };
@@ -112,23 +116,21 @@ export default function GameRunner() {
       }
     };
 
+    /** 🧱 Disegna ostacolo */
     const drawObstacle = (x: number, type: "low" | "high") => {
       const sx = 0;
       const sy = type === "low" ? 0 : 128;
       const y = GROUND_TOP - 128 + 5;
       ctx.drawImage(hurdleSprite, sx, sy, 128, 128, x, y, 128, 128);
-
-      const marginLeft = 32;
-      const marginRight = 36;
-      const marginTop = type === "low" ? 88 : 80;
-      const boxWidth = 128 - (marginLeft + marginRight);
-      const boxHeight = 128 - marginTop;
-      const boxX = x + marginLeft;
-      const boxY = y + marginTop;
-
-      return { x: boxX, y: boxY, width: boxWidth, height: boxHeight };
+      return {
+        x: x + 32,
+        y: y + (type === "low" ? 88 : 80),
+        width: 60,
+        height: 40,
+      };
     };
 
+    /** 🔁 Ciclo principale */
     const update = () => {
       if (!runningRef.current) return;
       frame++;
@@ -153,7 +155,7 @@ export default function GameRunner() {
       drawAthlete();
 
       if (score > 1500) speed = 10;
-      else if (score >= 500 && score <=1500) speed = 9;
+      else if (score >= 500 && score <= 1500) speed = 9;
 
       if (frame % 130 === 0) {
         const type = Math.random() < 0.5 ? "low" : "high";
@@ -178,7 +180,6 @@ export default function GameRunner() {
           hitTop < box.y + box.height
         ) {
           endGame();
-          reqIdRef.current = null;
           return;
         }
       }
@@ -188,14 +189,17 @@ export default function GameRunner() {
       reqIdRef.current = requestAnimationFrame(update);
     };
 
+    /** 🎮 Gestione tasti */
     const handleKey = (e: KeyboardEvent) => {
       if (e.code !== "Space") return;
+      e.preventDefault();
       if (!startedRef.current || gameOverRef.current) startGame();
       else jump();
     };
 
     window.addEventListener("keydown", handleKey);
 
+    /** 🎨 Disegno iniziale */
     const drawIdle = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#eef2ff";
@@ -203,7 +207,8 @@ export default function GameRunner() {
       ctx.fillStyle = "#6366f1";
       ctx.fillRect(0, GROUND_TOP, canvas.width, GROUND_HEIGHT);
     };
-    runSprite.onload = drawIdle;
+
+    runSprite.onload = drawIdle; // Attendi il caricamento sprite
 
     return () => {
       window.removeEventListener("keydown", handleKey);
@@ -213,14 +218,12 @@ export default function GameRunner() {
 
   return (
     <div className="flex flex-col items-center justify-center py-12">
-      {/* 🔹 Titolo e descrizione */}
       <h2 className="text-3xl font-extrabold text-indigo-700 mb-2">
         MyFit Reflex Trainer
       </h2>
       <p className="max-w-2xl text-center text-gray-700 mb-6 leading-relaxed">
-        Allenati a migliorare la prontezza e la coordinazione saltando gli
-        ostacoli al momento giusto. Mantenere i riflessi allenati è fondamentale
-        per migliorare le performance sportive e ridurre il rischio di infortuni.
+        Allenati a migliorare i riflessi e la coordinazione saltando gli ostacoli
+        al momento giusto. Mantieni i tuoi riflessi pronti!
       </p>
 
       <div className="relative">
@@ -237,10 +240,10 @@ export default function GameRunner() {
             <p className="text-lg mb-3 opacity-90">Prova ora!</p>
             <button
               onClick={() => {
-                const spaceEvent = new KeyboardEvent("keydown", { code: "Space" });
-                window.dispatchEvent(spaceEvent);
+                const event = new KeyboardEvent("keydown", { code: "Space" });
+                window.dispatchEvent(event);
               }}
-              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition-transform hover:scale-105"
+              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition-transform hover:scale-105 animate-pulse"
             >
               Clicca per iniziare
             </button>
