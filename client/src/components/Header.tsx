@@ -25,23 +25,30 @@ export default function Header({
   const [animateClose, setAnimateClose] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // 🔹 Chiudi il menu se clicchi fuori
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      if (!dropdownOpen) return;         // <-- chiudi solo se aperto
+
       const header = document.querySelector("header");
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        if (header && header.contains(event.target as Node)) return;
-        closeDropdown();
-      }
+      const target = event.target as Node;
+
+      // se clicchi dentro il blocco utente (avatar/menu), non fare nulla
+      if (dropdownRef.current?.contains(target)) return;
+
+      // se clicchi in qualunque punto dell'header (logo, nav, ecc.), non far partire la chiusura “esterna”
+      if (header?.contains(target)) return;
+
+      // qui è davvero un click fuori → chiudi
+      closeDropdown();
     };
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [dropdownOpen]);
+
 
   const closeDropdown = () => {
+    if (!dropdownOpen) return;
     setAnimateClose(true);
     setTimeout(() => {
       setDropdownOpen(false);
@@ -132,7 +139,12 @@ export default function Header({
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                dropdownOpen ? closeDropdown() : setDropdownOpen(true);
+                if (dropdownOpen) {
+                  closeDropdown();
+                } else {
+                  setAnimateClose(false);          // evita render “di chiusura”
+                  setDropdownOpen(true);
+                }
               }}
               className="flex items-center gap-2 font-bold text-lg px-3 py-1 rounded-lg hover:bg-gray-100 transition-colors"
             >
