@@ -654,10 +654,16 @@ INSERT INTO exercises (title, musclegroups_id, weight_required)
 SELECT 'AB Wheel Roller', mg.id, 'n' FROM muscle_groups mg
 WHERE mg.type='addome' AND NOT EXISTS (SELECT 1 FROM exercises e WHERE e.title='AB Wheel Roller' AND e.musclegroups_id=mg.id);
 
+-- duplica gli esercizi che non hanno il peso solo una volta, aggiungendo ' | con peso' alla fine di ogni esercizio
 INSERT INTO exercises (title, musclegroups_id, weight_required)
 SELECT 
-    CONCAT(title, ' - con peso') AS title,
+    CONCAT(title, ' | con peso') AS title,
     musclegroups_id,
     'y' AS weight_required
-FROM exercises
-WHERE weight_required = 'n';
+FROM exercises e
+WHERE e.weight_required = 'n'
+AND NOT EXISTS (
+  SELECT 1 FROM exercises ex2 
+  WHERE ex2.title = CONCAT(e.title, ' | con peso')
+  AND ex2.musclegroups_id = e.musclegroups_id
+);
