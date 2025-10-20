@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ChevronDown, User } from "lucide-react";
 import logo from "../assets/IconaMyFitNoBG.png";
 
@@ -21,39 +21,34 @@ export default function Header({
   onLogout,
 }: HeaderProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [animateClose, setAnimateClose] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // ✅ Chiudi il menu quando clicchi fuori
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (!dropdownOpen) return;         // <-- chiudi solo se aperto
-
-      const header = document.querySelector("header");
+      if (!dropdownOpen) return;
       const target = event.target as Node;
-
-      // se clicchi dentro il blocco utente (avatar/menu), non fare nulla
       if (dropdownRef.current?.contains(target)) return;
-
-      // se clicchi in qualunque punto dell'header (logo, nav, ecc.), non far partire la chiusura “esterna”
-      if (header?.contains(target)) return;
-
-      // qui è davvero un click fuori → chiudi
       closeDropdown();
     };
-
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
 
+  // ✅ Chiudi menu se cambi pagina
+  useEffect(() => {
+    if (dropdownOpen) closeDropdown();
+  }, [location.pathname]);
 
   const closeDropdown = () => {
-    if (!dropdownOpen) return;
     setAnimateClose(true);
     setTimeout(() => {
       setDropdownOpen(false);
       setAnimateClose(false);
-    }, 250);
+    }, 200);
   };
 
   const handleLogout = () => {
@@ -66,17 +61,13 @@ export default function Header({
 
   return (
     <header className="fixed top-0 left-0 right-0 bg-white text-gray-800 py-5 px-10 flex justify-between items-center shadow-md z-50">
-      {/* 🔹 Logo + MyFit */}
+      {/* 🔹 Logo MyFit → Home */}
       <div
-        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        onClick={() => navigate("/")}
         className="flex items-center gap-3 cursor-pointer select-none"
       >
-        <img
-          src={logo}
-          alt="Logo MyFit"
-          className="h-12 w-12 drop-shadow-md"
-        />
-        <h1 className="text-3xl font-extrabold text-indigo-600 tracking-tight">
+        <img src={logo} alt="Logo MyFit" className="h-12 w-12 drop-shadow-md" />
+        <h1 className="text-3xl font-extrabold text-indigo-600 tracking-tight hover:text-indigo-700 transition-colors">
           MyFit
         </h1>
       </div>
@@ -84,21 +75,31 @@ export default function Header({
       {/* 🔹 Menu centrale */}
       <nav className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-10 font-semibold text-lg">
         {[
-          { label: "Home", path: "home" },
-          { label: "Chi siamo", path: "chi-siamo" },
+          { label: "Home", path: "/" },
+          { label: "Chi siamo", path: "#chi-siamo" },
           { label: "Shop", path: "/shop" },
         ].map((link) => (
           <button
             key={link.path}
             onClick={(e) => {
               e.stopPropagation();
-
-              if (link.path === "home") {
+              if (link.path === "/") {
+                navigate("/");
                 window.scrollTo({ top: 0, behavior: "smooth" });
-              } else if (link.path === "chi-siamo") {
-                document
-                  .getElementById("chi-siamo")
-                  ?.scrollIntoView({ behavior: "smooth" });
+              } else if (link.path === "#chi-siamo") {
+                // scrolla alla sezione chi-siamo nella homepage
+                if (location.pathname !== "/") {
+                  navigate("/");
+                  setTimeout(() => {
+                    document
+                      .getElementById("chi-siamo")
+                      ?.scrollIntoView({ behavior: "smooth" });
+                  }, 300);
+                } else {
+                  document
+                    .getElementById("chi-siamo")
+                    ?.scrollIntoView({ behavior: "smooth" });
+                }
               } else {
                 navigate(link.path);
               }
@@ -112,39 +113,26 @@ export default function Header({
               {link.label}
             </span>
 
-            {/* 🔹 Effetto gradiente dietro la scritta */}
+            {/* 🔹 Effetto sfondo gradiente */}
             <span
               className="
                 absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg
-                opacity-0 group-hover:opacity-100
-                scale-0 group-hover:scale-100
-                transition-all duration-400 ease-out
-                origin-center blur-[0.3px]
+                opacity-0 group-hover:opacity-100 scale-0 group-hover:scale-100
+                transition-all duration-400 ease-out origin-center blur-[0.3px]
               "
-              style={{
-                transformOrigin: "center",
-                transition:
-                  "transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease-in-out",
-              }}
             ></span>
           </button>
         ))}
       </nav>
 
-      {/* 🔹 Sezione utente */}
+      {/* 🔹 Area utente */}
       <div className="relative flex items-center" ref={dropdownRef}>
         {isLoggedIn ? (
           <>
-            {/* Pulsante utente */}
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                if (dropdownOpen) {
-                  closeDropdown();
-                } else {
-                  setAnimateClose(false);
-                  setDropdownOpen(true);
-                }
+                dropdownOpen ? closeDropdown() : setDropdownOpen(true);
               }}
               className="flex items-center gap-2 font-bold text-lg px-3 py-1 rounded-lg hover:bg-gray-100 transition-colors"
             >
@@ -169,7 +157,7 @@ export default function Header({
               />
             </button>
 
-            {/* 🔽 Menu tendina (centrato sotto) */}
+            {/* 🔽 Menu tendina */}
             {(dropdownOpen || animateClose) && (
               <div
                 className={`absolute top-full left-1/2 -translate-x-1/2 mt-2 w-52 bg-white/95 backdrop-blur border border-gray-200 shadow-2xl z-40 transition-all duration-300 overflow-hidden rounded-2xl ${
@@ -262,7 +250,7 @@ export default function Header({
         )}
       </div>
 
-      {/* 🔹 Animazioni dropdown */}
+      {/* 🔹 Animazioni */}
       <style>{`
         @keyframes slideDown {
           0% { opacity: 0; transform: translateY(-15px); }
@@ -273,10 +261,10 @@ export default function Header({
           100% { opacity: 0; transform: translateY(-15px); }
         }
         .animate-slide-down {
-          animation: slideDown 300ms ease-out forwards;
+          animation: slideDown 250ms ease-out forwards;
         }
         .animate-slide-up {
-          animation: slideUp 300ms ease-in forwards;
+          animation: slideUp 250ms ease-in forwards;
         }
       `}</style>
     </header>
