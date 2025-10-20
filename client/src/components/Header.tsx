@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ChevronDown, User } from "lucide-react";
 import logo from "../assets/IconaMyFitNoBG.png";
 
@@ -21,32 +21,57 @@ export default function Header({
   onLogout,
 }: HeaderProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [animateClose, setAnimateClose] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // 🔹 Chiudi il menu se clicchi fuori
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+
+  // ✅ Fix: flag per ignorare click consecutivo del bottone
+  const clickFromButton = useRef(false);
+
+    // ✅ Chiudi menu solo se clicchi *davvero* fuori da tutto l’header
   useEffect(() => {
+    let lastButtonClick = 0;
+
     const handleClickOutside = (event: MouseEvent) => {
-      const header = document.querySelector("header");
+      const target = event.target as Node;
+
+      // 🔸 Se il click è partito dal bottone del profilo → ignoralo
+      if (buttonRef.current && buttonRef.current.contains(target)) {
+        lastButtonClick = Date.now();
+        return;
+      }
+
+      // 🔸 Ignora eventuali click immediatamente successivi (entro 150ms)
+      if (Date.now() - lastButtonClick < 150) return;
+
+      // 🔸 Chiudi solo se il click è fuori dal menu
       if (
         dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
+        !dropdownRef.current.contains(target)
       ) {
-        if (header && header.contains(event.target as Node)) return;
-        closeDropdown();
+        setDropdownOpen(false);
       }
     };
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // ✅ Chiudi automaticamente il menu quando cambia pagina
+  useEffect(() => {
+    if (dropdownOpen) closeDropdown();
+  }, [location.pathname]);
 
   const closeDropdown = () => {
     setAnimateClose(true);
     setTimeout(() => {
       setDropdownOpen(false);
       setAnimateClose(false);
-    }, 250);
+    }, 180);
   };
 
   const handleLogout = () => {
@@ -58,17 +83,15 @@ export default function Header({
     "px-6 py-3 text-left text-gray-700 text-base hover:bg-indigo-50 hover:text-indigo-600 font-medium transition-all duration-200 cursor-pointer";
 
   return (
-    <header className="fixed top-0 left-0 right-0 bg-white text-gray-800 py-5 px-10 flex justify-between items-center shadow-md z-50">
+    <header
+      className="fixed top-0 left-0 right-0 bg-white text-gray-800 py-5 px-10 flex justify-between items-center shadow-md z-50"
+    >
       {/* 🔹 Logo + MyFit */}
       <div
-        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
         className="flex items-center gap-3 cursor-pointer select-none"
       >
-        <img
-          src={logo}
-          alt="Logo MyFit"
-          className="h-12 w-12 drop-shadow-md"
-        />
+        <img src={logo} alt="Logo MyFit" className="h-12 w-12 drop-shadow-md" />
         <h1 className="text-3xl font-extrabold text-indigo-600 tracking-tight">
           MyFit
         </h1>
@@ -85,7 +108,6 @@ export default function Header({
             key={link.path}
             onClick={(e) => {
               e.stopPropagation();
-
               if (link.path === "home") {
                 window.scrollTo({ top: 0, behavior: "smooth" });
               } else if (link.path === "chi-siamo") {
@@ -96,29 +118,15 @@ export default function Header({
                 navigate(link.path);
               }
             }}
-            className="
-              relative group text-gray-700 font-semibold px-4 py-2 rounded-lg overflow-hidden
-              transition-colors duration-300
-            "
+            className="relative group text-gray-700 font-semibold px-4 py-2 rounded-lg overflow-hidden transition-colors duration-300"
           >
             <span className="relative z-10 group-hover:text-white transition-colors duration-300">
               {link.label}
             </span>
-
-            {/* 🔹 Effetto gradiente dietro la scritta */}
             <span
-              className="
-                absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg
-                opacity-0 group-hover:opacity-100
-                scale-0 group-hover:scale-100
-                transition-all duration-400 ease-out
-                origin-center blur-[0.3px]
-              "
-              style={{
-                transformOrigin: "center",
-                transition:
-                  "transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease-in-out",
-              }}
+              className="absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg
+                opacity-0 group-hover:opacity-100 scale-0 group-hover:scale-100
+                transition-all duration-400 ease-out origin-center blur-[0.3px]"
             ></span>
           </button>
         ))}
@@ -130,9 +138,11 @@ export default function Header({
           <>
             {/* Pulsante utente */}
             <button
+              ref={buttonRef}
               onClick={(e) => {
                 e.stopPropagation();
-                dropdownOpen ? closeDropdown() : setDropdownOpen(true);
+                clickFromButton.current = true; // 👈 evita doppio click
+                setDropdownOpen((prev) => !prev);
               }}
               className="flex items-center gap-2 font-bold text-lg px-3 py-1 rounded-lg hover:bg-gray-100 transition-colors"
             >
@@ -157,7 +167,7 @@ export default function Header({
               />
             </button>
 
-            {/* 🔽 Menu tendina (centrato sotto) */}
+            {/* 🔽 Menu tendina */}
             {(dropdownOpen || animateClose) && (
               <div
                 className={`absolute top-full left-1/2 -translate-x-1/2 mt-2 w-52 bg-white/95 backdrop-blur border border-gray-200 shadow-2xl z-40 transition-all duration-300 overflow-hidden rounded-2xl ${
@@ -250,21 +260,21 @@ export default function Header({
         )}
       </div>
 
-      {/* 🔹 Animazioni dropdown */}
+      {/* 🔹 Animazioni */}
       <style>{`
         @keyframes slideDown {
-          0% { opacity: 0; transform: translateY(-15px); }
+          0% { opacity: 0; transform: translateY(-10px); }
           100% { opacity: 1; transform: translateY(0); }
         }
         @keyframes slideUp {
           0% { opacity: 1; transform: translateY(0); }
-          100% { opacity: 0; transform: translateY(-15px); }
+          100% { opacity: 0; transform: translateY(-10px); }
         }
         .animate-slide-down {
-          animation: slideDown 300ms ease-out forwards;
+          animation: slideDown 250ms ease-out forwards;
         }
         .animate-slide-up {
-          animation: slideUp 300ms ease-in forwards;
+          animation: slideUp 250ms ease-in forwards;
         }
       `}</style>
     </header>

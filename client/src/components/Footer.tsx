@@ -20,7 +20,7 @@ export default function Footer() {
 
           <div className="text-sm text-indigo-200 mt-3 space-y-1">
             <p>
-              📍 Sede legale: Via del Benessere 21, Firenze (FI) — P.IVA 12345678901
+              📍 Sede legale: Via del Benessere 21, Bari (BA) — P.IVA 12345678901
             </p>
             <p>
               ✉️{" "}
