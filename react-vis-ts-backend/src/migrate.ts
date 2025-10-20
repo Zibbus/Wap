@@ -1,9 +1,19 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import pool from './db.js';
+import mysql from 'mysql2/promise'; // 👈 usiamo direttamente mysql2/promise
 
 async function run() {
+  // 🔹 Crea una connessione SENZA specificare il database
+  const pool = await mysql.createPool({
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'root',
+    password: process.env.DB_PASSWORD || '',
+    port: Number(process.env.DB_PORT) || 3306,
+    multipleStatements: true // 👈 utile se ci sono più comandi in un file
+  });
+
+  // 🔹 Directory dove si trovano le migrazioni
   const dir = path.resolve(process.cwd(), 'migrations');
   const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
 
@@ -11,16 +21,8 @@ async function run() {
     const sql = fs.readFileSync(path.join(dir, f), 'utf8');
     console.log(`[migrate] running ${f}`);
 
-    // split sugli statement (grezzo ma efficace per file semplici)
-    const statements = sql
-      .split(/;\s*$/m)          // separa sugli ';' a fine riga/blocco
-      .flatMap(s => s.split(/;\s*\n/)) // cattura anche i ; con newline
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-
-    for (const stmt of statements) {
-      await pool.query(stmt);
-    }
+    // 🔹 Esegui tutto il file in blocco (dato che abbiamo abilitato multipleStatements)
+    await pool.query(sql);
   }
 
   console.log('[migrate] done');
