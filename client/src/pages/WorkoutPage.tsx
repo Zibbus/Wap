@@ -401,20 +401,47 @@ export default function WorkoutPage() {
   };
 
   // Scarica PDF multipagina A4
-  const handleDownloadPDF = async () => {
+  /* const handleDownloadPDF = async () => {
     if (!previewRef.current) return;
 
+    console.log('inizio');
+    
+
+    document.documentElement.style.setProperty("--tw-text-opacity", "1");
+    const root = document.querySelector("#root") as HTMLElement;
+    if (root) root.style.colorScheme = "light";
+
+    console.log('inizio 2');
+    
+
+    // ✅ Fix per colori OKLCH → convertili in RGB compatibili
+    previewRef.current.querySelectorAll("*").forEach((el) => {
+      const style = window.getComputedStyle(el);
+      const color = style.color;
+      const bg = style.backgroundColor;
+
+      if (color.includes("oklch") || color.includes("oklab")) {
+        (el as HTMLElement).style.color = "rgb(0,0,0)";
+      }
+      if (bg.includes("oklch") || bg.includes("oklab")) {
+        (el as HTMLElement).style.backgroundColor = "rgb(255,255,255)";
+      }
+    });
+    
     const canvas = await html2canvas(previewRef.current, {
       backgroundColor: "#ffffff",
       scale: 2,
       useCORS: true,
     });
-    const imgData = canvas.toDataURL("image/jpeg", 0.95);
 
+    console.log('inizio 3');
+    
+
+    const imgData = canvas.toDataURL("image/jpeg", 0.95);
     const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-
     const imgWidth = pageWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
@@ -435,8 +462,129 @@ export default function WorkoutPage() {
       }
     }
 
+    console.log('si');
+    
+
+    // scarica localmente
+    pdf.save("scheda-allenamento.pdf");
+  }; */
+  
+  const handleDownloadPDF = async () => {
+    if (!previewRef.current) return;
+
+    console.log("📄 Inizio generazione PDF…");
+
+    // ✅ Imposta modalità chiara globale
+    document.documentElement.style.setProperty("--tw-text-opacity", "1");
+    const root = document.querySelector("#root") as HTMLElement;
+    if (root) root.style.colorScheme = "light";
+
+    // ✅ Funzione ricorsiva per sanificare colori e pseudo-elementi
+    const sanitizeColors = (node: HTMLElement) => {
+      try {
+        const computed = window.getComputedStyle(node);
+
+        // Forza i colori RGB per tutte le proprietà potenzialmente colorate
+        ["color", "backgroundColor", "borderColor", "outlineColor"].forEach((prop) => {
+          const value = computed[prop as keyof CSSStyleDeclaration] as string;
+          if (value && (value.includes("oklch") || value.includes("oklab"))) {
+            node.style.setProperty(
+              prop,
+              prop === "color" ? "rgb(0,0,0)" : "rgb(255,255,255)",
+              "important"
+            );
+          }
+        });
+
+        // ✅ Disattiva pseudo-elementi (::before, ::after) con colori oklch
+        const pseudoBefore = window.getComputedStyle(node, "::before");
+        const pseudoAfter = window.getComputedStyle(node, "::after");
+
+        const checkPseudo = (pseudo: CSSStyleDeclaration, name: string) => {
+          const colorProps = [
+            pseudo.color,
+            pseudo.backgroundColor,
+            pseudo.borderColor,
+            pseudo.outlineColor,
+          ];
+          if (colorProps.some((v) => v?.includes("oklch") || v?.includes("oklab"))) {
+            console.warn(`⚠️ Rimosso pseudo-elemento ${name} da`, node);
+            (node as HTMLElement).style.setProperty(`--${name}-content`, "none");
+          }
+        };
+
+        if (pseudoBefore && pseudoBefore.content && pseudoBefore.content !== "none") {
+          checkPseudo(pseudoBefore, "before");
+        }
+        if (pseudoAfter && pseudoAfter.content && pseudoAfter.content !== "none") {
+          checkPseudo(pseudoAfter, "after");
+        }
+      } catch {
+        // ignora errori di nodi non validi
+      }
+
+      // Ricorsivo su figli
+      Array.from(node.children).forEach((child) => {
+        if (child instanceof HTMLElement) sanitizeColors(child);
+      });
+    };
+
+    // ✅ Esegui la sanitizzazione completa
+    sanitizeColors(previewRef.current);
+    console.log("🎨 Colori convertiti → ok");
+
+    // ✅ Genera il canvas
+    let canvas: HTMLCanvasElement;
+    try {
+      canvas = await html2canvas(previewRef.current, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        logging: true, // utile per debug in console
+        onclone: (doc) => {
+          // forza sfondo bianco nel clone
+          doc.body.style.background = "white";
+        },
+      });
+      console.log("🖼️ Canvas generato:", canvas.width, "x", canvas.height);
+    } catch (err) {
+      console.error("❌ Errore html2canvas:", err);
+      alert("Errore durante la generazione del PDF: " + (err as Error).message);
+      return;
+    }
+
+    // ✅ Genera il PDF
+    const imgData = canvas.toDataURL("image/jpeg", 0.95);
+    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imgWidth = pageWidth;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+    if (imgHeight <= pageHeight) {
+      pdf.addImage(imgData, "JPEG", 0, 0, imgWidth, imgHeight);
+    } else {
+      let remainingHeight = imgHeight;
+      let position = 0;
+      pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+      remainingHeight -= pageHeight;
+      position = -pageHeight;
+
+      while (remainingHeight > 0) {
+        pdf.addPage();
+        position -= pageHeight;
+        pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
+        remainingHeight -= pageHeight;
+      }
+    }
+
+    console.log("✅ PDF pronto → scarico…");
+
     pdf.save("scheda-allenamento.pdf");
   };
+
+
 
   // Salva piano + schedule + schedule_exercise
   const handleSaveToDb = async () => {
@@ -446,29 +594,34 @@ export default function WorkoutPage() {
         return;
       }
 
-      // 1️⃣ Crea la schedule
+      // 1️⃣ Crea la schedule (piano)
       const schedulePayload = {
-        customer_id: 1, // TODO: ID cliente loggato
-        freelancer_id: null, // oppure ID professionista se disponibile
         expire: expireDate,
         goal,
       };
 
-      const scheduleRes = await fetch("/api/schedules", {
+      const res = await fetch("http://localhost:4000/api/schedules", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${JSON.parse(localStorage.getItem("authData") || "{}").token}`,
+        },
         body: JSON.stringify(schedulePayload),
       });
-      if (!scheduleRes.ok) throw new Error("Errore creazione schedule");
-      const schedule = await scheduleRes.json();
+
+      if (!res.ok) throw new Error("Errore creazione schedule");
+      const schedule = await res.json();
       const scheduleId = schedule.id;
 
-      // 2️⃣ Crea ogni giorno
-      const dayMap: Record<number, number> = {}; // giorno -> dayId
+      // 2️⃣ Crea i giorni associati
+      const dayMap: Record<number, number> = {};
       for (const g of giorniAllenamento) {
-        const dayRes = await fetch("/api/days", {
+        const dayRes = await fetch("http://localhost:4000/api/schedules/day", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${JSON.parse(localStorage.getItem("authData") || "{}").token}`,
+          },
           body: JSON.stringify({ schedule_id: scheduleId, day: g.giorno }),
         });
         if (!dayRes.ok) throw new Error("Errore creazione giorno");
@@ -476,7 +629,7 @@ export default function WorkoutPage() {
         dayMap[g.giorno] = day.id;
       }
 
-      // 3️⃣ Inserisci esercizi (bulk)
+      // 3️⃣ Inserisci tutti gli esercizi
       const allExercises = giorniAllenamento.flatMap((g) =>
         g.esercizi
           .filter((ex) => ex.exerciseId)
@@ -492,12 +645,37 @@ export default function WorkoutPage() {
           }))
       );
 
-      const exRes = await fetch("/api/schedule-exercises", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scheduleId, items: allExercises }),
-      });
-      if (!exRes.ok) throw new Error("Errore salvataggio esercizi");
+      if (allExercises.length) {
+        const exRes = await fetch("http://localhost:4000/api/schedules/exercises", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${JSON.parse(localStorage.getItem("authData") || "{}").token}`,
+          },
+          body: JSON.stringify({ scheduleId, items: allExercises }),
+        });
+
+
+
+
+        let errorDetails = "";
+        try {
+          const data = await exRes.clone().json(); // clone() perché .json() consuma lo stream
+          if (!exRes.ok) errorDetails = data?.error || JSON.stringify(data);
+        } catch {
+          const text = await exRes.clone().text();
+          if (!exRes.ok) errorDetails = text;
+        }
+
+        // ✅ Log completo per debug
+        console.log("Response status:", exRes.status);
+        console.log("Response body:", errorDetails);
+
+
+
+
+        if (!exRes.ok) throw new Error("Errore salvataggio esercizi");
+      }
 
       alert("✅ Scheda salvata con successo!");
     } catch (err) {
@@ -505,6 +683,7 @@ export default function WorkoutPage() {
       alert("❌ Errore durante il salvataggio della scheda.");
     }
   };
+
 
   /* =========================
      Render
