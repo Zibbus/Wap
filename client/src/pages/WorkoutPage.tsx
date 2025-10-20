@@ -14,7 +14,7 @@ type Esercizio = {
   ripetizioni: string;
   recupero: string; // secondi (stringa editabile)
   peso?: string;    // kg (stringa editabile)
-  note?: string;
+  note?: string;    // se undefined => campo note nascosto
 };
 
 type GiornoAllenamento = {
@@ -42,7 +42,7 @@ type Goal = "peso_costante" | "perdita_peso" | "aumento_peso";
    ========================= */
 const GROUP_NAME_TO_ID: Record<string, number> = {
   Spalle: 1,
-  Deltoidi: 2,
+  Dorso: 2,
   Gambe: 3,
   Petto: 4,
   Braccia: 5,
@@ -164,7 +164,6 @@ function ExerciseSelect({
                       onClick={() => selectByIdx(idx)}
                     >
                       {opt.name}
-                      {opt.weightRequired ? " (kg)" : ""}
                     </button>
                   );
                 })}
@@ -193,6 +192,7 @@ export default function WorkoutPage() {
 
   const [loadingEx, setLoadingEx] = useState<boolean>(false);
   const [availableExercises, setAvailableExercises] = useState<DBExercise[]>([]);
+  const [availableByDay, setAvailableByDay] = useState<Record<number, DBExercise[]>>({}); // ✅ cache per giorno
 
   const previewRef = useRef<HTMLDivElement | null>(null);
 
@@ -209,6 +209,8 @@ export default function WorkoutPage() {
       );
       setCurrentDay(1);
       setMostraEsercizi(false);
+      setAvailableExercises([]);
+      setAvailableByDay({});
     }
   }, [giorni]);
 
@@ -272,11 +274,13 @@ export default function WorkoutPage() {
     );
   };
 
+  // ✅ Fetch unico e cache per giorno
   const handleConfermaGruppi = async () => {
     if (!giornoCorrente || !giornoCorrente.gruppi.length) return;
     try {
       setLoadingEx(true);
       const data = await fetchExercisesForGroups(giornoCorrente.gruppi);
+      setAvailableByDay((prev) => ({ ...prev, [currentDay]: data })); // cache
       setAvailableExercises(data);
       setGiorniAllenamento((prev) =>
         prev.map((g) => (g.giorno === currentDay ? { ...g, gruppiConfermati: true } : g))
@@ -297,6 +301,11 @@ export default function WorkoutPage() {
         g.giorno === currentDay ? { ...g, gruppi: [], esercizi: [], gruppiConfermati: false } : g
       )
     );
+    // svuoto la cache di quel giorno
+    setAvailableByDay((prev) => {
+      const { [currentDay]: _, ...rest } = prev;
+      return rest;
+    });
     setAvailableExercises([]);
     setMostraEsercizi(false);
   };
@@ -305,6 +314,8 @@ export default function WorkoutPage() {
     setCurrentDay(num);
     const d = giorniAllenamento.find((g) => g.giorno === num);
     setMostraEsercizi(!!d?.gruppiConfermati);
+    // usa la cache se esiste
+    setAvailableExercises(availableByDay[num] ?? []);
   };
 
   const handleAggiungiEsercizio = () => {
@@ -354,23 +365,26 @@ export default function WorkoutPage() {
     );
   };
 
-  /* Auto-carica opzioni quando entri in un giorno confermato */
-  useEffect(() => {
-    const d = giorniAllenamento.find((g) => g.giorno === currentDay);
-    if (!d || !d.gruppiConfermati || !d.gruppi.length) return;
-
-    (async () => {
-      try {
-        setLoadingEx(true);
-        const data = await fetchExercisesForGroups(d.gruppi);
-        setAvailableExercises(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoadingEx(false);
-      }
-    })();
-  }, [currentDay, giorniAllenamento]);
+  // ✅ toggle note: crea textarea con "" (placeholder visibile), rimuove completamente se clicchi di nuovo
+  const handleToggleNota = (index: number) => {
+    setGiorniAllenamento((prev) =>
+      prev.map((g) => {
+        if (g.giorno !== currentDay) return g;
+        const next = g.esercizi.map((ex, i) => {
+          if (i !== index) return ex;
+          if (ex.note === undefined) {
+            // crea il campo e mostra subito il placeholder
+            return { ...ex, note: "" };
+          } else {
+            // rimuovi completamente il campo => textarea sparisce
+            const { note, ...rest } = ex as any;
+            return rest as Esercizio;
+          }
+        });
+        return { ...g, esercizi: next };
+      })
+    );
+  };
 
   /* Anteprima / Download / Salvataggio */
   const handleGoToPreview = () => {
@@ -474,7 +488,7 @@ export default function WorkoutPage() {
             reps: ex.ripetizioni ? parseInt(ex.ripetizioni) : null,
             rest_seconds: ex.recupero ? parseInt(ex.recupero) : null,
             weight_value: ex.peso ? parseFloat(ex.peso) : null,
-            notes: ex.note || null,
+            notes: ex.note ?? null,
           }))
       );
 
@@ -491,7 +505,6 @@ export default function WorkoutPage() {
       alert("❌ Errore durante il salvataggio della scheda.");
     }
   };
-
 
   /* =========================
      Render
@@ -659,86 +672,84 @@ export default function WorkoutPage() {
 
               {/* Righe esercizi */}
               {giornoCorrente?.esercizi.map((ex, i) => {
-              const selectedOpt = ex.exerciseId
-                ? availableExercises.find((o) => o.id === ex.exerciseId)
-                : availableExercises.find((o) => o.name === ex.nome);
-              const requires = selectedOpt?.weightRequired ?? false;
-              const needWeightButEmpty = requires && (!ex.peso || ex.peso.trim() === "");
+                const selectedOpt = ex.exerciseId
+                  ? availableExercises.find((o) => o.id === ex.exerciseId)
+                  : availableExercises.find((o) => o.name === ex.nome);
+                const requires = selectedOpt?.weightRequired ?? false;
+                const needWeightButEmpty = requires && (!ex.peso || ex.peso.trim() === "");
 
-              return (
-                <div key={i} className="flex flex-col gap-2 mb-4 bg-indigo-50 p-3 rounded-lg w-full">
-                  {/* Riga principale con campi */}
-                  <div className="flex flex-wrap items-center gap-3">
-                    <ExerciseSelect
-                      valueId={ex.exerciseId}
-                      valueName={ex.nome}
-                      onChange={(opt) => handleSetExerciseSelection(i, opt)}
-                      options={availableExercises}
-                      groupsOrder={namesToGroupIds(giornoCorrente?.gruppi ?? [])}
-                      placeholder="Seleziona esercizio"
-                    />
+                return (
+                  <div key={i} className="flex flex-col gap-2 mb-4 bg-indigo-50 p-3 rounded-lg w-full">
+                    {/* Riga principale con campi */}
+                    <div className="flex flex-wrap items-center gap-3">
+                      <ExerciseSelect
+                        valueId={ex.exerciseId}
+                        valueName={ex.nome}
+                        onChange={(opt) => handleSetExerciseSelection(i, opt)}
+                        options={availableExercises}
+                        groupsOrder={namesToGroupIds(giornoCorrente?.gruppi ?? [])}
+                        placeholder="Seleziona esercizio"
+                      />
 
-                    <input
-                      type="number"
-                      placeholder="Serie"
-                      className="w-20 p-2 rounded-md border border-indigo-200"
-                      value={ex.serie}
-                      onChange={(e) => handleAggiornaEsercizio(i, "serie", e.target.value)}
-                      min={0}
-                    />
-                    <input
-                      type="number"
-                      placeholder="Rip."
-                      className="w-20 p-2 rounded-md border border-indigo-200"
-                      value={ex.ripetizioni}
-                      onChange={(e) => handleAggiornaEsercizio(i, "ripetizioni", e.target.value)}
-                      min={0}
-                    />
-                    <input
-                      type="number"
-                      placeholder="Kg"
-                      className={`w-20 p-2 rounded-md border ${
-                        requires ? (needWeightButEmpty ? "border-red-400" : "border-indigo-200") : "border-gray-200 opacity-50"
-                      }`}
-                      value={ex.peso ?? ""}
-                      onChange={(e) => handleAggiornaEsercizio(i, "peso", e.target.value)}
-                      disabled={!requires}
-                      min={0}
-                      step="0.5"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Rec. (s)"
-                      className="w-24 p-2 rounded-md border border-indigo-200"
-                      value={ex.recupero}
-                      onChange={(e) => handleAggiornaEsercizio(i, "recupero", e.target.value)}
-                      min={0}
-                    />
+                      <input
+                        type="number"
+                        placeholder="Serie"
+                        className="w-20 p-2 rounded-md border border-indigo-200"
+                        value={ex.serie}
+                        onChange={(e) => handleAggiornaEsercizio(i, "serie", e.target.value)}
+                        min={0}
+                      />
+                      <input
+                        type="number"
+                        placeholder="Rip."
+                        className="w-20 p-2 rounded-md border border-indigo-200"
+                        value={ex.ripetizioni}
+                        onChange={(e) => handleAggiornaEsercizio(i, "ripetizioni", e.target.value)}
+                        min={0}
+                      />
+                      <input
+                        type="number"
+                        placeholder="Kg"
+                        className={`w-20 p-2 rounded-md border ${
+                          requires ? (needWeightButEmpty ? "border-red-400" : "border-indigo-200") : "border-gray-200 opacity-50"
+                        }`}
+                        value={ex.peso ?? ""}
+                        onChange={(e) => handleAggiornaEsercizio(i, "peso", e.target.value)}
+                        disabled={!requires}
+                        min={0}
+                        step="0.5"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Rec. (s)"
+                        className="w-24 p-2 rounded-md border border-indigo-200"
+                        value={ex.recupero}
+                        onChange={(e) => handleAggiornaEsercizio(i, "recupero", e.target.value)}
+                        min={0}
+                      />
 
-                    {/* ✅ Pulsante per aggiungere o modificare note */}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleAggiornaEsercizio(i, "note", ex.note ? "" : " ")
-                      }
-                      className="px-3 py-2 text-sm rounded-md bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold"
-                    >
-                      {ex.note ? "Rimuovi nota" : "Aggiungi nota"}
-                    </button>
+                      {/* ✅ Pulsante toggle note (apre con "", chiude rimuovendo il campo) */}
+                      <button
+                        type="button"
+                        onClick={() => handleToggleNota(i)}
+                        className="px-3 py-2 text-sm rounded-md bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold"
+                      >
+                        {ex.note === undefined ? "Aggiungi nota" : "Rimuovi nota"}
+                      </button>
+                    </div>
+
+                    {/* ✅ Textarea visibile solo se ex.note è definito */}
+                    {ex.note !== undefined && (
+                      <textarea
+                        className="w-full mt-2 p-2 rounded-md border border-indigo-200 text-sm"
+                        placeholder="Inserisci note (es. tecnica, respirazione, durata...)"
+                        value={ex.note ?? ""} // "" => placeholder visibile
+                        onChange={(e) => handleAggiornaEsercizio(i, "note", e.target.value)}
+                      />
+                    )}
                   </div>
-
-                  {/* ✅ Textarea visibile solo se ex.note esiste */}
-                  {ex.note !== undefined && (
-                    <textarea
-                      className="w-full mt-2 p-2 rounded-md border border-indigo-200 text-sm"
-                      placeholder="Inserisci note (es. tecnica, respirazione, durata...)"
-                      value={ex.note}
-                      onChange={(e) => handleAggiornaEsercizio(i, "note", e.target.value)}
-                    />
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
               <button
                 onClick={handleAggiungiEsercizio}
                 className="mt-4 flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-semibold"
