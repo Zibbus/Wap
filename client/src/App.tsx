@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState } from "react";
 import { useAuth } from "./hooks/useAuth";
 import Header from "./components/homepage/Header";
@@ -6,7 +6,9 @@ import HomePage from "./pages/HomePage";
 import LoginModal from "./components/homepage/LoginModal";
 import WorkoutPage from "./pages/WorkoutPage";
 import ShopPage from "./pages/ShopPage";
-import ScrollToTop from "./components/ScrollToTop"; // ✅ percorso corretto
+import ScrollToTop from "./components/ScrollToTop";
+import ScheduleListPage from "./pages/ScheduleListPage";
+import ScheduleDetailPage from "./pages/ScheduleDetailPage";
 
 export default function App() {
   const { auth, login, logout } = useAuth();
@@ -34,6 +36,9 @@ export default function App() {
           />
           <Route path="/workout" element={<WorkoutPage />} />
           <Route path="/shop" element={<ShopPage />} /> {/* 🛒 Pagina shop */}
+          <Route path="/" element={<Navigate to="/schedules" replace />} />
+          <Route path="/schedules" element={<ScheduleListPage />} />
+          <Route path="/schedules/:id" element={<ScheduleDetailPage />} />
         </Routes>
 
         {/* ✅ Modal login */}

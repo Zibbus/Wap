@@ -655,25 +655,6 @@ export default function WorkoutPage() {
           body: JSON.stringify({ scheduleId, items: allExercises }),
         });
 
-
-
-
-        let errorDetails = "";
-        try {
-          const data = await exRes.clone().json(); // clone() perché .json() consuma lo stream
-          if (!exRes.ok) errorDetails = data?.error || JSON.stringify(data);
-        } catch {
-          const text = await exRes.clone().text();
-          if (!exRes.ok) errorDetails = text;
-        }
-
-        // ✅ Log completo per debug
-        console.log("Response status:", exRes.status);
-        console.log("Response body:", errorDetails);
-
-
-
-
         if (!exRes.ok) throw new Error("Errore salvataggio esercizi");
       }
 
