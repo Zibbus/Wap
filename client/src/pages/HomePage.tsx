@@ -4,7 +4,6 @@ import HowItWorksSection from "../components/homepage/HowItWorksSection";
 import StatsSection from "../components/homepage/StatsSection";
 import FadeInSection from "../components/homepage/FadeInSection";
 import GameRunner from "../components/homepage/GameRunner";
-import Footer from "../components/Layouts/footer/Footer";
 import ImageCarousel from "../components/homepage/ImageCarousel";
 
 export default function HomePage() {
@@ -40,8 +39,6 @@ export default function HomePage() {
         <GameRunner />
       </main>
 
-      {/* 🔹 Footer */}
-      <Footer />
     </div>
   );
 }

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import Header from "../components/Layouts/Header/Header";
-import Footer from "../components/Layouts/footer/Footer";
 import ShopFilters from "../components/shop/ShopFilters";
 import ShopGrid from "../components/shop/ShopGrid";
 
@@ -47,7 +46,6 @@ export default function ShopPage() {
         </div>
       </main>
 
-      <Footer />
     </div>
   );
 }

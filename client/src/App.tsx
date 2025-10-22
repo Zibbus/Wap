@@ -10,6 +10,10 @@ import WorkoutPage from "./pages/WorkoutPage";
 import ScheduleListPage from "./pages/ScheduleListPage";
 import ScheduleDetailPage from "./pages/ScheduleDetailPage";
 
+// ✅ nuove pagine principali
+import Professionisti from "./pages/Professionisti";
+import ProfessionistaDettaglio from "./pages/ProfessionistaDettaglio";
+
 export default function App() {
   return (
     <AuthProvider>
@@ -17,12 +21,21 @@ export default function App() {
         <BrowserRouter>
           <ScrollToTop />
           <Routes>
+            {/* Layout globale */}
             <Route element={<Layout />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/shop" element={<ShopPage />} />
               <Route path="/workout" element={<WorkoutPage />} />
+
+              {/* Schedules */}
               <Route path="/schedules" element={<ScheduleListPage />} />
               <Route path="/schedules/:id" element={<ScheduleDetailPage />} />
+
+              {/* ✅ Professionisti */}
+              <Route path="/professionisti" element={<Professionisti />} />
+              <Route path="/professionisti/:id" element={<ProfessionistaDettaglio />} />
+
+              {/* Fallback */}
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
