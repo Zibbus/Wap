@@ -1,32 +1,25 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ChevronDown, User } from "lucide-react";
-import logo from "../../assets/IconaMyFitNoBG.png";
+import { ChevronDown, User, Shield } from "lucide-react";
+import { useLoginModal } from "../../../hooks/useLoginModal";
+import { useAuth } from "../../../hooks/useAuth"; // ✅ aggiunto
+import logo from "../../../assets/IconaMyFitNoBG.png";
 
-interface HeaderProps {
-  isLoggedIn: boolean;
-  username?: string;
-  userType?: "utente" | "professionista";
-  avatarUrl?: string;
-  onLogin: () => void;
-  onLogout: () => void;
-}
-
-export default function Header({
-  isLoggedIn,
-  username,
-  userType,
-  avatarUrl,
-  onLogin,
-  onLogout,
-}: HeaderProps) {
+export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [animateClose, setAnimateClose] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { openLoginModal } = useLoginModal();
+  const { authData, logout } = useAuth(); // ✅ ora legge direttamente dal contesto globale
 
-  // ✅ Chiudi il menu quando clicchi fuori
+  const isLoggedIn = !!authData;
+  const username = authData?.username;
+  const userType = authData?.role ?? "utente";
+  const avatarUrl = authData?.avatarUrl ?? null;
+
+  // 🔹 Chiudi il menu quando clicchi fuori
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (!dropdownOpen) return;
@@ -38,7 +31,7 @@ export default function Header({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
 
-  // ✅ Chiudi menu se cambi pagina
+  // 🔹 Chiudi menu se cambi pagina
   useEffect(() => {
     if (dropdownOpen) closeDropdown();
   }, [location.pathname]);
@@ -53,21 +46,31 @@ export default function Header({
 
   const handleLogout = () => {
     closeDropdown();
-    onLogout();
+    logout();
   };
 
   const dropdownItemClass =
     "px-6 py-3 text-left text-gray-700 text-base hover:bg-indigo-50 hover:text-indigo-600 font-medium transition-all duration-200 cursor-pointer";
 
   return (
-    <header className="fixed top-0 left-0 right-0 bg-white text-gray-800 py-5 px-10 flex justify-between items-center shadow-md z-50">
+    <header
+      className={`fixed top-0 left-0 right-0 py-5 px-10 flex justify-between items-center shadow-md z-50 transition-colors duration-300
+        ${userType === "admin" ? "bg-red-50" : "bg-white text-gray-800"}
+      `}
+    >
       {/* 🔹 Logo MyFit → Home */}
       <div
         onClick={() => navigate("/")}
         className="flex items-center gap-3 cursor-pointer select-none"
       >
         <img src={logo} alt="Logo MyFit" className="h-12 w-12 drop-shadow-md" />
-        <h1 className="text-3xl font-extrabold text-indigo-600 tracking-tight hover:text-indigo-700 transition-colors">
+        <h1
+          className={`text-3xl font-extrabold tracking-tight transition-colors ${
+            userType === "admin"
+              ? "text-red-600 hover:text-red-700"
+              : "text-indigo-600 hover:text-indigo-700"
+          }`}
+        >
           MyFit
         </h1>
       </div>
@@ -83,35 +86,25 @@ export default function Header({
             key={link.path}
             onClick={(e) => {
               e.stopPropagation();
-
               if (link.path === "/") {
-                // 🔹 Torna alla home
                 navigate("/");
                 window.scrollTo({ top: 0, behavior: "smooth" });
-              } 
-              else if (link.path === "chi-siamo") {
-                // 🔹 Scrolla al footer della pagina attuale (Home, Shop, ecc.)
+              } else if (link.path === "chi-siamo") {
                 const footer = document.getElementById("footer");
-                if (footer) {
-                  footer.scrollIntoView({ behavior: "smooth" });
-                }
-              } 
-              else {
-                // 🔹 Naviga verso le altre pagine
+                if (footer) footer.scrollIntoView({ behavior: "smooth" });
+              } else {
                 navigate(link.path);
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }
             }}
             className="
               relative group text-gray-700 font-semibold px-4 py-2 rounded-lg overflow-hidden
-              transition-colors duration-300
+              transition-colors duration-300 cursor-pointer select-none
             "
           >
             <span className="relative z-10 group-hover:text-white transition-colors duration-300">
               {link.label}
             </span>
-
-            {/* 🔹 Effetto gradiente hover */}
             <span
               className="
                 absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg
@@ -141,6 +134,8 @@ export default function Header({
                     alt="avatar"
                     className="w-full h-full object-cover"
                   />
+                ) : userType === "admin" ? (
+                  <Shield className="w-6 h-6 text-red-500" />
                 ) : (
                   <User className="w-6 h-6 text-gray-500" />
                 )}
@@ -172,6 +167,8 @@ export default function Header({
                   >
                     Profilo
                   </div>
+
+                  {/* 🔹 Opzioni comuni */}
                   <div
                     onClick={() => {
                       navigate("/impostazioni");
@@ -182,6 +179,7 @@ export default function Header({
                     Impostazioni
                   </div>
 
+                  {/* 👤 Utente base */}
                   {userType === "utente" && (
                     <>
                       <div
@@ -205,6 +203,7 @@ export default function Header({
                     </>
                   )}
 
+                  {/* 💼 Professionista */}
                   {userType === "professionista" && (
                     <>
                       <div
@@ -228,6 +227,40 @@ export default function Header({
                     </>
                   )}
 
+                  {/* 🛡️ Admin */}
+                  {userType === "admin" && (
+                    <>
+                      <div
+                        onClick={() => {
+                          navigate("/admin");
+                          closeDropdown();
+                        }}
+                        className={dropdownItemClass}
+                      >
+                        Dashboard Admin
+                      </div>
+                      <div
+                        onClick={() => {
+                          navigate("/admin/utenti");
+                          closeDropdown();
+                        }}
+                        className={dropdownItemClass}
+                      >
+                        Gestione utenti
+                      </div>
+                      <div
+                        onClick={() => {
+                          navigate("/admin/professionisti");
+                          closeDropdown();
+                        }}
+                        className={dropdownItemClass}
+                      >
+                        Gestione professionisti
+                      </div>
+                    </>
+                  )}
+
+                  {/* 🚪 Logout */}
                   <div
                     onClick={handleLogout}
                     className="px-6 py-3 text-left text-red-600 text-base hover:bg-red-50 font-semibold transition-all duration-200 cursor-pointer"
@@ -240,8 +273,8 @@ export default function Header({
           </>
         ) : (
           <button
-            onClick={onLogin}
-            className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-base font-semibold hover:bg-indigo-700 transition-colors"
+            onClick={openLoginModal}
+            className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-base font-semibold hover:bg-indigo-700 transition-colors cursor-pointer"
           >
             Accedi
           </button>

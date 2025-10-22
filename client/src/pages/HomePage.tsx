@@ -4,50 +4,40 @@ import HowItWorksSection from "../components/homepage/HowItWorksSection";
 import StatsSection from "../components/homepage/StatsSection";
 import FadeInSection from "../components/homepage/FadeInSection";
 import GameRunner from "../components/homepage/GameRunner";
-import Footer from "../components/homepage/Footer";
+import Footer from "../components/Layouts/footer/Footer";
 import ImageCarousel from "../components/homepage/ImageCarousel";
 
-interface HomePageProps {
-  auth: any;
-  onLogin: () => void;
-}
-
-export default function HomePage({ auth, onLogin }: HomePageProps) {
-  const isLoggedIn = !!auth;
+export default function HomePage() {
 
   return (
     <div className="flex-1 bg-gradient-to-b from-indigo-50 to-white text-gray-800">
       <main className="flex flex-col items-center">
-        {/* 🔹 Sezione Hero con il carosello */}
+        {/* 🔹 Carosello immagini */}
         <section className="w-full flex justify-center mt-10 mb-12 px-4">
           <ImageCarousel />
         </section>
 
         {/* 🔹 Hero principale */}
         <FadeInSection>
-          <HeroSection isLoggedIn={isLoggedIn} onLogin={onLogin} />
+          <HeroSection />
         </FadeInSection>
 
-        {/* 🔹 Sezione Features */}
+        {/* 🔹 Features */}
         <FadeInSection>
-          <FeaturesSection isLoggedIn={isLoggedIn} onLogin={onLogin} />
+          <FeaturesSection />
         </FadeInSection>
 
-        {/* 🟣 Spazio extra tra Features e HowItWorks */}
+        {/* 🔹 Spazio e sezioni extra */}
         <div className="mb-24" />
-
-        {/* 🔹 Come funziona */}
         <FadeInSection>
           <HowItWorksSection />
         </FadeInSection>
-
-        {/* 🔹 Statistiche animate */}
         <FadeInSection>
           <StatsSection />
         </FadeInSection>
 
-        {/* 🔹 Mini gioco */}
-          <GameRunner />
+        {/* 🔹 Mini Gioco */}
+        <GameRunner />
       </main>
 
       {/* 🔹 Footer */}

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import Header from "../components/homepage/Header";
-import Footer from "../components/homepage/Footer";
+import Header from "../components/Layouts/Header/Header";
+import Footer from "../components/Layouts/footer/Footer";
 import ShopFilters from "../components/shop/ShopFilters";
 import ShopGrid from "../components/shop/ShopGrid";
 
@@ -12,7 +12,7 @@ export default function ShopPage() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-50 to-white text-gray-800 pt-20">
-      <Header isLoggedIn={false} onLogin={() => {}} onLogout={() => {}} />
+      <Header />
 
       <main className="flex-1 w-full max-w-6xl mx-auto px-6 py-12">
         {/* 🛍️ Hero Section per lo shop */}
