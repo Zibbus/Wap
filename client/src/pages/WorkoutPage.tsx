@@ -418,7 +418,7 @@ export default function WorkoutPage() {
       const creator = auth?.username || "MyFit";
 
       // Logo: se non hai un path locale leggibile dal backend, lascia stringa vuota
-      const logoPath = "C:\\Users\\flavi\\Documents\\GitHub\\Wap\\client\\src\\assets\\IconaMyFit.png"; // es: "C:\\progetti\\myfit\\assets\\IconaMyFit.png"
+      const logoPath = ""; // es: "C:\\progetti\\myfit\\assets\\IconaMyFit.png"
 
       const payload = { creator, logoPath, days };
 
