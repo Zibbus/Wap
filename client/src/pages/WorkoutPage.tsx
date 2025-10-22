@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, PlusCircle } from "lucide-react";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
 
 /* =========================
    Tipi
@@ -400,191 +398,62 @@ export default function WorkoutPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Scarica PDF multipagina A4
-  /* const handleDownloadPDF = async () => {
-    if (!previewRef.current) return;
-
-    console.log('inizio');
-    
-
-    document.documentElement.style.setProperty("--tw-text-opacity", "1");
-    const root = document.querySelector("#root") as HTMLElement;
-    if (root) root.style.colorScheme = "light";
-
-    console.log('inizio 2');
-    
-
-    // ✅ Fix per colori OKLCH → convertili in RGB compatibili
-    previewRef.current.querySelectorAll("*").forEach((el) => {
-      const style = window.getComputedStyle(el);
-      const color = style.color;
-      const bg = style.backgroundColor;
-
-      if (color.includes("oklch") || color.includes("oklab")) {
-        (el as HTMLElement).style.color = "rgb(0,0,0)";
-      }
-      if (bg.includes("oklch") || bg.includes("oklab")) {
-        (el as HTMLElement).style.backgroundColor = "rgb(255,255,255)";
-      }
-    });
-    
-    const canvas = await html2canvas(previewRef.current, {
-      backgroundColor: "#ffffff",
-      scale: 2,
-      useCORS: true,
-    });
-
-    console.log('inizio 3');
-    
-
-    const imgData = canvas.toDataURL("image/jpeg", 0.95);
-    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imgWidth = pageWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-    let position = 0;
-    if (imgHeight <= pageHeight) {
-      pdf.addImage(imgData, "JPEG", 0, 0, imgWidth, imgHeight);
-    } else {
-      let remainingHeight = imgHeight;
-      pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
-      remainingHeight -= pageHeight;
-      position = -pageHeight;
-
-      while (remainingHeight > 0) {
-        pdf.addPage();
-        position -= pageHeight;
-        pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
-        remainingHeight -= pageHeight;
-      }
-    }
-
-    console.log('si');
-    
-
-    // scarica localmente
-    pdf.save("scheda-allenamento.pdf");
-  }; */
-  
   const handleDownloadPDF = async () => {
-    if (!previewRef.current) return;
-
-    console.log("📄 Inizio generazione PDF…");
-
-    // ✅ Imposta modalità chiara globale
-    document.documentElement.style.setProperty("--tw-text-opacity", "1");
-    const root = document.querySelector("#root") as HTMLElement;
-    if (root) root.style.colorScheme = "light";
-
-    // ✅ Funzione ricorsiva per sanificare colori e pseudo-elementi
-    const sanitizeColors = (node: HTMLElement) => {
-      try {
-        const computed = window.getComputedStyle(node);
-
-        // Forza i colori RGB per tutte le proprietà potenzialmente colorate
-        ["color", "backgroundColor", "borderColor", "outlineColor"].forEach((prop) => {
-          const value = computed[prop as keyof CSSStyleDeclaration] as string;
-          if (value && (value.includes("oklch") || value.includes("oklab"))) {
-            node.style.setProperty(
-              prop,
-              prop === "color" ? "rgb(0,0,0)" : "rgb(255,255,255)",
-              "important"
-            );
-          }
-        });
-
-        // ✅ Disattiva pseudo-elementi (::before, ::after) con colori oklch
-        const pseudoBefore = window.getComputedStyle(node, "::before");
-        const pseudoAfter = window.getComputedStyle(node, "::after");
-
-        const checkPseudo = (pseudo: CSSStyleDeclaration, name: string) => {
-          const colorProps = [
-            pseudo.color,
-            pseudo.backgroundColor,
-            pseudo.borderColor,
-            pseudo.outlineColor,
-          ];
-          if (colorProps.some((v) => v?.includes("oklch") || v?.includes("oklab"))) {
-            console.warn(`⚠️ Rimosso pseudo-elemento ${name} da`, node);
-            (node as HTMLElement).style.setProperty(`--${name}-content`, "none");
-          }
-        };
-
-        if (pseudoBefore && pseudoBefore.content && pseudoBefore.content !== "none") {
-          checkPseudo(pseudoBefore, "before");
-        }
-        if (pseudoAfter && pseudoAfter.content && pseudoAfter.content !== "none") {
-          checkPseudo(pseudoAfter, "after");
-        }
-      } catch {
-        // ignora errori di nodi non validi
-      }
-
-      // Ricorsivo su figli
-      Array.from(node.children).forEach((child) => {
-        if (child instanceof HTMLElement) sanitizeColors(child);
-      });
-    };
-
-    // ✅ Esegui la sanitizzazione completa
-    sanitizeColors(previewRef.current);
-    console.log("🎨 Colori convertiti → ok");
-
-    // ✅ Genera il canvas
-    let canvas: HTMLCanvasElement;
     try {
-      canvas = await html2canvas(previewRef.current, {
-        backgroundColor: "#ffffff",
-        scale: 2,
-        useCORS: true,
-        logging: true, // utile per debug in console
-        onclone: (doc) => {
-          // forza sfondo bianco nel clone
-          doc.body.style.background = "white";
-        },
+      // 1) Mappa lo stato corrente → payload per l'endpoint LaTeX
+      const days = (giorniAllenamento || []).map((g) => ({
+        number: g.giorno,
+        groups: g.gruppi || [],
+        exercises: (g.esercizi || []).map((ex) => ({
+          nome: ex.nome || "",
+          serie: ex.serie ?? "",
+          ripetizioni: ex.ripetizioni ?? "",
+          recupero: ex.recupero ?? "",
+          peso: ex.peso ?? "",
+        })),
+      }));
+
+      // Creator: se hai lo username salvato nel localStorage
+      const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+      const creator = auth?.username || "MyFit";
+
+      // Logo: se non hai un path locale leggibile dal backend, lascia stringa vuota
+      const logoPath = "C:\\Users\\flavi\\Documents\\GitHub\\Wap\\client\\src\\assets\\IconaMyFit.png"; // es: "C:\\progetti\\myfit\\assets\\IconaMyFit.png"
+
+      const payload = { creator, logoPath, days };
+
+      // 2) Chiama il backend che compila LaTeX → PDF
+      const res = await fetch("http://localhost:4000/api/pdf/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      console.log("🖼️ Canvas generato:", canvas.width, "x", canvas.height);
-    } catch (err) {
-      console.error("❌ Errore html2canvas:", err);
-      alert("Errore durante la generazione del PDF: " + (err as Error).message);
-      return;
-    }
 
-    // ✅ Genera il PDF
-    const imgData = canvas.toDataURL("image/jpeg", 0.95);
-    const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imgWidth = pageWidth;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-    if (imgHeight <= pageHeight) {
-      pdf.addImage(imgData, "JPEG", 0, 0, imgWidth, imgHeight);
-    } else {
-      let remainingHeight = imgHeight;
-      let position = 0;
-      pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
-      remainingHeight -= pageHeight;
-      position = -pageHeight;
-
-      while (remainingHeight > 0) {
-        pdf.addPage();
-        position -= pageHeight;
-        pdf.addImage(imgData, "JPEG", 0, position, imgWidth, imgHeight);
-        remainingHeight -= pageHeight;
+      if (!res.ok) {
+        // prova a leggere l’errore restituito
+        let msg = `HTTP ${res.status} ${res.statusText}`;
+        try {
+          const data = await res.json();
+          if (data?.error) msg += ` — ${data.error}`;
+        } catch {}
+        throw new Error(msg);
       }
+
+      // 3) Scarica il blob come file
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "scheda-allenamento.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      console.error("Errore generazione PDF:", err);
+      alert("Errore generazione PDF: " + (err?.message || "sconosciuto"));
     }
-
-    console.log("✅ PDF pronto → scarico…");
-
-    pdf.save("scheda-allenamento.pdf");
   };
-
-
 
   // Salva piano + schedule + schedule_exercise
   const handleSaveToDb = async () => {
