@@ -1,3 +1,4 @@
+
 -- Allunga il titolo per contenere nomi lunghi (safe anche su re-run)
 ALTER TABLE exercises MODIFY title VARCHAR(120) NOT NULL;
 

@@ -78,7 +78,6 @@ CREATE TABLE IF NOT EXISTS schedule_exercise (
   FOREIGN KEY (exercise_id) REFERENCES exercises(id)
 );
 
-
 /* PARTE NUTRIZIONALE */
 -- ------------------------------------------------------
 -- Master alimenti (facoltativo ma utile per riuso/ricerca)
@@ -111,10 +110,6 @@ CREATE TABLE IF NOT EXISTS nutrition_plans (
   FOREIGN KEY (freelancer_id) REFERENCES freelancers(id) ON DELETE SET NULL
 );
 
-CREATE INDEX idx_nutrition_plans_customer ON nutrition_plans (customer_id);
-CREATE INDEX idx_nutrition_plans_status   ON nutrition_plans (status);
-CREATE INDEX idx_nutrition_plans_expire   ON nutrition_plans (expire);
-
 -- ------------------------------------------------------
 -- GIORNI DEL PIANO — simile a days (con CHECK 1..7)
 -- ------------------------------------------------------
@@ -126,8 +121,6 @@ CREATE TABLE IF NOT EXISTS nutrition_days (
   UNIQUE KEY uq_plan_day (plan_id, day),
   FOREIGN KEY (plan_id) REFERENCES nutrition_plans(id) ON DELETE CASCADE
 );
-
-CREATE INDEX idx_nutrition_days_plan ON nutrition_days (plan_id);
 
 -- ------------------------------------------------------
 -- PASTI DEL GIORNO (ordine con position)
@@ -142,8 +135,6 @@ CREATE TABLE IF NOT EXISTS nutrition_meals (
   UNIQUE KEY uq_day_position (day_id, position),
   FOREIGN KEY (day_id) REFERENCES nutrition_days(id) ON DELETE CASCADE
 );
-
-CREATE INDEX idx_nutrition_meals_day ON nutrition_meals (day_id);
 
 -- ------------------------------------------------------
 -- RIGHE ALIMENTI/ITEMS PER PASTO (ordine con position)
@@ -166,9 +157,6 @@ CREATE TABLE IF NOT EXISTS nutrition_items (
   FOREIGN KEY (meal_id) REFERENCES nutrition_meals(id) ON DELETE CASCADE,
   FOREIGN KEY (food_id)  REFERENCES foods(id)          ON DELETE SET NULL
 );
-
-CREATE INDEX idx_nutrition_items_meal ON nutrition_items (meal_id);
-CREATE INDEX idx_nutrition_items_food ON nutrition_items (food_id);
 
 -- ------------------------------------------------------
 -- (Opzionale) Target macro giornalieri
