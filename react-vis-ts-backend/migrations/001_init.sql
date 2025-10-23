@@ -77,3 +77,111 @@ CREATE TABLE IF NOT EXISTS schedule_exercise (
   FOREIGN KEY (day_id) REFERENCES days(id) ON DELETE CASCADE,
   FOREIGN KEY (exercise_id) REFERENCES exercises(id)
 );
+
+
+/* PARTE NUTRIZIONALE */
+-- ------------------------------------------------------
+-- Master alimenti (facoltativo ma utile per riuso/ricerca)
+-- ------------------------------------------------------
+CREATE TABLE IF NOT EXISTS foods (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(150) NOT NULL,
+  default_unit ENUM('g','ml','pcs','cup','tbsp','tsp','slice') DEFAULT 'g',
+  kcal_per_100 DECIMAL(8,2) DEFAULT NULL,
+  protein_per_100 DECIMAL(8,2) DEFAULT NULL,
+  carbs_per_100 DECIMAL(8,2) DEFAULT NULL,
+  fat_per_100 DECIMAL(8,2) DEFAULT NULL,
+  UNIQUE KEY uq_foods_name (name)
+);
+
+-- ------------------------------------------------------
+-- PIANO NUTRIZIONALE (testa) — simile a schedules
+-- ------------------------------------------------------
+CREATE TABLE IF NOT EXISTS nutrition_plans (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  customer_id INT NOT NULL,
+  freelancer_id INT NULL, -- chi l'ha creato (se presente)
+  expire DATE NOT NULL,
+  goal ENUM('peso_costante','aumento_peso','perdita_peso','mantenimento','definizione','massa','altro') NOT NULL DEFAULT 'mantenimento',
+  notes TEXT NULL,
+  status ENUM('draft','active','expired') NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (customer_id)  REFERENCES customers(id)   ON DELETE CASCADE,
+  FOREIGN KEY (freelancer_id) REFERENCES freelancers(id) ON DELETE SET NULL
+);
+
+CREATE INDEX idx_nutrition_plans_customer ON nutrition_plans (customer_id);
+CREATE INDEX idx_nutrition_plans_status   ON nutrition_plans (status);
+CREATE INDEX idx_nutrition_plans_expire   ON nutrition_plans (expire);
+
+-- ------------------------------------------------------
+-- GIORNI DEL PIANO — simile a days (con CHECK 1..7)
+-- ------------------------------------------------------
+CREATE TABLE IF NOT EXISTS nutrition_days (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  plan_id INT NOT NULL,
+  day TINYINT NOT NULL CHECK (day BETWEEN 1 AND 7),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_plan_day (plan_id, day),
+  FOREIGN KEY (plan_id) REFERENCES nutrition_plans(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_nutrition_days_plan ON nutrition_days (plan_id);
+
+-- ------------------------------------------------------
+-- PASTI DEL GIORNO (ordine con position)
+-- ------------------------------------------------------
+CREATE TABLE IF NOT EXISTS nutrition_meals (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  day_id INT NOT NULL,
+  position TINYINT NOT NULL DEFAULT 1, -- ordine nel giorno
+  name VARCHAR(80) NOT NULL,           -- es: Colazione / Spuntino / Pranzo / Cena
+  notes TEXT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_day_position (day_id, position),
+  FOREIGN KEY (day_id) REFERENCES nutrition_days(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_nutrition_meals_day ON nutrition_meals (day_id);
+
+-- ------------------------------------------------------
+-- RIGHE ALIMENTI/ITEMS PER PASTO (ordine con position)
+-- ------------------------------------------------------
+CREATE TABLE IF NOT EXISTS nutrition_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  meal_id INT NOT NULL,
+  position TINYINT NOT NULL DEFAULT 1,   -- ordine nel pasto
+  food_id INT NULL,                      -- opzionale: link a foods
+  description VARCHAR(200) DEFAULT NULL, -- opzionale: testo libero
+  qty DECIMAL(8,2) DEFAULT NULL,         -- quantità
+  unit ENUM('g','ml','pcs','cup','tbsp','tsp','slice') DEFAULT 'g',
+  -- Valori nutrizionali per questa riga (scelti o calcolati lato backend)
+  kcal INT UNSIGNED DEFAULT NULL,
+  protein_g DECIMAL(6,2) DEFAULT NULL,
+  carbs_g DECIMAL(6,2) DEFAULT NULL,
+  fat_g DECIMAL(6,2) DEFAULT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_meal_position (meal_id, position),
+  FOREIGN KEY (meal_id) REFERENCES nutrition_meals(id) ON DELETE CASCADE,
+  FOREIGN KEY (food_id)  REFERENCES foods(id)          ON DELETE SET NULL
+);
+
+CREATE INDEX idx_nutrition_items_meal ON nutrition_items (meal_id);
+CREATE INDEX idx_nutrition_items_food ON nutrition_items (food_id);
+
+-- ------------------------------------------------------
+-- (Opzionale) Target macro giornalieri
+-- ------------------------------------------------------
+CREATE TABLE IF NOT EXISTS nutrition_day_targets (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  day_id INT NOT NULL,
+  kcal_target INT UNSIGNED DEFAULT NULL,
+  protein_g_target DECIMAL(6,2) DEFAULT NULL,
+  carbs_g_target DECIMAL(6,2) DEFAULT NULL,
+  fat_g_target DECIMAL(6,2) DEFAULT NULL,
+  fiber_g_target DECIMAL(6,2) DEFAULT NULL,
+  water_ml_target INT UNSIGNED DEFAULT NULL,
+  UNIQUE KEY uq_day_target (day_id),
+  FOREIGN KEY (day_id) REFERENCES nutrition_days(id) ON DELETE CASCADE
+);
