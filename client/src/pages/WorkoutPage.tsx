@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, PlusCircle } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+
+import NutritionPage from "./NutritionPage";
 
 /* =========================
    Tipi
@@ -178,7 +181,12 @@ function ExerciseSelect({
    Pagina
    ========================= */
 export default function WorkoutPage() {
-  const [modalita, setModalita] = useState<"iniziale" | "allenamento" | "nutrizione">("iniziale");
+  // 🔹 routing mode via query param
+  const [search] = useSearchParams();
+  const navigate = useNavigate();
+  const qpMode = (search.get("mode") as "iniziale" | "allenamento" | "nutrizione" | null);
+
+  const [modalita, setModalita] = useState<"iniziale" | "allenamento" | "nutrizione">(qpMode ?? "iniziale");
   const [giorni, setGiorni] = useState<number | null>(null);
   const [currentDay, setCurrentDay] = useState(1);
   const [giorniAllenamento, setGiorniAllenamento] = useState<GiornoAllenamento[]>([]);
@@ -193,6 +201,21 @@ export default function WorkoutPage() {
   const [availableByDay, setAvailableByDay] = useState<Record<number, DBExercise[]>>({}); // ✅ cache per giorno
 
   const previewRef = useRef<HTMLDivElement | null>(null);
+
+  // 🔹 sync stato con query param
+  useEffect(() => {
+    if (qpMode && ["iniziale", "allenamento", "nutrizione"].includes(qpMode)) {
+      setModalita(qpMode);
+    }
+  }, [qpMode]);
+
+  // 🔹 helper per cambiare modalità + aggiornare URL
+  const setMode = (m: "iniziale" | "allenamento" | "nutrizione") => {
+    setModalita(m);
+    const params = new URLSearchParams(window.location.search);
+    params.set("mode", m);
+    navigate({ pathname: "/workout", search: params.toString() }, { replace: true });
+  };
 
   // Inizializza i giorni quando l’utente sceglie il numero
   useEffect(() => {
@@ -534,9 +557,27 @@ export default function WorkoutPage() {
     }
   };
 
+  /* =========================
+     ↩️ Early return: Mod. Nutrizione
+     ========================= */
+  if (modalita === "nutrizione") {
+    return (
+      <div className="min-h-screen bg-indigo-50 px-8 py-12">
+        <div className="max-w-6xl mx-auto mb-4">
+          <button
+            onClick={() => setMode("iniziale")}
+            className="px-4 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+          >
+            ← Torna alla scelta
+          </button>
+        </div>
+        <NutritionPage />
+      </div>
+    );
+  }
 
   /* =========================
-     Render
+     Render (Allenamento)
      ========================= */
   return (
     <div className="min-h-screen flex flex-col items-center bg-indigo-50 px-8 py-12">
@@ -552,7 +593,7 @@ export default function WorkoutPage() {
           >
             {/* Nutrizione */}
             <div
-              onClick={() => setModalita("nutrizione")}
+              onClick={() => setMode("nutrizione")}
               className="relative h-[680px] md:h-[760px] rounded-3xl overflow-hidden group cursor-pointer shadow-lg"
             >
               <img
@@ -570,7 +611,7 @@ export default function WorkoutPage() {
 
             {/* Allenamento */}
             <div
-              onClick={() => setModalita("allenamento")}
+              onClick={() => setMode("allenamento")}
               className="relative h-[680px] md:h-[760px] rounded-3xl overflow-hidden group cursor-pointer shadow-lg"
             >
               <img
@@ -757,7 +798,7 @@ export default function WorkoutPage() {
                         min={0}
                       />
 
-                      {/* ✅ Pulsante toggle note (apre con "", chiude rimuovendo il campo) */}
+                      {/* ✅ Pulsante toggle note */}
                       <button
                         type="button"
                         onClick={() => handleToggleNota(i)}

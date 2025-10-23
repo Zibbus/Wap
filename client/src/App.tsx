@@ -25,7 +25,11 @@ export default function App() {
             <Route element={<Layout />}>
               <Route path="/" element={<HomePage />} />
               <Route path="/shop" element={<ShopPage />} />
+
+              {/* Workout + alias deep-link */}
               <Route path="/workout" element={<WorkoutPage />} />
+              <Route path="/workout/nutrition" element={<Navigate to="/workout?mode=nutrizione" replace />} />
+              <Route path="/workout/workout"   element={<Navigate to="/workout?mode=allenamento" replace />} />
 
               {/* Schedules */}
               <Route path="/schedules" element={<ScheduleListPage />} />
