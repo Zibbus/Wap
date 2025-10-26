@@ -50,7 +50,7 @@ export default function Professionisti() {
         onOpen={(id) => navigate(`/professionisti/${id}`)}
         onContact={(id) => {
             if (!authData) return openLoginModal();
-            navigate(`/chat/${id}`); // <-- usa l'id, warning risolto
+            navigate(`/chat/${id}`);
         }}
         />
     </div>

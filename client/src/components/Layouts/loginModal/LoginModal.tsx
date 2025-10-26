@@ -1,6 +1,114 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useAuth } from "../../../hooks/useAuth";
 import { useLoginModal } from "../../../hooks/useLoginModal";
+
+/** ------- Sottocomponente locale per password con bottone occhio ------- */
+type PasswordFieldProps = {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  name?: string;
+  autoComplete?: string;
+  className?: string;
+};
+
+function PasswordField({
+  value,
+  onChange,
+  placeholder = "Password",
+  name,
+  autoComplete = "current-password",
+  className = "",
+}: PasswordFieldProps) {
+  const [show, setShow] = useState(false);
+  const [wink, setWink] = useState(false);
+  const id = useId();
+
+  const toggle = () => {
+    setShow((s) => !s);
+    setWink(true);
+    setTimeout(() => setWink(false), 180); // micro-animazione "blink"
+  };
+
+  return (
+    <div className={`relative ${className}`}>
+      <input
+        id={id}
+        name={name}
+        type={show ? "text" : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete={autoComplete}
+        className="w-full border border-indigo-200 rounded-lg pl-3 pr-11 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-400 placeholder:text-gray-400"
+      />
+
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={show ? "Nascondi password" : "Mostra password"}
+        aria-pressed={show}
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-8 h-8 rounded-md border-0 bg-transparent hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition"
+        title={show ? "Nascondi" : "Mostra"}
+      >
+        <span
+          className={`transition-transform duration-200 ${
+            show ? "rotate-6 scale-95" : ""
+          } ${wink ? "scale-y-75" : ""}`}
+        >
+          {show ? <EyeOffIcon /> : <EyeIcon />}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="12" cy="12" r="3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 20L20 4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+/** ---------------------------------------------------------------------- */
 
 export default function LoginModal() {
   const { login } = useAuth();
@@ -210,12 +318,12 @@ export default function LoginModal() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
               />
-              <input
-                type="password"
-                className="w-full border border-indigo-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500"
-                placeholder="Password"
+              {/* Password con bottone occhio */}
+              <PasswordField
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={setPassword}
+                placeholder="Password"
+                autoComplete="current-password"
               />
             </>
           )}
@@ -316,19 +424,19 @@ export default function LoginModal() {
               )}
 
               <div className="grid grid-cols-2 gap-3">
-                <input
-                  type="password"
-                  className="border border-indigo-200 rounded-lg px-3 py-2"
-                  placeholder="Password"
+                {/* Password con bottone occhio */}
+                <PasswordField
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={setPassword}
+                  placeholder="Password"
+                  autoComplete="new-password"
                 />
-                <input
-                  type="password"
-                  className="border border-indigo-200 rounded-lg px-3 py-2"
-                  placeholder="Conferma Password"
+                {/* Conferma password con bottone occhio */}
+                <PasswordField
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={setConfirmPassword}
+                  placeholder="Conferma Password"
+                  autoComplete="new-password"
                 />
               </div>
             </>
