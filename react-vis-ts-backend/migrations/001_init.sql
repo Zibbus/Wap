@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS nutrition_plans (
   customer_id INT NOT NULL,
   freelancer_id INT NULL, -- chi l'ha creato (se presente)
   expire DATE NOT NULL,
-  goal ENUM('peso_costante','aumento_peso','perdita_peso','mantenimento','definizione','massa','altro') NOT NULL DEFAULT 'mantenimento',
+  goal ENUM('aumento_peso','perdita_peso','mantenimento','definizione','massa','altro') NOT NULL DEFAULT 'mantenimento',
   notes TEXT NULL,
   status ENUM('draft','active','expired') NOT NULL DEFAULT 'active',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

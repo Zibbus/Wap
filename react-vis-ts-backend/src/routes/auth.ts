@@ -135,7 +135,7 @@ router.post("/login", async (req, res) => {
 
   try {
     const [rows] = await db.query(
-      `SELECT * FROM users WHERE username = ? OR email = ? LIMIT 1`,
+      `SELECT id, username, email, password, first_name, last_name, sex, dob, type FROM users WHERE username = ? OR email = ? LIMIT 1`,
       [usernameOrEmail.trim(), usernameOrEmail.trim()]
     );
     const user = (rows as any[])[0];
@@ -143,6 +143,15 @@ router.post("/login", async (req, res) => {
 
     const ok = await bcryptjs.compare(password, user.password);
     if (!ok) return res.status(401).json({ error: "Credenziali errate" });
+
+    let customer: any = null;
+    if (user.type === "utente") {
+      const [cRows] = await db.query(
+        `SELECT id, weight, height FROM customers WHERE user_id = ? LIMIT 1`,
+        [user.id]
+      );
+      customer = (cRows as any[])[0] || null;
+    }
 
     const token = jwt.sign(
       { id: user.id, username: user.username, type: user.type },
@@ -159,6 +168,11 @@ router.post("/login", async (req, res) => {
         firstName: user.first_name,
         lastName: user.last_name,
         type: user.type,
+        sex: user.sex,
+        dob: user.dob,
+        customer: customer
+          ? { id: customer.id, weight: customer.weight, height: customer.height }
+          : null,
       },
     });
   } catch (err) {
