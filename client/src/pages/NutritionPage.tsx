@@ -21,20 +21,31 @@ type UserAnthro = {
 };
 
 type FoodRow = {
-  id?: number;           // foods.id (opzionale)
-  description?: string;  // testo libero se non si usa foods.id
-  qty: number;           // quantità
+  id?: number | null;       // foods.id se presente
+  description?: string;     // testo libero
+  qty: number;              // quantità inserita dall'utente
   unit: "g" | "ml" | "pcs" | "cup" | "tbsp" | "tsp" | "slice";
+
+  // valori correnti calcolati (sola visualizzazione)
   kcal?: number | null;
   protein_g?: number | null;
   carbs_g?: number | null;
   fat_g?: number | null;
+  fiber_g?: number | null;
+
+  // meta locali per calcolo dinamico (NON salvate nel DB)
+  _per100?: {
+    kcal?: number | null;
+    protein?: number | null;
+    carbs?: number | null;
+    fat?: number | null;
+    fiber?: number | null;
+  } | null;
 };
 
 type Meal = {
-  id?: number;
   position: number;
-  name: string; // Colazione/Spuntino/Pranzo/Cena/...
+  name: string;
   notes?: string;
   items: FoodRow[];
 };
@@ -57,17 +68,41 @@ type PlanState = {
   };
   targetCustomerId?: number | null;
 
-  // step di flusso
-  consentAccepted: boolean;        // popup consenso
-  cheatConfirmed: boolean;         // tabella sgarri confermata
-  cheatDays: number[];             // elenco giorni (1..7) di sgarro
+  consentAccepted: boolean;
+  cheatConfirmed: boolean;
+  cheatDays: number[];
 
   expire: string; // YYYY-MM-DD
   goal: Goal;
   activity: "sedentario" | "leggero" | "moderato" | "intenso" | "atleta";
   notes: string;
 
-  days: NutritionDay[]; // 1..7
+  days: NutritionDay[];
+  showPreview?: boolean;
+};
+
+type MeResponse = {
+  id: number;
+  username: string;
+  email: string;
+  type: "utente" | "professionista";
+  first_name?: string | null;
+  last_name?: string | null;
+  sex?: "M" | "F" | "O" | null;
+  dob?: string | null;
+  customer?: { id: number; weight: number | null; height: number | null } | null;
+  freelancer?: { id: number; vat: string } | null;
+};
+
+type FoodApi = {
+  id: number;
+  name: string;
+  default_unit: "g" | "ml" | "pcs" | "cup" | "tbsp" | "tsp" | "slice";
+  kcal_per_100: number | null;
+  protein_per_100: number | null;
+  carbs_per_100: number | null;
+  fat_per_100: number | null;
+  fiber_per_100?: number | null;
 };
 
 /* ===== helpers ===== */
@@ -78,6 +113,63 @@ const activityFactor: Record<PlanState["activity"], number> = {
   intenso: 1.725,
   atleta: 1.9,
 };
+
+function weekdayLabel(n: number) {
+  const labels = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
+  return labels[(n - 1) % 7];
+}
+
+function defaultWeek(): NutritionDay[] {
+  const defaultMeals = [
+    { position: 1, name: "Colazione", items: [] as FoodRow[] },
+    { position: 2, name: "Merenda", items: [] as FoodRow[] },
+    { position: 3, name: "Pranzo", items: [] as FoodRow[] },
+    { position: 4, name: "Spuntino", items: [] as FoodRow[] },
+    { position: 5, name: "Cena", items: [] as FoodRow[] },
+  ];
+  // almeno 1 riga vuota per ogni pasto
+  const withOneRow = defaultMeals.map((m) => ({
+    ...m,
+    items: [
+      {
+        qty: 100,
+        unit: "g",
+        description: "",
+        kcal: null,
+        protein_g: null,
+        carbs_g: null,
+        fat_g: null,
+        fiber_g: null,
+        _per100: null,
+      },
+    ],
+  }));
+  return Array.from({ length: 7 }, (_, i) => ({
+    day: i + 1,
+    meals: JSON.parse(JSON.stringify(withOneRow)),
+  }));
+}
+
+/** Legge authData dal localStorage (supporta schema “completo” e “ridotto”) */
+function readAuthSnapshot() {
+  const raw = JSON.parse(localStorage.getItem("authData") || "{}");
+  const userFull = raw?.user ?? {};
+  const role = raw?.role ?? raw?.user?.type ?? null;
+
+  return {
+    token: raw?.token ?? null,
+    user: {
+      id: userFull.id ?? raw?.userId ?? null,
+      username: userFull.username ?? raw?.username ?? null,
+      firstName: userFull.firstName ?? userFull.first_name ?? null,
+      lastName: userFull.lastName ?? userFull.last_name ?? null,
+      type: userFull.type ?? role ?? null,
+      sex: userFull.sex ?? null,
+      dob: userFull.dob ?? null,
+      customer: userFull.customer ?? null,
+    },
+  };
+}
 
 function ageFromDOB(dob?: string): number | undefined {
   if (!dob) return undefined;
@@ -96,7 +188,7 @@ function bmr(sex: "M" | "F" | "O" | undefined, weightKg?: number, heightCm?: num
   const base = 10 * weightKg + 6.25 * heightCm - 5 * ageYears;
   if (sex === "M") return base + 5;
   if (sex === "F") return base - 161;
-  if (sex === "O") return base - 78; // tua scelta attuale
+  if (sex === "O") return base - 78;
   return base;
 }
 
@@ -115,48 +207,86 @@ function kcalForGoal(goal: Goal, tdee: number | undefined) {
   }
 }
 
-function defaultWeek(): NutritionDay[] {
-  const defaultMeals = [
-    { position: 1, name: "Colazione", items: [] as FoodRow[] },
-    { position: 2, name: "Merenda", items: [] as FoodRow[] },
-    { position: 3, name: "Pranzo", items: [] as FoodRow[] },
-    { position: 4, name: "Spuntino", items: [] as FoodRow[] },
-    { position: 5, name: "Cena", items: [] as FoodRow[] },
-  ];
-  return Array.from({ length: 7 }, (_, i) => ({
-    day: i + 1,
-    meals: JSON.parse(JSON.stringify(defaultMeals)),
-  }));
+/** Calcolo dinamico macro per una riga, usando per-100 + qty + unit */
+function computeRowMacros(row: FoodRow): Required<Pick<FoodRow, "kcal" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g">> {
+  const per100 = row._per100 ?? null;
+  let factor = 0;
+
+  if (per100) {
+    if (row.unit === "g" || row.unit === "ml") {
+      factor = (row.qty || 0) / 100;
+    } else {
+      // per unità a pezzi: per ora assumiamo che per-UNIT = per-100
+      factor = row.qty || 0;
+    }
+    const kcal = per100.kcal ? per100.kcal * factor : 0;
+    const p = per100.protein ? per100.protein * factor : 0;
+    const c = per100.carbs ? per100.carbs * factor : 0;
+    const f = per100.fat ? per100.fat * factor : 0;
+    const fi = per100.fiber ? per100.fiber * factor : 0;
+
+    return {
+      kcal: Math.round(kcal || 0),
+      protein_g: Number(p?.toFixed(1) || 0),
+      carbs_g: Number(c?.toFixed(1) || 0),
+      fat_g: Number(f?.toFixed(1) || 0),
+      fiber_g: Number(fi?.toFixed(1) || 0),
+    };
+  }
+
+  // fallback: se abbiamo valori già salvati nella riga
+  return {
+    kcal: Math.round(row.kcal || 0),
+    protein_g: Number((row.protein_g || 0).toFixed(1)),
+    carbs_g: Number((row.carbs_g || 0).toFixed(1)),
+    fat_g: Number((row.fat_g || 0).toFixed(1)),
+    fiber_g: Number((row.fiber_g || 0).toFixed(1)),
+  };
 }
 
-function weekdayLabel(n: number) {
-  const labels = ["Lunedì","Martedì","Mercoledì","Giovedì","Venerdì","Sabato","Domenica"];
-  return labels[(n - 1) % 7];
+/** Assicura almeno 1 riga per ogni pasto dei giorni editabili */
+function ensureOneRowPerMeal(days: NutritionDay[], skipDays: number[]): NutritionDay[] {
+  const next = structuredClone(days) as NutritionDay[];
+  for (const d of next) {
+    if (skipDays.includes(d.day)) continue;
+    for (const meal of d.meals) {
+      if (!meal.items || meal.items.length === 0) {
+        meal.items = [
+          {
+            qty: 100,
+            unit: "g",
+            description: "",
+            kcal: null,
+            protein_g: null,
+            carbs_g: null,
+            fat_g: null,
+            fiber_g: null,
+            _per100: null,
+          },
+        ];
+      }
+    }
+  }
+  return next;
 }
 
 /* ===== COMPONENTE ===== */
-export default function NutritionBuilder() {
-  // login salvato
-  const auth = JSON.parse(localStorage.getItem("authData") || "{}");
-  const userType: "utente" | "professionista" | undefined = auth?.user?.type;
-  const selfCustomerIdFromLogin: number | null = auth?.user?.customer?.id ?? null;
+export default function NutritionPage() {
+  const { user, token } = readAuthSnapshot();
+  const [userType, setUserType] = useState<"utente" | "professionista" | "admin" | undefined>(undefined);
+  const selfCustomerIdFromLogin: number | null = user.customer?.id ?? null;
 
   const [loadingSelf, setLoadingSelf] = useState(false);
   const [selfData, setSelfData] = useState<UserAnthro>({});
+  const [foods, setFoods] = useState<FoodApi[]>([]);
+  const [foodQuery, setFoodQuery] = useState<string>("");
+
   const [state, setState] = useState<PlanState>({
     ownerMode: "self",
     selfCustomerId: selfCustomerIdFromLogin ?? null,
-    otherPerson: {
-      first_name: "",
-      last_name: "",
-      sex: "O",
-      age: "",
-      weight: "",
-      height: "",
-    },
+    otherPerson: { first_name: "", last_name: "", sex: "O", age: "", weight: "", height: "" },
     targetCustomerId: null,
 
-    // flusso
     consentAccepted: false,
     cheatConfirmed: false,
     cheatDays: [],
@@ -166,42 +296,160 @@ export default function NutritionBuilder() {
     activity: "moderato",
     notes: "",
     days: defaultWeek(),
+    showPreview: false,
   });
 
-  /* Carica dati self dal login (no fetch) */
+  /* /api/me + (se sgarri confermati) prefill ultimo piano */
   useEffect(() => {
     if (state.ownerMode !== "self") return;
-    try {
-      setLoadingSelf(true);
-      const u = auth?.user || {};
-      setSelfData({
-        first_name: u.firstName ?? undefined,
-        last_name: u.lastName ?? undefined,
-        sex: u.sex ?? undefined,
-        dob: u.dob ?? undefined,
-        weight: u.customer?.weight ?? null,
-        height: u.customer?.height ?? null,
-      });
-      setState((s) => ({ ...s, selfCustomerId: u.customer?.id ?? null }));
-    } catch (e) {
-      console.error("Errore load self from authData", e);
-    } finally {
-      setLoadingSelf(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.ownerMode]);
 
-  /* Calcoli */
+    const tkn = token;
+    if (!tkn) {
+      setSelfData({});
+      setState((s) => ({ ...s, selfCustomerId: null }));
+      setUserType(undefined);
+      return;
+    }
+
+    (async () => {
+      try {
+        setLoadingSelf(true);
+
+        // 1) /api/me  → autocompilazione
+        const res = await fetch("http://localhost:4000/api/me", {
+          headers: { Authorization: `Bearer ${tkn}` },
+        });
+        if (!res.ok) throw new Error("Impossibile ottenere /api/me");
+        const me: MeResponse = await res.json();
+
+        setSelfData({
+          first_name: me.first_name ?? undefined,
+          last_name: me.last_name ?? undefined,
+          sex: (me.sex ?? undefined) as any,
+          dob: me.dob ?? undefined,
+          weight: me.customer?.weight ?? null,
+          height: me.customer?.height ?? null,
+        });
+
+        setState((s) => ({
+          ...s,
+          selfCustomerId: me.customer?.id ?? null,
+        }));
+        setUserType(me.type);
+
+        // 2) prefill ultimo piano (solo dopo conferma sgarri)
+        if (state.cheatConfirmed && me.customer?.id) {
+          const latest = await fetch(
+            `http://localhost:4000/api/nutrition/plans/latest?customer_id=${me.customer.id}`,
+            { headers: { Authorization: `Bearer ${tkn}` } }
+          );
+
+          if (latest.ok) {
+            const data = (await latest.json()) as {
+              expire?: string | null;
+              goal?: Goal | null;
+              notes?: string | null;
+              days?: Array<{
+                day: number;
+                meals: Array<{
+                  position: number;
+                  name: string;
+                  notes: string | null;
+                  items: Array<{
+                    food_id: number | null;
+                    description: string | null;
+                    qty: number | null;
+                    unit: "g" | "ml" | "pcs" | "cup" | "tbsp" | "tsp" | "slice";
+                    kcal: number | null;
+                    protein_g: number | null;
+                    carbs_g: number | null;
+                    fat_g: number | null;
+                  }>;
+                }>;
+              }>;
+            };
+
+            const base = defaultWeek();
+            for (const d of data.days ?? []) {
+              const targetDay = base.find((x) => x.day === d.day);
+              if (!targetDay) continue;
+
+              for (const m of d.meals ?? []) {
+                const targetMeal = targetDay.meals.find((x) => x.position === m.position);
+                if (!targetMeal) continue;
+
+                targetMeal.name = m.name || targetMeal.name;
+                targetMeal.notes = m.notes || undefined;
+                targetMeal.items = (m.items ?? []).map((it) => ({
+                  id: it.food_id ?? null,
+                  description: it.description ?? "",
+                  qty: it.qty ?? 100,
+                  unit: it.unit ?? "g",
+                  // pre-carico i valori salvati (visual fallback)
+                  kcal: it.kcal,
+                  protein_g: it.protein_g,
+                  carbs_g: it.carbs_g,
+                  fat_g: it.fat_g,
+                  fiber_g: null,
+                  _per100: null, // si popola se selezioni dal catalogo
+                }));
+              }
+            }
+
+            const withMinRows = ensureOneRowPerMeal(base, state.cheatDays);
+            setState((s) => ({
+              ...s,
+              expire: s.expire || (data.expire ?? ""),
+              goal: (data.goal as Goal) || s.goal,
+              notes: s.notes || (data.notes ?? ""),
+              days: withMinRows,
+            }));
+          }
+        }
+      } catch (e) {
+        console.error("Errore /api/me o /latest", e);
+        setUserType((user?.type as any) ?? undefined);
+      } finally {
+        setLoadingSelf(false);
+      }
+    })();
+  }, [state.ownerMode, state.cheatConfirmed, state.cheatDays, user?.type, token]);
+
+  /* Ricerca alimenti (autocomplete) */
+  useEffect(() => {
+    const tkn = token;
+    const q = foodQuery.trim();
+    if (!q) {
+      setFoods([]);
+      return;
+    }
+    const ctrl = new AbortController();
+
+    (async () => {
+      try {
+        const res = await fetch(`http://localhost:4000/api/foods?query=${encodeURIComponent(q)}`, {
+          headers: tkn ? { Authorization: `Bearer ${tkn}` } : {},
+          signal: ctrl.signal,
+        });
+        if (!res.ok) return;
+        const data: FoodApi[] = await res.json();
+        setFoods(data);
+      } catch {
+        /* noop */
+      }
+    })();
+
+    return () => ctrl.abort();
+  }, [foodQuery, token]);
+
+  /* Calcoli globali */
   const derived = useMemo(() => {
     const sex = state.ownerMode === "self" ? selfData.sex : state.otherPerson.sex;
     const weight =
       state.ownerMode === "self" ? selfData.weight ?? undefined : (state.otherPerson.weight as number | undefined);
     const height =
       state.ownerMode === "self" ? selfData.height ?? undefined : (state.otherPerson.height as number | undefined);
-    const age =
-      state.ownerMode === "self"
-        ? ageFromDOB(selfData.dob)
-        : (state.otherPerson.age as number | undefined);
+    const age = state.ownerMode === "self" ? ageFromDOB(selfData.dob) : (state.otherPerson.age as number | undefined);
 
     const BMR = bmr(sex, weight, height, age);
     const TDEE = BMR ? BMR * activityFactor[state.activity] : undefined;
@@ -209,150 +457,100 @@ export default function NutritionBuilder() {
     return { BMR: BMR ? Math.round(BMR) : undefined, TDEE: TDEE ? Math.round(TDEE) : undefined, targetKcal: target };
   }, [state.ownerMode, selfData, state.otherPerson, state.activity, state.goal]);
 
-  /* Regole pulsante Salva */
-  const disabledSave = (() => {
-    if (userType === "utente") {
-      return !(state.ownerMode === "self" && !!state.selfCustomerId);
-    }
-    if (userType === "professionista") {
-      if (state.ownerMode === "self") return !state.selfCustomerId;
-      return !state.targetCustomerId;
-    }
-    return true;
-  })();
+  /* ========== UI STEP-BY-STEP ========== */
 
-  /* Salvataggio */
-  const handleSave = async () => {
-    if (!state.expire) {
-      alert("Inserisci la data di scadenza del piano.");
-      return;
-    }
+  // 1) POPUP CONSENSO
+  if (!state.consentAccepted) {
+    return (
+      <div className="w-full max-w-3xl mx-auto mt-10">
+        <div className="bg-white rounded-2xl shadow p-6 border">
+          <h2 className="text-2xl font-bold text-indigo-700 mb-3">Informativa & consenso</h2>
+          <div className="text-sm text-gray-700 space-y-3">
+            <p>
+              Questo generatore di piano nutrizionale ha finalità informative ed educative. Non sostituisce il parere di un
+              medico o di un professionista sanitario. In presenza di condizioni cliniche, gravidanza, allattamento o terapie
+              farmacologiche, consulta il tuo medico prima di adottare qualunque piano alimentare.
+            </p>
+            <p>
+              Dichiari di utilizzare il piano sotto la tua esclusiva responsabilità. Gli autori dell’app non sono responsabili
+              per eventuali conseguenze derivanti da un uso improprio delle indicazioni fornite. In caso di dubbi, interrompi
+              l’utilizzo e chiedi un parere medico.
+            </p>
+            <ul className="list-disc ml-5">
+              <li>In caso di allergie/intolleranze, verifica sempre gli alimenti inseriti.</li>
+              <li>Bevi acqua a sufficienza e monitora eventuali segnali di malessere.</li>
+              <li>Integra attività fisica in modo proporzionato al tuo livello.</li>
+            </ul>
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              className="px-5 py-3 rounded-xl border border-gray-300 text-gray-700"
+              onClick={() => window.history.back()}
+            >
+              Annulla
+            </button>
+            <button
+              className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
+              onClick={() => setState((s) => ({ ...s, consentAccepted: true }))}
+            >
+              Accetto e procedo
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-    const authLocal = JSON.parse(localStorage.getItem("authData") || "{}");
-    const token = authLocal?.token;
+  // 2) SGARRI con pulsanti toggle (blu → verde)
+  if (!state.cheatConfirmed) {
+    const toggleDay = (d: number) =>
+      setState((s) => ({
+        ...s,
+        cheatDays: s.cheatDays.includes(d) ? s.cheatDays.filter((x) => x !== d) : [...s.cheatDays, d],
+      }));
 
-    const customerIdFromSelf = state.selfCustomerId ?? null;
+    return (
+      <div className="w-full max-w-3xl mx-auto mt-10">
+        <div className="bg-white rounded-2xl shadow p-6 border">
+          <h2 className="text-2xl font-bold text-indigo-700 mb-4">Seleziona i giorni di “sgarro”</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Clicca sui giorni: diventano verdi quando sono marcati come sgarro. Potrai cambiarli in seguito.
+          </p>
 
-    const effectiveCustomerId =
-      userType === "utente"
-        ? (state.ownerMode === "self" ? customerIdFromSelf : null)
-        : userType === "professionista"
-        ? (state.ownerMode === "self" ? customerIdFromSelf : (state.targetCustomerId ?? null))
-        : null;
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {Array.from({ length: 7 }, (_, i) => i + 1).map((d) => {
+              const active = state.cheatDays.includes(d);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => toggleDay(d)}
+                  className={`px-4 py-3 rounded-xl text-white font-medium transition
+                    ${active ? "bg-emerald-600 hover:bg-emerald-700" : "bg-indigo-600 hover:bg-indigo-700"}`}
+                >
+                  {weekdayLabel(d)}
+                </button>
+              );
+            })}
+          </div>
 
-    if (!effectiveCustomerId) {
-      if (userType === "utente" && state.ownerMode === "other") {
-        alert("Non puoi salvare nel DB un piano intestato ad un esterno.");
-      } else if (userType === "professionista" && state.ownerMode === "other") {
-        alert("Seleziona un customer_id esistente per salvare nel DB.");
-      } else {
-        alert("Non è disponibile un profilo cliente collegato a questo utente.");
-      }
-      return;
-    }
+          <div className="mt-6 flex justify-end">
+            <button
+              className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
+              onClick={() => setState((s) => ({ ...s, cheatConfirmed: true }))}
+            >
+              Conferma e continua
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-    try {
-      // 1) crea nutrition_plan (inviamo anche gli sgarri come metadato via notes)
-      const mergedNotes =
-        state.notes?.trim()
-          ? `${state.notes.trim()}\n\nSgarri: ${state.cheatDays.sort((a,b)=>a-b).join(", ") || "nessuno"}.`
-          : `Sgarri: ${state.cheatDays.sort((a,b)=>a-b).join(", ") || "nessuno"}.`;
+  /* ====== EDITOR + PREVIEW ====== */
+  const editableDays = state.days.filter((d) => !state.cheatDays.includes(d.day));
 
-      const planRes = await fetch("http://localhost:4000/api/nutrition/plans", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          customer_id: effectiveCustomerId,
-          expire: state.expire,
-          goal: state.goal,
-          notes: mergedNotes || null,
-        }),
-      });
-      if (!planRes.ok) throw new Error("Errore creazione piano");
-      const plan = await planRes.json();
-      const planId = plan.id;
-
-      // 2) crea 1..7 days
-      const dayIdMap: number[] = [];
-      for (const d of state.days) {
-        const dRes = await fetch("http://localhost:4000/api/nutrition/days", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ plan_id: planId, day: d.day }),
-        });
-        if (!dRes.ok) throw new Error("Errore creazione giorno");
-        const dj = await dRes.json();
-        dayIdMap[d.day] = dj.id;
-      }
-
-      // 3) crea meals
-      const mealIdMap: Record<string, number> = {};
-      for (const d of state.days) {
-        const day_id = dayIdMap[d.day];
-        for (const meal of d.meals) {
-          const mRes = await fetch("http://localhost:4000/api/nutrition/meals", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({
-              day_id,
-              position: meal.position,
-              name: meal.name,
-              notes: meal.notes || null,
-            }),
-          });
-          if (!mRes.ok) throw new Error("Errore creazione pasto");
-          const mj = await mRes.json();
-          mealIdMap[`${d.day}-${meal.position}`] = mj.id;
-        }
-      }
-
-      // 4) crea items in blocco
-      const itemsPayload = state.days.flatMap((d) =>
-        d.meals.flatMap((meal) =>
-          meal.items.map((it, idx) => ({
-            meal_id: mealIdMap[`${d.day}-${meal.position}`],
-            position: idx + 1,
-            food_id: it.id ?? null,
-            description: it.description || null,
-            qty: it.qty ?? null,
-            unit: it.unit,
-            kcal: it.kcal ?? null,
-            protein_g: it.protein_g ?? null,
-            carbs_g: it.carbs_g ?? null,
-            fat_g: it.fat_g ?? null,
-          }))
-        )
-      );
-
-      if (itemsPayload.length) {
-        const iRes = await fetch("http://localhost:4000/api/nutrition/items/bulk", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ items: itemsPayload }),
-        });
-        if (!iRes.ok) throw new Error("Errore salvataggio alimenti");
-      }
-
-      alert("✅ Piano nutrizionale salvato!");
-    } catch (e) {
-      console.error(e);
-      alert("❌ Errore salvataggio piano.");
-    }
-  };
-
-  /* PDF */
+  // PREVIEW: qui appaiono anche Scarica PDF / Salva nel DB
   const handleDownloadPDF = async () => {
     try {
       const creator =
@@ -367,22 +565,25 @@ export default function NutritionBuilder() {
           expire: state.expire || null,
           goal: state.goal,
           notes: state.notes || null,
-          cheat_days: state.cheatDays.sort((a,b)=>a-b), // extra info nel PDF
-          days: state.days.map((d) => ({
+          cheat_days: state.cheatDays.sort((a, b) => a - b),
+          days: editableDays.map((d) => ({
             number: d.day,
             meals: d.meals.map((m) => ({
               position: m.position,
               name: m.name,
               notes: m.notes ?? null,
-              items: m.items.map((it) => ({
-                name: it.description || "",
-                qty: it.qty,
-                unit: it.unit,
-                kcal: it.kcal ?? null,
-                protein_g: it.protein_g ?? null,
-                carbs_g: it.carbs_g ?? null,
-                fat_g: it.fat_g ?? null,
-              })),
+              items: m.items.map((it) => {
+                const v = computeRowMacros(it);
+                return {
+                  name: it.description || "",
+                  qty: it.qty,
+                  unit: it.unit,
+                  kcal: v.kcal,
+                  protein_g: v.protein_g,
+                  carbs_g: v.carbs_g,
+                  fat_g: v.fat_g,
+                };
+              }),
             })),
           })),
         },
@@ -416,117 +617,247 @@ export default function NutritionBuilder() {
     }
   };
 
-  /* ====== RENDERING STEP-BY-STEP ====== */
+const disabledSave =
+  userType === "utente"
+    ? !(state.ownerMode === "self" && !!state.selfCustomerId)
+    : (userType === "professionista" || userType === "admin")
+    ? (state.ownerMode === "self" ? !state.selfCustomerId : !state.targetCustomerId)
+    : true;
 
-  // 1) POPUP NORME & CONSENSO (nessun blur/opacità)
-  if (!state.consentAccepted) {
+
+  const handleSave = async () => {
+    if (!state.expire) {
+      alert("Inserisci la data di scadenza del piano.");
+      return;
+    }
+
+    const effectiveCustomerId =
+      userType === "utente"
+        ? state.ownerMode === "self"
+          ? state.selfCustomerId ?? null
+          : null
+        : state.ownerMode === "self"
+        ? state.selfCustomerId ?? null
+        : state.targetCustomerId ?? null;
+
+    if (!effectiveCustomerId) {
+      if (userType === "utente" && state.ownerMode === "other") {
+        alert("Non puoi salvare nel DB un piano intestato a un esterno.");
+      } else if ((userType === "professionista" || userType === "admin") && state.ownerMode === "other") {
+        alert("Seleziona un customer_id esistente per salvare nel DB.");
+      } else {
+        alert("Profilo cliente mancante.");
+      }
+      return;
+    }
+
+    try {
+      const mergedNotes = state.notes?.trim()
+        ? `${state.notes.trim()}\n\nSgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`
+        : `Sgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`;
+
+      const tkn = token;
+
+      // 1) crea plan
+      const planRes = await fetch("http://localhost:4000/api/nutrition/plans", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(tkn ? { Authorization: `Bearer ${tkn}` } : {}),
+        },
+        body: JSON.stringify({
+          customer_id: effectiveCustomerId,
+          expire: state.expire,
+          goal: state.goal,
+          notes: mergedNotes || null,
+        }),
+      });
+      if (!planRes.ok) throw new Error("Errore creazione piano");
+      const plan = await planRes.json();
+      const planId = plan.id;
+
+      // 2) giorni NON sgarro
+      const dayIdMap: Record<number, number> = {};
+      for (const d of editableDays) {
+        const dRes = await fetch("http://localhost:4000/api/nutrition/days", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(tkn ? { Authorization: `Bearer ${tkn}` } : {}),
+          },
+          body: JSON.stringify({ plan_id: planId, day: d.day }),
+        });
+        if (!dRes.ok) throw new Error("Errore creazione giorno");
+        const dj = await dRes.json();
+        dayIdMap[d.day] = dj.id;
+      }
+
+      // 3) meals
+      const mealIdMap: Record<string, number> = {};
+      for (const d of editableDays) {
+        const day_id = dayIdMap[d.day];
+        for (const meal of d.meals) {
+          const mRes = await fetch("http://localhost:4000/api/nutrition/meals", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(tkn ? { Authorization: `Bearer ${tkn}` } : {}),
+            },
+            body: JSON.stringify({
+              day_id,
+              position: meal.position,
+              name: meal.name,
+              notes: meal.notes || null,
+            }),
+          });
+          if (!mRes.ok) throw new Error("Errore creazione pasto");
+          const mj = await mRes.json();
+          mealIdMap[`${d.day}-${meal.position}`] = mj.id;
+        }
+      }
+
+      // 4) items (macro calcolate al volo)
+      const itemsPayload = editableDays.flatMap((d) =>
+        d.meals.flatMap((meal) =>
+          meal.items.map((it, idx) => {
+            const v = computeRowMacros(it);
+            return {
+              meal_id: mealIdMap[`${d.day}-${meal.position}`],
+              position: idx + 1,
+              food_id: it.id ?? null,
+              description: it.description || null,
+              qty: it.qty ?? null,
+              unit: it.unit,
+              kcal: v.kcal ?? null,
+              protein_g: v.protein_g ?? null,
+              carbs_g: v.carbs_g ?? null,
+              fat_g: v.fat_g ?? null,
+              // fiber_g non presente in nutrition_items → omesso
+            };
+          })
+        )
+      );
+
+      if (itemsPayload.length) {
+        const iRes = await fetch("http://localhost:4000/api/nutrition/items/bulk", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(tkn ? { Authorization: `Bearer ${tkn}` } : {}),
+          },
+          body: JSON.stringify({ items: itemsPayload }),
+        });
+        if (!iRes.ok) throw new Error("Errore salvataggio alimenti");
+      }
+
+      alert("✅ Piano nutrizionale salvato!");
+    } catch (e) {
+      console.error(e);
+      alert("❌ Errore salvataggio piano.");
+    }
+  };
+
+  if (state.showPreview) {
     return (
-      <div className="w-full max-w-3xl mx-auto mt-10">
-        <div className="bg-white rounded-2xl shadow p-6 border">
-          <h2 className="text-2xl font-bold text-indigo-700 mb-3">Informativa & consenso</h2>
-          <div className="text-sm text-gray-700 space-y-3">
-            <p>
-              Questo generatore di piano nutrizionale ha finalità informative ed educative. Non sostituisce il parere di un
-              medico o di un professionista sanitario. In presenza di condizioni cliniche, gravidanza, allattamento o terapie
-              farmacologiche, consulta il tuo medico prima di adottare qualunque piano alimentare.
-            </p>
-            <p>
-              Dichiari di utilizzare il piano sotto la tua esclusiva responsabilità. Gli autori dell’app non sono responsabili
-              per eventuali conseguenze derivanti da un uso improprio delle indicazioni fornite. In caso di dubbi, interrompi
-              l’utilizzo e chiedi un parere medico.
-            </p>
-            <ul className="list-disc ml-5">
-              <li>In caso di allergie/intolleranze, verifica sempre gli alimenti inseriti.</li>
-              <li>Bevi acqua a sufficienza e monitora segnali di malessere.</li>
-              <li>Integra attività fisica in modo proporzionato al tuo livello.</li>
-            </ul>
+      <div className="w-full max-w-5xl mx-auto mt-8 bg-white rounded-2xl shadow p-6">
+        <h2 className="text-2xl font-bold text-indigo-700 mb-4">Anteprima piano nutrizionale</h2>
+
+        <div className="mb-4 text-sm text-gray-700">
+          <div className="flex flex-wrap gap-6">
+            <div><strong>Scadenza:</strong> {state.expire || "—"}</div>
+            <div><strong>Obiettivo:</strong> {state.goal}</div>
+            <div><strong>Attività:</strong> {state.activity}</div>
+            <div><strong>BMR:</strong> {derived.BMR ?? "—"} kcal</div>
+            <div><strong>TDEE:</strong> {derived.TDEE ?? "—"} kcal</div>
+            <div><strong>Target:</strong> {derived.targetKcal ?? "—"} kcal/die</div>
+            <div>
+              <strong>Sgarri:</strong>{" "}
+              {state.cheatDays.length
+                ? state.cheatDays.sort((a, b) => a - b).map((d) => weekdayLabel(d)).join(", ")
+                : "nessuno"}
+            </div>
           </div>
-          <div className="mt-6 flex justify-end gap-3">
-            <button
-              className="px-5 py-3 rounded-xl border border-gray-300 text-gray-700"
-              onClick={() => window.history.back()}
-            >
-              Annulla
-            </button>
-            <button
-              className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
-              onClick={() => setState((s) => ({ ...s, consentAccepted: true }))}
-            >
-              Accetto e procedo
-            </button>
-          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          {editableDays.map((d) => (
+            <div key={d.day} className="border rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-bold">Giorno {d.day} — {weekdayLabel(d.day)}</h4>
+              </div>
+              <div className="space-y-2 text-sm">
+                {d.meals.map((m, i) => (
+                  <div key={i}>
+                    <div className="font-semibold">{m.name}</div>
+                    {m.items.length ? (
+                      <ul className="list-disc ml-5">
+                        {m.items.map((it, idx) => {
+                          const v = computeRowMacros(it);
+                          return (
+                            <li key={idx}>
+                              {it.description || "—"} — {it.qty}{it.unit}{v.kcal ? `, ${v.kcal} kcal` : ""}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <div className="text-gray-500">Nessun alimento inserito</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Bottoni SOLO in anteprima */}
+        <div className="mt-6 flex flex-wrap gap-3 justify-end">
+          <button
+            className="px-5 py-3 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            onClick={() => setState((s) => ({ ...s, showPreview: false }))}
+          >
+            Torna alla modifica
+          </button>
+          <button className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700" onClick={handleDownloadPDF}>
+            Scarica PDF
+          </button>
+          <button
+            className={`px-5 py-3 rounded-xl ${disabledSave ? "bg-gray-300 text-white" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}
+            disabled={disabledSave}
+            onClick={handleSave}
+          >
+            Salva nel DB
+          </button>
         </div>
       </div>
     );
   }
 
-  // 2) TABELLA SGARRI (7 giorni) prima di mostrare la scheda
-  if (!state.cheatConfirmed) {
-    const isChecked = (d: number) => state.cheatDays.includes(d);
-    const toggleDay = (d: number) =>
-      setState((s) => ({
-        ...s,
-        cheatDays: isChecked(d) ? s.cheatDays.filter((x) => x !== d) : [...s.cheatDays, d],
-      }));
-
-    return (
-      <div className="w-full max-w-3xl mx-auto mt-10">
-        <div className="bg-white rounded-2xl shadow p-6 border">
-          <h2 className="text-2xl font-bold text-indigo-700 mb-4">Seleziona i giorni di “sgarro”</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Indica uno o più giorni della settimana in cui prevedi maggiore flessibilità alimentare. Potrai comunque modificare
-            il piano successivamente. Questa preferenza verrà riportata nelle note del piano e nel PDF.
-          </p>
-
-          <table className="w-full text-sm border border-indigo-100 rounded-xl overflow-hidden">
-            <thead className="bg-indigo-50">
-              <tr>
-                <th className="p-3 text-left">Giorno</th>
-                <th className="p-3 text-left">Etichetta</th>
-                <th className="p-3 text-left">Sgarro</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Array.from({ length: 7 }, (_, i) => i + 1).map((d) => (
-                <tr key={d} className="border-t">
-                  <td className="p-3">#{d}</td>
-                  <td className="p-3">{weekdayLabel(d)}</td>
-                  <td className="p-3">
-                    <label className="inline-flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={isChecked(d)}
-                        onChange={() => toggleDay(d)}
-                      />
-                      <span>{isChecked(d) ? "Selezionato" : "—"}</span>
-                    </label>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <div className="mt-6 flex justify-end">
-            <button
-              className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
-              onClick={() => setState((s) => ({ ...s, cheatConfirmed: true }))}
-            >
-              Conferma e continua
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  /* ====== EDITOR COMPLETO (dopo consenso + sgarri) ====== */
+  // EDITOR: tabella unica a tutta larghezza, macro non editabili, bottone rimuovi a sinistra
   return (
     <div className="w-full max-w-6xl mx-auto">
       {/* intestazione/owner */}
       <div className="bg-white rounded-2xl shadow p-6 mb-6">
-        <h2 className="text-2xl font-bold text-indigo-700 mb-4">Crea piano nutrizionale</h2>
+        <div className="flex items-start gap-3 justify-between">
+          <h2 className="text-2xl font-bold text-indigo-700">Crea piano nutrizionale</h2>
+          <div className="flex gap-2">
+            <button
+              className="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sm"
+              onClick={() => setState((s) => ({ ...s, cheatConfirmed: false }))}
+              title="Torna alla scelta dei giorni di sgarro"
+            >
+              Modifica sgarri
+            </button>
+            <button
+              className="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm"
+              onClick={() => setState((s) => ({ ...s, showPreview: true }))}
+            >
+              Anteprima
+            </button>
+          </div>
+        </div>
 
-        <div className="flex flex-wrap gap-4 items-end">
+        <div className="flex flex-wrap gap-4 items-end mt-4">
           <div className="flex items-center gap-3">
             <label className="font-semibold text-indigo-700">Intestatario:</label>
             <label className="flex items-center gap-2">
@@ -609,18 +940,27 @@ export default function NutritionBuilder() {
           <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
               <label className="text-sm text-indigo-700">Nome</label>
-              <input className="w-full p-2 border rounded" value={state.otherPerson.first_name}
-                     onChange={(e) => setState((s)=>({...s, otherPerson: {...s.otherPerson, first_name: e.target.value}}))} />
+              <input
+                className="w-full p-2 border rounded"
+                value={state.otherPerson.first_name}
+                onChange={(e) => setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, first_name: e.target.value } }))}
+              />
             </div>
             <div>
               <label className="text-sm text-indigo-700">Cognome</label>
-              <input className="w-full p-2 border rounded" value={state.otherPerson.last_name}
-                     onChange={(e) => setState((s)=>({...s, otherPerson: {...s.otherPerson, last_name: e.target.value}}))} />
+              <input
+                className="w-full p-2 border rounded"
+                value={state.otherPerson.last_name}
+                onChange={(e) => setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, last_name: e.target.value } }))}
+              />
             </div>
             <div>
               <label className="text-sm text-indigo-700">Sesso</label>
-              <select className="w-full p-2 border rounded" value={state.otherPerson.sex}
-                      onChange={(e) => setState((s)=>({...s, otherPerson: {...s.otherPerson, sex: e.target.value as any}}))}>
+              <select
+                className="w-full p-2 border rounded"
+                value={state.otherPerson.sex}
+                onChange={(e) => setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, sex: e.target.value as any } }))}
+              >
                 <option value="M">Maschio</option>
                 <option value="F">Femmina</option>
                 <option value="O">Altro</option>
@@ -628,43 +968,46 @@ export default function NutritionBuilder() {
             </div>
             <div>
               <label className="text-sm text-indigo-700">Età</label>
-              <input type="number" className="w-full p-2 border rounded" value={state.otherPerson.age}
-                     onChange={(e) => setState((s)=>({...s, otherPerson: {...s.otherPerson, age: e.target.value === "" ? "" : Number(e.target.value)}}))} />
+              <input
+                type="number"
+                className="w-full p-2 border rounded"
+                value={state.otherPerson.age}
+                onChange={(e) =>
+                  setState((s) => ({
+                    ...s,
+                    otherPerson: { ...s.otherPerson, age: e.target.value === "" ? "" : Number(e.target.value) },
+                  }))
+                }
+              />
             </div>
             <div>
               <label className="text-sm text-indigo-700">Peso (kg)</label>
-              <input type="number" className="w-full p-2 border rounded" value={state.otherPerson.weight}
-                     onChange={(e) => setState((s)=>({...s, otherPerson: {...s.otherPerson, weight: e.target.value === "" ? "" : Number(e.target.value)}}))} />
+              <input
+                type="number"
+                className="w-full p-2 border rounded"
+                value={state.otherPerson.weight}
+                onChange={(e) =>
+                  setState((s) => ({
+                    ...s,
+                    otherPerson: { ...s.otherPerson, weight: e.target.value === "" ? "" : Number(e.target.value) },
+                  }))
+                }
+              />
             </div>
             <div>
               <label className="text-sm text-indigo-700">Altezza (cm)</label>
-              <input type="number" className="w-full p-2 border rounded" value={state.otherPerson.height}
-                     onChange={(e) => setState((s)=>({...s, otherPerson: {...s.otherPerson, height: e.target.value === "" ? "" : Number(e.target.value)}}))} />
+              <input
+                type="number"
+                className="w-full p-2 border rounded"
+                value={state.otherPerson.height}
+                onChange={(e) =>
+                  setState((s) => ({
+                    ...s,
+                    otherPerson: { ...s.otherPerson, height: e.target.value === "" ? "" : Number(e.target.value) },
+                  }))
+                }
+              />
             </div>
-          </div>
-        )}
-
-        {/* Solo professionista: selezione customer per “altri” */}
-        {state.ownerMode === "other" && userType === "professionista" && (
-          <div className="mt-3">
-            <label className="block text-sm text-indigo-700 mb-1">
-              Cliente destinatario (customer_id esistente)
-            </label>
-            <input
-              type="number"
-              className="p-2 rounded-md border border-indigo-200 bg-white"
-              value={state.targetCustomerId ?? ""}
-              onChange={(e) =>
-                setState((s) => ({
-                  ...s,
-                  targetCustomerId: e.target.value === "" ? null : Number(e.target.value),
-                }))
-              }
-              placeholder="es. 7"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              (In seguito potrai aggiungere una ricerca nominativa.)
-            </p>
           </div>
         )}
 
@@ -674,191 +1017,287 @@ export default function NutritionBuilder() {
             <div>BMR: <strong>{derived.BMR ?? "-"}</strong> kcal</div>
             <div>TDEE: <strong>{derived.TDEE ?? "-"}</strong> kcal</div>
             <div>Target: <strong>{derived.targetKcal ?? "-"}</strong> kcal/die</div>
-            <div>Sgarri: <strong>{state.cheatDays.length ? state.cheatDays.sort((a,b)=>a-b).map(d => `${weekdayLabel(d)} (#${d})`).join(", ") : "nessuno"}</strong></div>
+            <div>
+              Sgarri:{" "}
+              <strong>
+                {state.cheatDays.length
+                  ? state.cheatDays.sort((a, b) => a - b).map((d) => weekdayLabel(d)).join(", ")
+                  : "nessuno"}
+              </strong>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* EDITOR SETTIMANA */}
+      {/* EDITOR SETTIMANA: tabella unica a tutta larghezza */}
       <div className="bg-white rounded-2xl shadow p-6">
-        <h3 className="text-xl font-bold text-indigo-700 mb-4">Settimana (1..7)</h3>
+        <h3 className="text-xl font-bold text-indigo-700 mb-4">Settimana (giorni senza sgarro)</h3>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          {state.days.map((d, dIdx) => (
-            <div key={d.day} className="border border-indigo-100 rounded-xl p-4 bg-indigo-50/40">
-              <h4 className="font-semibold text-indigo-700 mb-2">
-                Giorno {d.day} — {weekdayLabel(d.day)}
-                {state.cheatDays.includes(d.day) && (
-                  <span className="ml-2 text-xs px-2 py-1 rounded bg-amber-100 text-amber-700 font-semibold">
-                    Sgarro
-                  </span>
-                )}
-              </h4>
+        {editableDays.length === 0 ? (
+          <div className="text-sm text-gray-600">
+            Hai selezionato tutti i giorni come sgarro. Torna su <em>Modifica sgarri</em> per liberarne almeno uno. 🙂
+          </div>
+        ) : (
+          <div className="space-y-8">
+            {editableDays.map((d) => (
+              <div key={d.day} className="border border-indigo-100 rounded-xl p-4 bg-indigo-50/40">
+                <h4 className="font-semibold text-indigo-700 mb-3">
+                  Giorno {d.day} — {weekdayLabel(d.day)}
+                </h4>
 
-              {d.meals.map((m, mIdx) => (
-                <div key={m.position} className="mb-4 bg-white rounded p-3">
-                  <div className="flex items-center gap-3 mb-2">
-                    <input
-                      className="font-medium flex-1 border rounded p-2"
-                      value={m.name}
-                      onChange={(e) => {
-                        const name = e.target.value;
-                        setState((s) => {
-                          const next = structuredClone(s);
-                          next.days[dIdx].meals[mIdx].name = name;
-                          return next;
-                        });
-                      }}
-                    />
-                    {/* 🔥 rimosso il badge pos:... */}
-                  </div>
+                {/* TABELLA UNICA FULL WIDTH */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border border-indigo-100 rounded-xl overflow-hidden">
+                    <thead className="bg-indigo-50">
+                      <tr>
+                        <th className="p-2 text-left w-10"> </th>
+                        <th className="p-2 text-left">Pasto</th>
+                        <th className="p-2 text-left">Alimento / descrizione</th>
+                        <th className="p-2 text-left">Qty</th>
+                        <th className="p-2 text-left">Unità</th>
+                        <th className="p-2 text-left">kcal</th>
+                        <th className="p-2 text-left">Prot</th>
+                        <th className="p-2 text-left">Carb</th>
+                        <th className="p-2 text-left">Fibre</th>
+                        <th className="p-2 text-left">Grassi</th>
+                      </tr>
+                    </thead>
 
-                  {m.items.map((it, iIdx) => (
-                    <div key={iIdx} className="grid grid-cols-12 gap-2 mb-2">
-                      <input
-                        className="col-span-4 border rounded p-2"
-                        placeholder="Alimento o descrizione"
-                        value={it.description || ""}
-                        onChange={(e) =>
-                          setState((s) => {
-                            const next = structuredClone(s);
-                            next.days[dIdx].meals[mIdx].items[iIdx].description = e.target.value;
-                            return next;
-                          })
-                        }
-                      />
-                      <input
-                        type="number"
-                        className="col-span-2 border rounded p-2"
-                        value={it.qty}
-                        min={0}
-                        onChange={(e) =>
-                          setState((s) => {
-                            const next = structuredClone(s);
-                            next.days[dIdx].meals[mIdx].items[iIdx].qty = Number(e.target.value);
-                            return next;
-                          })
-                        }
-                      />
-                      <select
-                        className="col-span-2 border rounded p-2"
-                        value={it.unit}
-                        onChange={(e) =>
-                          setState((s) => {
-                            const next = structuredClone(s);
-                            next.days[dIdx].meals[mIdx].items[iIdx].unit = e.target.value as any;
-                            return next;
-                          })
-                        }
-                      >
-                        <option>g</option><option>ml</option><option>pcs</option>
-                        <option>cup</option><option>tbsp</option><option>tsp</option><option>slice</option>
-                      </select>
-                      <input
-                        type="number" className="col-span-1 border rounded p-2" placeholder="kcal"
-                        value={it.kcal ?? ""} onChange={(e) =>
-                          setState((s) => {
-                            const next = structuredClone(s);
-                            next.days[dIdx].meals[mIdx].items[iIdx].kcal = e.target.value === "" ? null : Number(e.target.value);
-                            return next;
-                          })
-                        }
-                      />
-                      <input
-                        type="number" className="col-span-1 border rounded p-2" placeholder="P"
-                        value={it.protein_g ?? ""} onChange={(e) =>
-                          setState((s) => {
-                            const next = structuredClone(s);
-                            next.days[dIdx].meals[mIdx].items[iIdx].protein_g = e.target.value === "" ? null : Number(e.target.value);
-                            return next;
-                          })
-                        }
-                      />
-                      <input
-                        type="number" className="col-span-1 border rounded p-2" placeholder="C"
-                        value={it.carbs_g ?? ""} onChange={(e) =>
-                          setState((s) => {
-                            const next = structuredClone(s);
-                            next.days[dIdx].meals[mIdx].items[iIdx].carbs_g = e.target.value === "" ? null : Number(e.target.value);
-                            return next;
-                          })
-                        }
-                      />
-                      <input
-                        type="number" className="col-span-1 border rounded p-2" placeholder="F"
-                        value={it.fat_g ?? ""} onChange={(e) =>
-                          setState((s) => {
-                            const next = structuredClone(s);
-                            next.days[dIdx].meals[mIdx].items[iIdx].fat_g = e.target.value === "" ? null : Number(e.target.value);
-                            return next;
-                          })
-                        }
-                      />
-                      <button
-                        type="button"
-                        className="col-span-12 text-right text-red-600 text-sm"
-                        onClick={() =>
-                          setState((s) => {
-                            const next = structuredClone(s);
-                            next.days[dIdx].meals[mIdx].items.splice(iIdx, 1);
-                            return next;
-                          })
-                        }
-                      >
-                        Rimuovi
-                      </button>
-                    </div>
-                  ))}
+                    <tbody>
+                      {d.meals.flatMap((meal, mIdx) =>
+                        meal.items.map((row, iIdx) => {
+                          const values = computeRowMacros(row);
 
-                  <button
-                    type="button"
-                    className="mt-1 text-indigo-600 text-sm"
-                    onClick={() =>
+                          return (
+                            <tr key={`${meal.position}-${iIdx}`} className="border-t align-top">
+                              {/* elimina riga */}
+                              <td className="p-2">
+                                <button
+                                  type="button"
+                                  className="px-2 py-1 rounded-md border border-red-200 text-red-600 hover:bg-red-50"
+                                  onClick={() =>
+                                    setState((s) => {
+                                      const next = structuredClone(s);
+                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                      next.days[dayIndex].meals[mIdx].items.splice(iIdx, 1);
+                                      // se il pasto resta senza righe → reinserisco una riga vuota
+                                      if (next.days[dayIndex].meals[mIdx].items.length === 0) {
+                                        next.days[dayIndex].meals[mIdx].items.push({
+                                          qty: 100,
+                                          unit: "g",
+                                          description: "",
+                                          kcal: null,
+                                          protein_g: null,
+                                          carbs_g: null,
+                                          fat_g: null,
+                                          fiber_g: null,
+                                          _per100: null,
+                                        });
+                                      }
+                                      return next;
+                                    })
+                                  }
+                                  title="Elimina riga"
+                                >
+                                  ✕
+                                </button>
+                              </td>
+
+                              {/* PASTO (select per spostare la riga tra i pasti) */}
+                              <td className="p-2">
+                                <select
+                                  className="w-full border rounded p-2"
+                                  value={meal.position}
+                                  onChange={(e) =>
+                                    setState((s) => {
+                                      const next = structuredClone(s);
+                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                      const fromMealIdx = mIdx;
+                                      const toPos = Number(e.target.value);
+                                      // sposta l'item
+                                      const moved = next.days[dayIndex].meals[fromMealIdx].items.splice(iIdx, 1)[0];
+                                      const toMealIdx = next.days[dayIndex].meals.findIndex((mm) => mm.position === toPos);
+                                      if (toMealIdx >= 0) {
+                                        next.days[dayIndex].meals[toMealIdx].items.push(moved);
+                                      }
+                                      // riga minima
+                                      if (next.days[dayIndex].meals[fromMealIdx].items.length === 0) {
+                                        next.days[dayIndex].meals[fromMealIdx].items.push({
+                                          qty: 100,
+                                          unit: "g",
+                                          description: "",
+                                          kcal: null,
+                                          protein_g: null,
+                                          carbs_g: null,
+                                          fat_g: null,
+                                          fiber_g: null,
+                                          _per100: null,
+                                        });
+                                      }
+                                      return next;
+                                    })
+                                  }
+                                >
+                                  {d.meals.map((opt) => (
+                                    <option key={opt.position} value={opt.position}>
+                                      {opt.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+
+                              {/* ALIMENTO + AUTOCOMPLETE (onBlur qui, non su hidden) */}
+                              <td className="p-2">
+                                <input
+                                  className="w-full border rounded p-2"
+                                  placeholder="Alimento o descrizione"
+                                  value={row.description || ""}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setFoodQuery(val);
+                                    setState((s) => {
+                                      const next = structuredClone(s);
+                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                      next.days[dayIndex].meals[mIdx].items[iIdx].description = val;
+                                      // sta editando → scollega food collegato
+                                      next.days[dayIndex].meals[mIdx].items[iIdx].id = null;
+                                      next.days[dayIndex].meals[mIdx].items[iIdx]._per100 = null;
+                                      return next;
+                                    });
+                                  }}
+                                  onBlur={() => {
+                                    const match =
+                                      foods.find(
+                                        (f) => f.name.toLowerCase() === (row.description || "").toLowerCase().trim()
+                                      ) || null;
+                                    if (!match) return;
+                                    setState((s) => {
+                                      const next = structuredClone(s);
+                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                      const target = next.days[dayIndex].meals[mIdx].items[iIdx];
+                                      target.id = match.id;
+                                      target._per100 = {
+                                        kcal: match.kcal_per_100,
+                                        protein: match.protein_per_100,
+                                        carbs: match.carbs_per_100,
+                                        fat: match.fat_per_100,
+                                        fiber: match.fiber_per_100 ?? null,
+                                      };
+                                      return next;
+                                    });
+                                  }}
+                                  list={`foods-${d.day}-${mIdx}-${iIdx}`}
+                                />
+                                {foods.length > 0 && (
+                                  <datalist id={`foods-${d.day}-${mIdx}-${iIdx}`}>
+                                    {foods.slice(0, 20).map((f) => (
+                                      <option key={f.id} value={f.name} />
+                                    ))}
+                                  </datalist>
+                                )}
+                              </td>
+
+                              {/* QTY */}
+                              <td className="p-2">
+                                <input
+                                  type="number"
+                                  className="w-full border rounded p-2"
+                                  min={0}
+                                  value={row.qty}
+                                  onChange={(e) =>
+                                    setState((s) => {
+                                      const next = structuredClone(s);
+                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                      next.days[dayIndex].meals[mIdx].items[iIdx].qty = Number(e.target.value);
+                                      return next;
+                                    })
+                                  }
+                                />
+                              </td>
+
+                              {/* UNIT */}
+                              <td className="p-2">
+                                <select
+                                  className="w-full border rounded p-2"
+                                  value={row.unit}
+                                  onChange={(e) =>
+                                    setState((s) => {
+                                      const next = structuredClone(s);
+                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                      next.days[dayIndex].meals[mIdx].items[iIdx].unit = e.target.value as any;
+                                      return next;
+                                    })
+                                  }
+                                >
+                                  <option>g</option>
+                                  <option>ml</option>
+                                  <option>pcs</option>
+                                  <option>cup</option>
+                                  <option>tbsp</option>
+                                  <option>tsp</option>
+                                  <option>slice</option>
+                                </select>
+                              </td>
+
+                              {/* MACRO (non editabili) */}
+                              <td className="p-2 align-middle">{values.kcal || 0}</td>
+                              <td className="p-2 align-middle">{values.protein_g || 0}</td>
+                              <td className="p-2 align-middle">{values.carbs_g || 0}</td>
+                              <td className="p-2 align-middle">{values.fiber_g || 0}</td>
+                              <td className="p-2 align-middle">{values.fat_g || 0}</td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Aggiungi riga per un pasto specifico */}
+                <div className="mt-3 flex items-center gap-2">
+                  <span className="text-sm text-gray-600">Aggiungi riga sul pasto:</span>
+                  <select
+                    className="border rounded p-2 text-sm"
+                    onChange={(e) =>
                       setState((s) => {
+                        if (e.target.value === "") return s;
                         const next = structuredClone(s);
-                        next.days[dIdx].meals[mIdx].items.push({
-                          qty: 100,
-                          unit: "g",
-                          description: "",
-                        });
+                        const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                        const toPos = Number(e.target.value);
+                        const toMealIdx = next.days[dayIndex].meals.findIndex((mm) => mm.position === toPos);
+                        if (toMealIdx >= 0) {
+                          next.days[dayIndex].meals[toMealIdx].items.push({
+                            qty: 100,
+                            unit: "g",
+                            description: "",
+                            kcal: null,
+                            protein_g: null,
+                            carbs_g: null,
+                            fat_g: null,
+                            fiber_g: null,
+                            _per100: null,
+                          });
+                        }
+                        (e.target as HTMLSelectElement).value = "";
                         return next;
                       })
                     }
+                    defaultValue=""
                   >
-                    + Aggiungi alimento
-                  </button>
+                    <option value="" disabled>
+                      Seleziona pasto…
+                    </option>
+                    {d.meals.map((m) => (
+                      <option key={m.position} value={m.position}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              ))}
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-6 flex flex-wrap gap-3 justify-end">
-          <button
-            className="px-5 py-3 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
-            onClick={handleDownloadPDF}
-          >
-            Scarica PDF
-          </button>
-          <button
-            className={`px-5 py-3 rounded-xl ${disabledSave ? "bg-gray-300 text-white" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}
-            disabled={disabledSave}
-            onClick={handleSave}
-            title={
-              disabledSave
-                ? (userType === "utente"
-                    ? (state.ownerMode === "other"
-                        ? "Gli utenti non possono salvare piani per esterni"
-                        : "Profilo cliente mancante")
-                    : (state.ownerMode === "other"
-                        ? "Seleziona un customer_id esistente"
-                        : "Profilo cliente mancante"))
-                : ""
-            }
-          >
-            Salva nel DB
-          </button>
-        </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

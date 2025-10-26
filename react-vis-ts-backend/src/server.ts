@@ -9,6 +9,7 @@ import exercisesRoutes from "./routes/exercises";
 import schedulesRoutes from "./routes/schedules";
 import pdfRoutes from "./routes/pdf";
 import { router as chatRouter } from "./routes/chat.js";
+import meRoutes from "./routes/me";
 
 import { attachWs } from "./ws.js";
 
@@ -24,6 +25,7 @@ app.use("/api/exercises", exercisesRoutes);
 app.use("/api/schedules", schedulesRoutes);
 app.use("/api/chat", chatRouter);
 app.use("/api/pdf", pdfRoutes);
+app.use("/api/me", meRoutes);
 
 // Health
 app.get("/health", (_req, res) => res.json({ ok: true }));
