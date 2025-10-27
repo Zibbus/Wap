@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import FoodAsyncSelect from "../components/FoodAsyncSelect";
+import type { FoodApi as FoodApiType } from "../components/FoodAsyncSelect";
+
 
 /* ===== Tipi ===== */
 type Goal =
@@ -92,17 +95,6 @@ type MeResponse = {
   dob?: string | null;
   customer?: { id: number; weight: number | null; height: number | null } | null;
   freelancer?: { id: number; vat: string } | null;
-};
-
-type FoodApi = {
-  id: number;
-  name: string;
-  default_unit: "g" | "ml" | "pcs" | "cup" | "tbsp" | "tsp" | "slice";
-  kcal_per_100: number | null;
-  protein_per_100: number | null;
-  carbs_per_100: number | null;
-  fat_per_100: number | null;
-  fiber_per_100?: number | null;
 };
 
 /* ===== helpers ===== */
@@ -270,6 +262,21 @@ function ensureOneRowPerMeal(days: NutritionDay[], skipDays: number[]): Nutritio
   return next;
 }
 
+/** Converte una riga in un value compatibile con FoodAsyncSelect */
+function foodApiFromRow(row: FoodRow): FoodApiType | null {
+  if (!row?.id || !row?.description) return null;
+  return {
+    id: row.id,
+    name: row.description,
+    default_unit: row.unit,
+    kcal_per_100: row._per100?.kcal ?? null,
+    protein_per_100: row._per100?.protein ?? null,
+    carbs_per_100: row._per100?.carbs ?? null,
+    fat_per_100: row._per100?.fat ?? null,
+    fiber_per_100: row._per100?.fiber ?? null,
+  };
+}
+
 /* ===== COMPONENTE ===== */
 export default function NutritionPage() {
   const { user, token } = readAuthSnapshot();
@@ -278,8 +285,6 @@ export default function NutritionPage() {
 
   const [loadingSelf, setLoadingSelf] = useState(false);
   const [selfData, setSelfData] = useState<UserAnthro>({});
-  const [foods, setFoods] = useState<FoodApi[]>([]);
-  const [foodQuery, setFoodQuery] = useState<string>("");
 
   const [state, setState] = useState<PlanState>({
     ownerMode: "self",
@@ -414,33 +419,6 @@ export default function NutritionPage() {
       }
     })();
   }, [state.ownerMode, state.cheatConfirmed, state.cheatDays, user?.type, token]);
-
-  /* Ricerca alimenti (autocomplete) */
-  useEffect(() => {
-    const tkn = token;
-    const q = foodQuery.trim();
-    if (!q) {
-      setFoods([]);
-      return;
-    }
-    const ctrl = new AbortController();
-
-    (async () => {
-      try {
-        const res = await fetch(`http://localhost:4000/api/foods?query=${encodeURIComponent(q)}`, {
-          headers: tkn ? { Authorization: `Bearer ${tkn}` } : {},
-          signal: ctrl.signal,
-        });
-        if (!res.ok) return;
-        const data: FoodApi[] = await res.json();
-        setFoods(data);
-      } catch {
-        /* noop */
-      }
-    })();
-
-    return () => ctrl.abort();
-  }, [foodQuery, token]);
 
   /* Calcoli globali */
   const derived = useMemo(() => {
@@ -617,13 +595,12 @@ export default function NutritionPage() {
     }
   };
 
-const disabledSave =
-  userType === "utente"
-    ? !(state.ownerMode === "self" && !!state.selfCustomerId)
-    : (userType === "professionista" || userType === "admin")
-    ? (state.ownerMode === "self" ? !state.selfCustomerId : !state.targetCustomerId)
-    : true;
-
+  const disabledSave =
+    userType === "utente"
+      ? !(state.ownerMode === "self" && !!state.selfCustomerId)
+      : (userType === "professionista" || userType === "admin")
+      ? (state.ownerMode === "self" ? !state.selfCustomerId : !state.targetCustomerId)
+      : true;
 
   const handleSave = async () => {
     if (!state.expire) {
@@ -1146,55 +1123,41 @@ const disabledSave =
                                 </select>
                               </td>
 
-                              {/* ALIMENTO + AUTOCOMPLETE (onBlur qui, non su hidden) */}
-                              <td className="p-2">
-                                <input
-                                  className="w-full border rounded p-2"
-                                  placeholder="Alimento o descrizione"
-                                  value={row.description || ""}
-                                  onChange={(e) => {
-                                    const val = e.target.value;
-                                    setFoodQuery(val);
-                                    setState((s) => {
-                                      const next = structuredClone(s);
-                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
-                                      next.days[dayIndex].meals[mIdx].items[iIdx].description = val;
-                                      // sta editando → scollega food collegato
-                                      next.days[dayIndex].meals[mIdx].items[iIdx].id = null;
-                                      next.days[dayIndex].meals[mIdx].items[iIdx]._per100 = null;
-                                      return next;
-                                    });
-                                  }}
-                                  onBlur={() => {
-                                    const match =
-                                      foods.find(
-                                        (f) => f.name.toLowerCase() === (row.description || "").toLowerCase().trim()
-                                      ) || null;
-                                    if (!match) return;
+                              {/* ALIMENTO: react-select async */}
+                              <td className="p-2 min-w-[280px]">
+                                <FoodAsyncSelect
+                                  token={token}
+                                  value={foodApiFromRow(row)}
+                                  onChange={(food) => {
                                     setState((s) => {
                                       const next = structuredClone(s);
                                       const dayIndex = next.days.findIndex((x) => x.day === d.day);
                                       const target = next.days[dayIndex].meals[mIdx].items[iIdx];
-                                      target.id = match.id;
-                                      target._per100 = {
-                                        kcal: match.kcal_per_100,
-                                        protein: match.protein_per_100,
-                                        carbs: match.carbs_per_100,
-                                        fat: match.fat_per_100,
-                                        fiber: match.fiber_per_100 ?? null,
-                                      };
+
+                                      if (food) {
+                                        target.id = food.id;
+                                        target.description = food.name;
+                                        target._per100 = {
+                                          kcal: food.kcal_per_100,
+                                          protein: food.protein_per_100,
+                                          carbs: food.carbs_per_100,
+                                          fat: food.fat_per_100,
+                                          fiber: food.fiber_per_100 ?? null,
+                                        };
+                                        // opzionale: usa unit di default del food
+                                        target.unit = food.default_unit;
+                                      } else {
+                                        // clear selezione
+                                        target.id = null;
+                                        target._per100 = null;
+                                        // se vuoi svuotare anche il testo:
+                                        // target.description = "";
+                                      }
                                       return next;
                                     });
                                   }}
-                                  list={`foods-${d.day}-${mIdx}-${iIdx}`}
+                                  placeholder="Cerca alimento…"
                                 />
-                                {foods.length > 0 && (
-                                  <datalist id={`foods-${d.day}-${mIdx}-${iIdx}`}>
-                                    {foods.slice(0, 20).map((f) => (
-                                      <option key={f.id} value={f.name} />
-                                    ))}
-                                  </datalist>
-                                )}
                               </td>
 
                               {/* QTY */}
@@ -1224,7 +1187,7 @@ const disabledSave =
                                     setState((s) => {
                                       const next = structuredClone(s);
                                       const dayIndex = next.days.findIndex((x) => x.day === d.day);
-                                      next.days[dayIndex].meals[mIdx].items[iIdx].unit = e.target.value as any;
+                                      next.days[dayIndex].meals[mIdx].items[iIdx].unit = e.target.value as FoodRow["unit"];
                                       return next;
                                     })
                                   }
