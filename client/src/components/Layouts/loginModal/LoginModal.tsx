@@ -262,8 +262,9 @@ export default function LoginModal() {
 
         // ✅ Salva nel contesto globale
         localStorage.setItem("authData", JSON.stringify(normalized));
-        login(normalized);
+        await login(username.trim(), password);
         closeLoginModal();
+
       }
     } catch (err: any) {
       setError(err?.message || "Errore di rete.");

@@ -8,11 +8,18 @@ type Props = {
   onContact: () => void;
 };
 
+const fmtEUR = new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+
 export default function Card({ p, onOpen, onContact }: Props) {
   return (
     <article className="bg-white rounded-2xl shadow p-5 border border-indigo-50">
       <div className="flex gap-4">
-        <img src={p.avatarUrl || "/images/avatar-fallback.png"} className="w-20 h-20 rounded-full object-cover" />
+        <img
+          src={p.avatarUrl || "/images/avatar-fallback.png"}
+          alt={`Avatar di ${p.name}`}
+          className="w-20 h-20 rounded-full object-cover"
+          loading="lazy"
+        />
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h3 className="text-xl font-bold">{p.name}</h3>
@@ -45,7 +52,7 @@ export default function Card({ p, onOpen, onContact }: Props) {
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <div className="text-indigo-700 font-bold">{p.pricePerHour}€ / h</div>
+        <div className="text-indigo-700 font-bold">{fmtEUR.format(p.pricePerHour)} / h</div>
         <div className="flex gap-2">
           <button onClick={onOpen} className="px-4 py-2 rounded-lg border border-gray-200 hover:bg-gray-50">
             Vedi profilo

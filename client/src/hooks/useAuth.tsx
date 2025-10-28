@@ -1,19 +1,27 @@
+// client/src/hooks/useAuth.tsx
 import { useEffect, useState, createContext, useContext } from "react";
 import type { ReactNode } from "react";
+import { apiLogin, apiLogout } from "../services/auth";
+import { setAuthToken } from "../services/api";
 
 export type AuthData = {
   token: string;
   userId: number;
   username: string;
   role?: "utente" | "professionista" | "admin";
-  avatarUrl?: string; 
+  avatarUrl?: string;
 };
 
 type AuthContextType = {
   authData: AuthData | null;
   isLoading: boolean;
-  login: (data: AuthData) => void;
-  logout: () => void;
+  /** Login con credenziali: preferito */
+  login: (username: string, password?: string) => Promise<void>;
+  /** Compatibilità: setta direttamente i dati (vecchio comportamento) */
+  loginWithData: (data: AuthData) => void;
+  logout: () => Promise<void>;
+  /** Esegue fn solo se loggato, altrimenti puoi agganciare qui l'apertura del modal */
+  requireLogin: (fn: () => void) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,12 +30,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authData, setAuthData] = useState<AuthData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ✅ Inizializza da localStorage solo all’avvio
+  // ✅ bootstrap da localStorage + imposta Authorization sul client HTTP
   useEffect(() => {
     const saved = localStorage.getItem("authData");
     if (saved) {
       try {
-        setAuthData(JSON.parse(saved));
+        const parsed: AuthData = JSON.parse(saved);
+        setAuthData(parsed);
+        if (parsed?.token) setAuthToken(parsed.token);
       } catch {
         localStorage.removeItem("authData");
       }
@@ -35,18 +45,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  const login = (data: AuthData) => {
-    setAuthData(data);
-    localStorage.setItem("authData", JSON.stringify(data));
+  // ✅ nuovo: login con credenziali → chiama API, salva token e dati
+  const login = async (username: string, password?: string) => {
+    setIsLoading(true);
+    try {
+      const res = await apiLogin(username, password);
+      // adatta qui in base a cosa restituisce il tuo backend di login
+      const token = (res as any)?.token || "";
+      const user = (res as any)?.user || {};
+
+      const data: AuthData = {
+        token,
+        userId: user.id ?? user.userId ?? 0,
+        username: user.username ?? username,
+        role: user.role,
+        avatarUrl: user.avatarUrl,
+      };
+
+      setAuthToken(token);
+      setAuthData(data);
+      localStorage.setItem("authData", JSON.stringify(data));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const logout = () => {
-    setAuthData(null);
-    localStorage.removeItem("authData");
+  // ✅ compat: se in qualche punto chiami ancora login(data: AuthData)
+  const loginWithData = (data: AuthData) => {
+    setAuthData(data);
+    localStorage.setItem("authData", JSON.stringify(data));
+    if (data?.token) setAuthToken(data.token);
+  };
+
+  const logout = async () => {
+    try {
+      await apiLogout(); // se non usi endpoint di logout, resta così
+    } finally {
+      setAuthToken(null);
+      setAuthData(null);
+      localStorage.removeItem("authData");
+    }
+  };
+
+  const requireLogin = (fn: () => void) => {
+    if (authData) return fn();
+    // Qui puoi aprire il tuo LoginModal (se ce l’hai).
+    // Placeholder semplice: prompt
+    const u = window.prompt("Per continuare, accedi. Username:");
+    if (u) login(u).then(fn);
   };
 
   return (
-    <AuthContext.Provider value={{ authData, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ authData, isLoading, login, loginWithData, logout, requireLogin }}>
       {children}
     </AuthContext.Provider>
   );

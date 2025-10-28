@@ -1,58 +1,91 @@
-import { useEffect, useMemo, useState } from "react";
+// client/src/pages/Professionisti.tsx
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { listProfessionals } from "../services/professionals";
 import type { Professional } from "../types/professional";
-import { Filters, List } from "../components/professionisti";
-import { useNavigate } from "react-router-dom";
+import List from "../components/professionisti/List";
+import Filters from "../components/professionisti/Filters";
 import { useAuth } from "../hooks/useAuth";
 import { useLoginModal } from "../hooks/useLoginModal";
 
-export default function Professionisti() {
-  const [items, setItems] = useState<Professional[]>([]);
-  const [filters, setFilters] = useState({
-    q: "",
-    role: "all" as "all" | "personal_trainer" | "nutrizionista",
-    onlineOnly: false,
-    minRating: 0,
-    maxPrice: "" as number | "",
-  });
+type FiltersState = {
+  q: string;
+  role: "all" | "personal_trainer" | "nutrizionista";
+  onlineOnly: boolean;
+  minRating: number;
+  maxPrice: number | "";
+};
 
+export default function Professionisti() {
   const navigate = useNavigate();
   const { authData } = useAuth();
   const { openLoginModal } = useLoginModal();
 
-  useEffect(() => { listProfessionals().then(setItems); }, []);
+  const [items, setItems] = useState<Professional[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
-    const { q, role, onlineOnly, minRating, maxPrice } = filters;
-    return items.filter(p => {
-      if (role !== "all" && p.role !== role) return false;
-      if (onlineOnly && !p.online) return false;
-      if (minRating && p.rating < minRating) return false;
-      if (maxPrice !== "" && p.pricePerHour > Number(maxPrice)) return false;
+  const [filters, setFilters] = useState<FiltersState>({
+    q: "",
+    role: "all",
+    onlineOnly: false,
+    minRating: 0,
+    maxPrice: "",
+  });
 
-      const needle = q.trim().toLowerCase();
-      if (needle) {
-        const hay = `${p.name} ${p.role} ${p.city ?? ""} ${p.specialties.join(" ")} ${p.languages.join(" ")}`.toLowerCase();
-        if (!hay.includes(needle)) return false;
+  useEffect(() => {
+    let stop = false;
+    setLoading(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const data = await listProfessionals(filters);
+        if (!stop) setItems(data);
+      } catch (e: any) {
+        if (!stop) setError(e?.message || "Errore caricamento");
+      } finally {
+        if (!stop) setLoading(false);
       }
-      return true;
-    });
-  }, [items, filters]);
+    })();
+
+    return () => { stop = true; };
+  }, [filters]);
+
+  const handleOpen = (id: number) => {
+    navigate(`/professionisti/${id}`);
+  };
+
+  const handleContact = (id: number) => {
+    if (!authData) {
+      openLoginModal();       // 👈 se non loggato, apri modal
+      return;
+    }
+    // 👇 se loggato, procedi (puoi cambiare rotta verso /chat/:id quando pronta)
+    navigate(`/professionisti/${id}`);
+  };
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12">
-      <h1 className="text-4xl font-extrabold text-indigo-700 mb-6">Professionisti</h1>
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-2xl md:text-3xl font-semibold">Professionisti</h1>
 
-      <Filters onChange={setFilters} />
+      {/* Filtri: il componente emette tutto in onChange */}
+      <div className="mt-6">
+        <Filters onChange={setFilters} />
+      </div>
 
-      <List
-        items={filtered}
-        onOpen={(id) => navigate(`/professionisti/${id}`)}
-        onContact={(id) => {
-            if (!authData) return openLoginModal();
-            navigate(`/chat/${id}`);
-        }}
-        />
+      {/* Stato */}
+      {loading && <div className="mt-6 text-gray-600">Caricamento…</div>}
+
+      {error && !loading && (
+        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-3 text-red-700">
+          Errore: {error}
+        </div>
+      )}
+
+      {!loading && !error && (
+        <List items={items} onOpen={handleOpen} onContact={handleContact} />
+      )}
     </div>
   );
 }
