@@ -1,7 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import FoodAsyncSelect from "../components/FoodAsyncSelect";
 import type { FoodApi as FoodApiType } from "../components/FoodAsyncSelect";
 
+// 👇 aggiunte per export compatibile
+import Html2CanvasExportButton from "../components/Html2CanvasExportButton";
+import ExportNutritionPreview, { type ExportDay } from "../export/ExportNutritionPreview";
 
 /* ===== Tipi ===== */
 type Goal =
@@ -18,32 +21,30 @@ type UserAnthro = {
   first_name?: string;
   last_name?: string;
   sex?: "M" | "F" | "O";
-  dob?: string; // YYYY-MM-DD
-  weight?: number | null; // kg
-  height?: number | null; // cm
+  dob?: string;
+  weight?: number | null;
+  height?: number | null;
 };
 
 type FoodRow = {
-  id?: number | null;       // foods.id se presente
-  description?: string;     // testo libero
-  qty: number;              // quantità inserita dall'utente
+  id?: number | null;
+  description?: string;
+  qty: number;
   unit: "g" | "ml" | "pcs" | "cup" | "tbsp" | "tsp" | "slice";
-
-  // valori correnti calcolati (sola visualizzazione)
   kcal?: number | null;
   protein_g?: number | null;
   carbs_g?: number | null;
   fat_g?: number | null;
   fiber_g?: number | null;
-
-  // meta locali per calcolo dinamico (NON salvate nel DB)
-  _per100?: {
-    kcal?: number | null;
-    protein?: number | null;
-    carbs?: number | null;
-    fat?: number | null;
-    fiber?: number | null;
-  } | null;
+  _per100?:
+    | {
+        kcal?: number | null;
+        protein?: number | null;
+        carbs?: number | null;
+        fat?: number | null;
+        fiber?: number | null;
+      }
+    | null;
 };
 
 type Meal = {
@@ -54,7 +55,7 @@ type Meal = {
 };
 
 type NutritionDay = {
-  day: number; // 1..7
+  day: number;
   meals: Meal[];
 };
 
@@ -70,16 +71,13 @@ type PlanState = {
     height: number | "";
   };
   targetCustomerId?: number | null;
-
   consentAccepted: boolean;
   cheatConfirmed: boolean;
   cheatDays: number[];
-
-  expire: string; // YYYY-MM-DD
+  expire: string;
   goal: Goal;
   activity: "sedentario" | "leggero" | "moderato" | "intenso" | "atleta";
   notes: string;
-
   days: NutritionDay[];
   showPreview?: boolean;
 };
@@ -106,6 +104,8 @@ const activityFactor: Record<PlanState["activity"], number> = {
   atleta: 1.9,
 };
 
+const MAX_CHEATS = 3;
+
 function weekdayLabel(n: number) {
   const labels = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
   return labels[(n - 1) % 7];
@@ -119,7 +119,6 @@ function defaultWeek(): NutritionDay[] {
     { position: 4, name: "Spuntino", items: [] as FoodRow[] },
     { position: 5, name: "Cena", items: [] as FoodRow[] },
   ];
-  // almeno 1 riga vuota per ogni pasto
   const withOneRow = defaultMeals.map((m) => ({
     ...m,
     items: [
@@ -142,7 +141,6 @@ function defaultWeek(): NutritionDay[] {
   }));
 }
 
-/** Legge authData dal localStorage (supporta schema “completo” e “ridotto”) */
 function readAuthSnapshot() {
   const raw = JSON.parse(localStorage.getItem("authData") || "{}");
   const userFull = raw?.user ?? {};
@@ -199,18 +197,16 @@ function kcalForGoal(goal: Goal, tdee: number | undefined) {
   }
 }
 
-/** Calcolo dinamico macro per una riga, usando per-100 + qty + unit */
-function computeRowMacros(row: FoodRow): Required<Pick<FoodRow, "kcal" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g">> {
+function computeRowMacros(
+  row: FoodRow
+): Required<Pick<FoodRow, "kcal" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g">> {
   const per100 = row._per100 ?? null;
   let factor = 0;
 
   if (per100) {
-    if (row.unit === "g" || row.unit === "ml") {
-      factor = (row.qty || 0) / 100;
-    } else {
-      // per unità a pezzi: per ora assumiamo che per-UNIT = per-100
-      factor = row.qty || 0;
-    }
+    if (row.unit === "g" || row.unit === "ml") factor = (row.qty || 0) / 100;
+    else factor = row.qty || 0;
+
     const kcal = per100.kcal ? per100.kcal * factor : 0;
     const p = per100.protein ? per100.protein * factor : 0;
     const c = per100.carbs ? per100.carbs * factor : 0;
@@ -226,7 +222,6 @@ function computeRowMacros(row: FoodRow): Required<Pick<FoodRow, "kcal" | "protei
     };
   }
 
-  // fallback: se abbiamo valori già salvati nella riga
   return {
     kcal: Math.round(row.kcal || 0),
     protein_g: Number((row.protein_g || 0).toFixed(1)),
@@ -236,33 +231,27 @@ function computeRowMacros(row: FoodRow): Required<Pick<FoodRow, "kcal" | "protei
   };
 }
 
-/** Assicura almeno 1 riga per ogni pasto dei giorni editabili */
-function ensureOneRowPerMeal(days: NutritionDay[], skipDays: number[]): NutritionDay[] {
-  const next = structuredClone(days) as NutritionDay[];
-  for (const d of next) {
-    if (skipDays.includes(d.day)) continue;
-    for (const meal of d.meals) {
-      if (!meal.items || meal.items.length === 0) {
-        meal.items = [
-          {
-            qty: 100,
-            unit: "g",
-            description: "",
-            kcal: null,
-            protein_g: null,
-            carbs_g: null,
-            fat_g: null,
-            fiber_g: null,
-            _per100: null,
-          },
-        ];
-      }
+function computeDayTotals(day: NutritionDay) {
+  let kcal = 0, protein = 0, carbs = 0, fat = 0, fiber = 0;
+  for (const meal of day.meals) {
+    for (const it of meal.items) {
+      const v = computeRowMacros(it);
+      kcal += v.kcal || 0;
+      protein += v.protein_g || 0;
+      carbs += v.carbs_g || 0;
+      fat += v.fat_g || 0;
+      fiber += v.fiber_g || 0;
     }
   }
-  return next;
+  return {
+    kcal: Math.round(kcal),
+    protein: Number(protein.toFixed(1)),
+    carbs: Number(carbs.toFixed(1)),
+    fat: Number(fat.toFixed(1)),
+    fiber: Number(fiber.toFixed(1)),
+  };
 }
 
-/** Converte una riga in un value compatibile con FoodAsyncSelect */
 function foodApiFromRow(row: FoodRow): FoodApiType | null {
   if (!row?.id || !row?.description) return null;
   return {
@@ -285,17 +274,19 @@ export default function NutritionPage() {
 
   const [loadingSelf, setLoadingSelf] = useState(false);
   const [selfData, setSelfData] = useState<UserAnthro>({});
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  // 👇 ref per la VISTA SAFE da “fotografare”
+  const exportRef = useRef<HTMLElement>(null);
 
   const [state, setState] = useState<PlanState>({
     ownerMode: "self",
     selfCustomerId: selfCustomerIdFromLogin ?? null,
     otherPerson: { first_name: "", last_name: "", sex: "O", age: "", weight: "", height: "" },
     targetCustomerId: null,
-
     consentAccepted: false,
     cheatConfirmed: false,
     cheatDays: [],
-
     expire: "",
     goal: "mantenimento",
     activity: "moderato",
@@ -304,7 +295,6 @@ export default function NutritionPage() {
     showPreview: false,
   });
 
-  /* /api/me + (se sgarri confermati) prefill ultimo piano */
   useEffect(() => {
     if (state.ownerMode !== "self") return;
 
@@ -319,8 +309,6 @@ export default function NutritionPage() {
     (async () => {
       try {
         setLoadingSelf(true);
-
-        // 1) /api/me  → autocompilazione
         const res = await fetch("http://localhost:4000/api/me", {
           headers: { Authorization: `Bearer ${tkn}` },
         });
@@ -336,91 +324,17 @@ export default function NutritionPage() {
           height: me.customer?.height ?? null,
         });
 
-        setState((s) => ({
-          ...s,
-          selfCustomerId: me.customer?.id ?? null,
-        }));
+        setState((s) => ({ ...s, selfCustomerId: me.customer?.id ?? null }));
         setUserType(me.type);
-
-        // 2) prefill ultimo piano (solo dopo conferma sgarri)
-        if (state.cheatConfirmed && me.customer?.id) {
-          const latest = await fetch(
-            `http://localhost:4000/api/nutrition/plans/latest?customer_id=${me.customer.id}`,
-            { headers: { Authorization: `Bearer ${tkn}` } }
-          );
-
-          if (latest.ok) {
-            const data = (await latest.json()) as {
-              expire?: string | null;
-              goal?: Goal | null;
-              notes?: string | null;
-              days?: Array<{
-                day: number;
-                meals: Array<{
-                  position: number;
-                  name: string;
-                  notes: string | null;
-                  items: Array<{
-                    food_id: number | null;
-                    description: string | null;
-                    qty: number | null;
-                    unit: "g" | "ml" | "pcs" | "cup" | "tbsp" | "tsp" | "slice";
-                    kcal: number | null;
-                    protein_g: number | null;
-                    carbs_g: number | null;
-                    fat_g: number | null;
-                  }>;
-                }>;
-              }>;
-            };
-
-            const base = defaultWeek();
-            for (const d of data.days ?? []) {
-              const targetDay = base.find((x) => x.day === d.day);
-              if (!targetDay) continue;
-
-              for (const m of d.meals ?? []) {
-                const targetMeal = targetDay.meals.find((x) => x.position === m.position);
-                if (!targetMeal) continue;
-
-                targetMeal.name = m.name || targetMeal.name;
-                targetMeal.notes = m.notes || undefined;
-                targetMeal.items = (m.items ?? []).map((it) => ({
-                  id: it.food_id ?? null,
-                  description: it.description ?? "",
-                  qty: it.qty ?? 100,
-                  unit: it.unit ?? "g",
-                  // pre-carico i valori salvati (visual fallback)
-                  kcal: it.kcal,
-                  protein_g: it.protein_g,
-                  carbs_g: it.carbs_g,
-                  fat_g: it.fat_g,
-                  fiber_g: null,
-                  _per100: null, // si popola se selezioni dal catalogo
-                }));
-              }
-            }
-
-            const withMinRows = ensureOneRowPerMeal(base, state.cheatDays);
-            setState((s) => ({
-              ...s,
-              expire: s.expire || (data.expire ?? ""),
-              goal: (data.goal as Goal) || s.goal,
-              notes: s.notes || (data.notes ?? ""),
-              days: withMinRows,
-            }));
-          }
-        }
       } catch (e) {
-        console.error("Errore /api/me o /latest", e);
+        console.error("Errore /api/me", e);
         setUserType((user?.type as any) ?? undefined);
       } finally {
         setLoadingSelf(false);
       }
     })();
-  }, [state.ownerMode, state.cheatConfirmed, state.cheatDays, user?.type, token]);
+  }, [state.ownerMode, user?.type, token]);
 
-  /* Calcoli globali */
   const derived = useMemo(() => {
     const sex = state.ownerMode === "self" ? selfData.sex : state.otherPerson.sex;
     const weight =
@@ -429,13 +343,37 @@ export default function NutritionPage() {
       state.ownerMode === "self" ? selfData.height ?? undefined : (state.otherPerson.height as number | undefined);
     const age = state.ownerMode === "self" ? ageFromDOB(selfData.dob) : (state.otherPerson.age as number | undefined);
 
-    const BMR = bmr(sex, weight, height, age);
+    const BMR = bmr(sex as any, weight, height, age);
     const TDEE = BMR ? BMR * activityFactor[state.activity] : undefined;
     const target = kcalForGoal(state.goal, TDEE);
     return { BMR: BMR ? Math.round(BMR) : undefined, TDEE: TDEE ? Math.round(TDEE) : undefined, targetKcal: target };
   }, [state.ownerMode, selfData, state.otherPerson, state.activity, state.goal]);
 
-  /* ========== UI STEP-BY-STEP ========== */
+  // ====== dati per la VISTA SAFE da esportare ======
+  const cheatsLabel = useMemo(() => {
+    return state.cheatDays.length
+      ? state.cheatDays.sort((a, b) => a - b).map((d) => weekdayLabel(d)).join(", ")
+      : "nessuno";
+  }, [state.cheatDays]);
+
+  const exportDays: ExportDay[] = useMemo(() => {
+    return state.days
+      .filter((d) => !new Set(state.cheatDays).has(d.day))
+      .map((d) => {
+        const totals = computeDayTotals(d);
+        return {
+          label: `Giorno ${d.day} — ${weekdayLabel(d.day)}`,
+          totals: { kcal: totals.kcal, protein: totals.protein, carbs: totals.carbs, fiber: totals.fiber, fat: totals.fat },
+          meals: d.meals.map((m) => ({
+            name: m.name,
+            items: m.items.map((it) => {
+              const v = computeRowMacros(it);
+              return { text: `${it.description || "—"} — ${it.qty}${it.unit}${v.kcal ? `, ${v.kcal} kcal` : ""}` };
+            }),
+          })),
+        };
+      });
+  }, [state.days, state.cheatDays]);
 
   // 1) POPUP CONSENSO
   if (!state.consentAccepted) {
@@ -446,31 +384,15 @@ export default function NutritionPage() {
           <div className="text-sm text-gray-700 space-y-3">
             <p>
               Questo generatore di piano nutrizionale ha finalità informative ed educative. Non sostituisce il parere di un
-              medico o di un professionista sanitario. In presenza di condizioni cliniche, gravidanza, allattamento o terapie
-              farmacologiche, consulta il tuo medico prima di adottare qualunque piano alimentare.
+              medico o di un professionista sanitario.
             </p>
-            <p>
-              Dichiari di utilizzare il piano sotto la tua esclusiva responsabilità. Gli autori dell’app non sono responsabili
-              per eventuali conseguenze derivanti da un uso improprio delle indicazioni fornite. In caso di dubbi, interrompi
-              l’utilizzo e chiedi un parere medico.
-            </p>
-            <ul className="list-disc ml-5">
-              <li>In caso di allergie/intolleranze, verifica sempre gli alimenti inseriti.</li>
-              <li>Bevi acqua a sufficienza e monitora eventuali segnali di malessere.</li>
-              <li>Integra attività fisica in modo proporzionato al tuo livello.</li>
-            </ul>
           </div>
           <div className="mt-6 flex justify-end gap-3">
-            <button
-              className="px-5 py-3 rounded-xl border border-gray-300 text-gray-700"
-              onClick={() => window.history.back()}
-            >
+            <button className="px-5 py-3 rounded-xl border border-gray-300 text-gray-700" onClick={() => window.history.back()}>
               Annulla
             </button>
-            <button
-              className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
-              onClick={() => setState((s) => ({ ...s, consentAccepted: true }))}
-            >
+            <button className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
+              onClick={() => setState((s) => ({ ...s, consentAccepted: true }))}>
               Accetto e procedo
             </button>
           </div>
@@ -479,25 +401,51 @@ export default function NutritionPage() {
     );
   }
 
-  // 2) SGARRI con pulsanti toggle (blu → verde)
+  // 2) SGARRI
   if (!state.cheatConfirmed) {
+    const safeUnique = (arr: number[]) =>
+      Array.from(new Set(arr.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7))).sort((a, b) => a - b);
+
+    const nonCheatCount = 7 - safeUnique(state.cheatDays).length;
+
     const toggleDay = (d: number) =>
-      setState((s) => ({
-        ...s,
-        cheatDays: s.cheatDays.includes(d) ? s.cheatDays.filter((x) => x !== d) : [...s.cheatDays, d],
-      }));
+      setState((s) => {
+        const current = safeUnique(s.cheatDays);
+        const has = current.includes(d);
+        if (has) return { ...s, cheatDays: current.filter((x) => x !== d) };
+        if (current.length >= MAX_CHEATS) {
+          alert(`Puoi selezionare al massimo ${MAX_CHEATS} giorni di sgarro.\nGiorni utili minimi: ${7 - MAX_CHEATS}.`);
+          return s;
+        }
+        return { ...s, cheatDays: safeUnique([...current, d]) };
+      });
+
+    const handleConfirmCheats = () => {
+      const cheats = safeUnique(state.cheatDays);
+      if (cheats.length > MAX_CHEATS) {
+        alert(`Hai selezionato troppi sgarri (${cheats.length}). Massimo consentito: ${MAX_CHEATS}.`);
+        return;
+      }
+      const usable = 7 - cheats.length;
+      if (usable < 7 - MAX_CHEATS) {
+        alert(`Devono restare almeno ${7 - MAX_CHEATS} giorni utili. Hai selezionato ${cheats.length} sgarri.`);
+        return;
+      }
+      setState((s) => ({ ...s, cheatDays: cheats, cheatConfirmed: true }));
+    };
 
     return (
       <div className="w-full max-w-3xl mx-auto mt-10">
         <div className="bg-white rounded-2xl shadow p-6 border">
           <h2 className="text-2xl font-bold text-indigo-700 mb-4">Seleziona i giorni di “sgarro”</h2>
           <p className="text-sm text-gray-600 mb-4">
-            Clicca sui giorni: diventano verdi quando sono marcati come sgarro. Potrai cambiarli in seguito.
+            Puoi scegliere al massimo {MAX_CHEATS} sgarri (giorni utili minimi: {7 - MAX_CHEATS}).<br />
+            Giorni utili attuali: <strong>{nonCheatCount}</strong>
           </p>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {Array.from({ length: 7 }, (_, i) => i + 1).map((d) => {
-              const active = state.cheatDays.includes(d);
+              const active = (new Set(state.cheatDays)).has(d);
               return (
                 <button
                   key={d}
@@ -512,11 +460,11 @@ export default function NutritionPage() {
             })}
           </div>
 
-          <div className="mt-6 flex justify-end">
-            <button
-              className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
-              onClick={() => setState((s) => ({ ...s, cheatConfirmed: true }))}
-            >
+          <div className="mt-6 flex justify-end gap-3">
+            <button className="px-5 py-3 rounded-xl border border-gray-300 text-gray-700" onClick={() => window.history.back()}>
+              Annulla
+            </button>
+            <button className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700" onClick={handleConfirmCheats}>
               Conferma e continua
             </button>
           </div>
@@ -526,80 +474,15 @@ export default function NutritionPage() {
   }
 
   /* ====== EDITOR + PREVIEW ====== */
-  const editableDays = state.days.filter((d) => !state.cheatDays.includes(d.day));
-
-  // PREVIEW: qui appaiono anche Scarica PDF / Salva nel DB
-  const handleDownloadPDF = async () => {
-    try {
-      const creator =
-        state.ownerMode === "self"
-          ? `${selfData.first_name ?? ""} ${selfData.last_name ?? ""}`.trim() || "Utente"
-          : `${state.otherPerson.first_name} ${state.otherPerson.last_name}`.trim() || "Altro soggetto";
-
-      const payload = {
-        creator,
-        logoPath: "",
-        plan: {
-          expire: state.expire || null,
-          goal: state.goal,
-          notes: state.notes || null,
-          cheat_days: state.cheatDays.sort((a, b) => a - b),
-          days: editableDays.map((d) => ({
-            number: d.day,
-            meals: d.meals.map((m) => ({
-              position: m.position,
-              name: m.name,
-              notes: m.notes ?? null,
-              items: m.items.map((it) => {
-                const v = computeRowMacros(it);
-                return {
-                  name: it.description || "",
-                  qty: it.qty,
-                  unit: it.unit,
-                  kcal: v.kcal,
-                  protein_g: v.protein_g,
-                  carbs_g: v.carbs_g,
-                  fat_g: v.fat_g,
-                };
-              }),
-            })),
-          })),
-        },
-        totals: {
-          bmr: derived.BMR ?? null,
-          tdee: derived.TDEE ?? null,
-          target_kcal: derived.targetKcal ?? null,
-          activity: state.activity,
-        },
-      };
-
-      const res = await fetch("http://localhost:4000/api/pdf/nutrition-plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error("Errore generazione PDF");
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "piano-nutrizionale.pdf";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error(e);
-      alert("Errore generazione PDF.");
-    }
-  };
+  const editableDays = state.days.filter((d) => !new Set(state.cheatDays).has(d.day));
 
   const disabledSave =
     userType === "utente"
       ? !(state.ownerMode === "self" && !!state.selfCustomerId)
       : (userType === "professionista" || userType === "admin")
-      ? (state.ownerMode === "self" ? !state.selfCustomerId : !state.targetCustomerId)
+      ? state.ownerMode === "self"
+        ? !state.selfCustomerId
+        : !state.targetCustomerId
       : true;
 
   const handleSave = async () => {
@@ -689,11 +572,13 @@ export default function NutritionPage() {
           });
           if (!mRes.ok) throw new Error("Errore creazione pasto");
           const mj = await mRes.json();
-          mealIdMap[`${d.day}-${meal.position}`] = mj.id;
+          mealIdMap[`${
+            d.day
+          }-${meal.position}`] = mj.id;
         }
       }
 
-      // 4) items (macro calcolate al volo)
+      // 4) items
       const itemsPayload = editableDays.flatMap((d) =>
         d.meals.flatMap((meal) =>
           meal.items.map((it, idx) => {
@@ -709,7 +594,6 @@ export default function NutritionPage() {
               protein_g: v.protein_g ?? null,
               carbs_g: v.carbs_g ?? null,
               fat_g: v.fat_g ?? null,
-              // fiber_g non presente in nutrition_items → omesso
             };
           })
         )
@@ -734,60 +618,77 @@ export default function NutritionPage() {
     }
   };
 
+  // PREVIEW con ref esportabile
   if (state.showPreview) {
     return (
-      <div className="w-full max-w-5xl mx-auto mt-8 bg-white rounded-2xl shadow p-6">
-        <h2 className="text-2xl font-bold text-indigo-700 mb-4">Anteprima piano nutrizionale</h2>
+      <div className="w-full max-w-5xl mx-auto mt-8">
+        {/* 👇 TUTTO ciò che vuoi nel PDF sta dentro questo wrapper */}
+        <div ref={previewRef} data-export-onecol style={{ background: "#ffffff" }} className="rounded-2xl shadow p-6">
+          <h2 className="text-2xl font-bold text-indigo-700 mb-4">Anteprima piano nutrizionale</h2>
 
-        <div className="mb-4 text-sm text-gray-700">
-          <div className="flex flex-wrap gap-6">
-            <div><strong>Scadenza:</strong> {state.expire || "—"}</div>
-            <div><strong>Obiettivo:</strong> {state.goal}</div>
-            <div><strong>Attività:</strong> {state.activity}</div>
-            <div><strong>BMR:</strong> {derived.BMR ?? "—"} kcal</div>
-            <div><strong>TDEE:</strong> {derived.TDEE ?? "—"} kcal</div>
-            <div><strong>Target:</strong> {derived.targetKcal ?? "—"} kcal/die</div>
-            <div>
-              <strong>Sgarri:</strong>{" "}
-              {state.cheatDays.length
-                ? state.cheatDays.sort((a, b) => a - b).map((d) => weekdayLabel(d)).join(", ")
-                : "nessuno"}
+          <div className="mb-4 text-sm text-gray-700">
+            <div className="flex flex-wrap gap-6">
+              <div><strong>Scadenza:</strong> {state.expire || "—"}</div>
+              <div><strong>Obiettivo:</strong> {state.goal}</div>
+              <div><strong>Attività:</strong> {state.activity}</div>
+              <div><strong>BMR:</strong> {derived.BMR ?? "—"} kcal</div>
+              <div><strong>TDEE:</strong> {derived.TDEE ?? "—"} kcal</div>
+              <div><strong>Target:</strong> {derived.targetKcal ?? "—"} kcal/die</div>
+              <div>
+                <strong>Sgarri:</strong>{" "}
+                {state.cheatDays.length
+                  ? state.cheatDays.sort((a, b) => a - b).map((d) => weekdayLabel(d)).join(", ")
+                  : "nessuno"}
+              </div>
             </div>
+          </div>
+
+          {/* Griglia giorni — durante l’export la forziamo a una colonna */}
+          <div className="grid md:grid-cols-2 gap-6" data-export-onecol>
+            {editableDays.map((d) => {
+              const totals = computeDayTotals(d);
+              return (
+                <div key={d.day} className="border rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-bold">
+                      Giorno {d.day} — {weekdayLabel(d.day)} • {totals.kcal} kcal
+                    </h4>
+                  </div>
+                  <div className="text-xs text-gray-600 mb-3">
+                    <span className="mr-4"><strong>Kcal</strong>: {totals.kcal}</span>
+                    <span className="mr-4"><strong>Prot</strong>: {totals.protein} g</span>
+                    <span className="mr-4"><strong>Carb</strong>: {totals.carbs} g</span>
+                    <span className="mr-4"><strong>Fibre</strong>: {totals.fiber} g</span>
+                    <span className="mr-4"><strong>Grassi</strong>: {totals.fat} g</span>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    {d.meals.map((m) => (
+                      <div key={`prev-${d.day}-${m.position}`}>
+                        <div className="font-semibold">{m.name}</div>
+                        {m.items.length ? (
+                          <ul className="list-disc ml-5">
+                            {m.items.map((it, idx) => {
+                              const v = computeRowMacros(it);
+                              return (
+                                <li key={`prev-${d.day}-${m.position}-row-${idx}`}>
+                                  {it.description || "—"} — {it.qty}{it.unit}{v.kcal ? `, ${v.kcal} kcal` : ""}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : (
+                          <div className="text-gray-500">Nessun alimento inserito</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-6">
-          {editableDays.map((d) => (
-            <div key={d.day} className="border rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-bold">Giorno {d.day} — {weekdayLabel(d.day)}</h4>
-              </div>
-              <div className="space-y-2 text-sm">
-                {d.meals.map((m, i) => (
-                  <div key={i}>
-                    <div className="font-semibold">{m.name}</div>
-                    {m.items.length ? (
-                      <ul className="list-disc ml-5">
-                        {m.items.map((it, idx) => {
-                          const v = computeRowMacros(it);
-                          return (
-                            <li key={idx}>
-                              {it.description || "—"} — {it.qty}{it.unit}{v.kcal ? `, ${v.kcal} kcal` : ""}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : (
-                      <div className="text-gray-500">Nessun alimento inserito</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Bottoni SOLO in anteprima */}
+        {/* Bottoni FUORI dal ref (non finiscono nel PDF) */}
         <div className="mt-6 flex flex-wrap gap-3 justify-end">
           <button
             className="px-5 py-3 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
@@ -795,22 +696,47 @@ export default function NutritionPage() {
           >
             Torna alla modifica
           </button>
-          <button className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700" onClick={handleDownloadPDF}>
-            Scarica PDF
-          </button>
+
+          {/* 👇 Export PNG “safe html2canvas” */}
+          <Html2CanvasExportButton
+            getTarget={() => exportRef.current}
+            filename="piano-nutrizionale.png"
+            scale={2}
+            label="Esporta PNG (compatibile)"
+          />
+
+          {/* Salva nel DB */}
           <button
-            className={`px-5 py-3 rounded-xl ${disabledSave ? "bg-gray-300 text-white" : "bg-emerald-600 text-white hover:bg-emerald-700"}`}
+            className={`px-5 py-3 rounded-xl ${
+              disabledSave ? "bg-gray-300 text-white" : "bg-emerald-600 text-white hover:bg-emerald-700"
+            }`}
             disabled={disabledSave}
             onClick={handleSave}
           >
             Salva nel DB
           </button>
         </div>
+
+        {/* 👇 MONTIAMO la vista SAFE off-screen (catturata da html2canvas) */}
+        <ExportNutritionPreview
+          ref={exportRef}
+          offscreen
+          meta={{
+            expire: state.expire || "—",
+            goal: state.goal,
+            activity: state.activity,
+            bmr: derived.BMR,
+            tdee: derived.TDEE,
+            target: derived.targetKcal,
+            cheats: cheatsLabel,
+          }}
+          days={exportDays}
+        />
       </div>
     );
   }
 
-  // EDITOR: tabella unica a tutta larghezza, macro non editabili, bottone rimuovi a sinistra
+  // ===== EDITOR (resta uguale al tuo) =====
   return (
     <div className="w-full max-w-6xl mx-auto">
       {/* intestazione/owner */}
@@ -995,8 +921,7 @@ export default function NutritionPage() {
             <div>TDEE: <strong>{derived.TDEE ?? "-"}</strong> kcal</div>
             <div>Target: <strong>{derived.targetKcal ?? "-"}</strong> kcal/die</div>
             <div>
-              Sgarri:{" "}
-              <strong>
+              Sgarri: <strong>
                 {state.cheatDays.length
                   ? state.cheatDays.sort((a, b) => a - b).map((d) => weekdayLabel(d)).join(", ")
                   : "nessuno"}
@@ -1006,59 +931,215 @@ export default function NutritionPage() {
         </div>
       </div>
 
-      {/* EDITOR SETTIMANA: tabella unica a tutta larghezza */}
+      {/* EDITOR SETTIMANA */}
       <div className="bg-white rounded-2xl shadow p-6">
         <h3 className="text-xl font-bold text-indigo-700 mb-4">Settimana (giorni senza sgarro)</h3>
 
         {editableDays.length === 0 ? (
           <div className="text-sm text-gray-600">
-            Hai selezionato tutti i giorni come sgarro. Torna su <em>Modifica sgarri</em> per liberarne almeno uno. 🙂
-          </div>
+            Hai selezionato tutti i giorni come sgarro. Torna su <em>Modifica sgarri</em> per liberarne almeno uno. 🙂</div>
         ) : (
           <div className="space-y-8">
-            {editableDays.map((d) => (
-              <div key={d.day} className="border border-indigo-100 rounded-xl p-4 bg-indigo-50/40">
-                <h4 className="font-semibold text-indigo-700 mb-3">
-                  Giorno {d.day} — {weekdayLabel(d.day)}
-                </h4>
+            {editableDays.map((d) => {
+              const totals = computeDayTotals(d);
+              return (
+                <div key={d.day} className="border border-indigo-100 rounded-xl p-4 bg-indigo-50/40">
+                  <div className="flex items-center justify-between mb-1">
+                    <h4 className="font-semibold text-indigo-700">
+                      Giorno {d.day} — {weekdayLabel(d.day)} • {totals.kcal} kcal
+                    </h4>
+                  </div>
 
-                {/* TABELLA UNICA FULL WIDTH */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm border border-indigo-100 rounded-xl overflow-hidden">
-                    <thead className="bg-indigo-50">
-                      <tr>
-                        <th className="p-2 text-left w-10"> </th>
-                        <th className="p-2 text-left">Pasto</th>
-                        <th className="p-2 text-left">Alimento / descrizione</th>
-                        <th className="p-2 text-left">Qty</th>
-                        <th className="p-2 text-left">Unità</th>
-                        <th className="p-2 text-left">kcal</th>
-                        <th className="p-2 text-left">Prot</th>
-                        <th className="p-2 text-left">Carb</th>
-                        <th className="p-2 text-left">Fibre</th>
-                        <th className="p-2 text-left">Grassi</th>
-                      </tr>
-                    </thead>
+                  <div className="text-xs text-gray-600 mb-3">
+                    <span className="mr-4"><strong>Kcal</strong>: {totals.kcal}</span>
+                    <span className="mr-4"><strong>Prot</strong>: {totals.protein} g</span>
+                    <span className="mr-4"><strong>Carb</strong>: {totals.carbs} g</span>
+                    <span className="mr-4"><strong>Fibre</strong>: {totals.fiber} g</span>
+                    <span className="mr-4"><strong>Grassi</strong>: {totals.fat} g</span>
+                  </div>
 
-                    <tbody>
-                      {d.meals.flatMap((meal, mIdx) =>
-                        meal.items.map((row, iIdx) => {
-                          const values = computeRowMacros(row);
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border border-indigo-100 rounded-xl overflow-hidden">
+                      <thead className="bg-indigo-50">
+                        <tr>
+                          <th className="p-2 text-left w-10"> </th>
+                          <th className="p-2 text-left">Pasto</th>
+                          <th className="p-2 text-left">Alimento / descrizione</th>
+                          <th className="p-2 text-left w-[88px]">Qty</th>
+                          <th className="p-2 text-left w-[88px]">Unità</th>
+                          <th className="p-2 text-left">kcal</th>
+                          <th className="p-2 text-left">Prot</th>
+                          <th className="p-2 text-left">Carb</th>
+                          <th className="p-2 text-left">Fibre</th>
+                          <th className="p-2 text-left">Grassi</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {d.meals.map((meal, mIdx) => {
+                          if (!meal.items || meal.items.length === 0) return null;
+
+                          const mealTotals = meal.items.reduce(
+                            (acc, it) => {
+                              const v = computeRowMacros(it);
+                              acc.kcal += v.kcal || 0;
+                              acc.protein += v.protein_g || 0;
+                              acc.carbs += v.carbs_g || 0;
+                              acc.fiber += v.fiber_g || 0;
+                              acc.fat += v.fat_g || 0;
+                              return acc;
+                            },
+                            { kcal: 0, protein: 0, carbs: 0, fiber: 0, fat: 0 }
+                          );
 
                           return (
-                            <tr key={`${meal.position}-${iIdx}`} className="border-t align-top">
-                              {/* elimina riga */}
-                              <td className="p-2">
-                                <button
-                                  type="button"
-                                  className="px-2 py-1 rounded-md border border-red-200 text-red-600 hover:bg-red-50"
-                                  onClick={() =>
-                                    setState((s) => {
-                                      const next = structuredClone(s);
-                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
-                                      next.days[dayIndex].meals[mIdx].items.splice(iIdx, 1);
-                                      // se il pasto resta senza righe → reinserisco una riga vuota
-                                      if (next.days[dayIndex].meals[mIdx].items.length === 0) {
+                            <>
+                              {meal.items.map((row, iIdx) => {
+                                const values = computeRowMacros(row);
+                                const isFirst = iIdx === 0;
+
+                                return (
+                                  <tr
+                                    key={`day-${d.day}-meal-${meal.position}-row-${iIdx}`}
+                                    className={`${isFirst ? "border-t" : "border-t-0"} align-top`}
+                                  >
+                                    <td className="p-2">
+                                      <button
+                                        type="button"
+                                        className="h-8 w-8 rounded-full border border-red-600 text-red-600 hover:bg-red-600 hover:text-white transition flex items-center justify-center"
+                                        onClick={() =>
+                                          setState((s) => {
+                                            const next = structuredClone(s);
+                                            const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                            next.days[dayIndex].meals[mIdx].items.splice(iIdx, 1);
+                                            return next;
+                                          })
+                                        }
+                                        title="Elimina riga"
+                                        aria-label="Elimina riga"
+                                      >
+                                        <span className="text-lg leading-none">–</span>
+                                      </button>
+                                    </td>
+
+                                    <td className="p-2 w-[160px]">
+                                      <select
+                                        className="w-full border rounded p-2 text-sm"
+                                        value={meal.position}
+                                        onChange={(e) =>
+                                          setState((s) => {
+                                            const next = structuredClone(s);
+                                            const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                            const fromMealIdx = mIdx;
+                                            const toPos = Number(e.target.value);
+                                            const moved = next.days[dayIndex].meals[fromMealIdx].items.splice(iIdx, 1)[0];
+                                            const toMealIdx = next.days[dayIndex].meals.findIndex((mm) => mm.position === toPos);
+                                            if (toMealIdx >= 0) next.days[dayIndex].meals[toMealIdx].items.push(moved);
+                                            return next;
+                                          })
+                                        }
+                                      >
+                                        {d.meals.map((opt) => (
+                                          <option key={opt.position} value={opt.position}>
+                                            {opt.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </td>
+
+                                    <td className="p-2 min-w-[280px]">
+                                      <FoodAsyncSelect
+                                        token={token}
+                                        value={foodApiFromRow(row)}
+                                        onChange={(food) => {
+                                          setState((s) => {
+                                            const next = structuredClone(s);
+                                            const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                            const target = next.days[dayIndex].meals[mIdx].items[iIdx];
+
+                                            if (food) {
+                                              target.id = food.id;
+                                              target.description = food.name;
+                                              target._per100 = {
+                                                kcal: food.kcal_per_100,
+                                                protein: food.protein_per_100,
+                                                carbs: food.carbs_per_100,
+                                                fat: food.fat_per_100,
+                                                fiber: food.fiber_per_100 ?? null,
+                                              };
+                                              target.unit = food.default_unit;
+                                            } else {
+                                              target.id = null;
+                                              target._per100 = null;
+                                            }
+                                            return next;
+                                          });
+                                        }}
+                                        placeholder="Cerca alimento…"
+                                      />
+                                    </td>
+
+                                    <td className="p-2 w-[88px]">
+                                      <input
+                                        type="number"
+                                        className="w-full border rounded p-2 text-right"
+                                        min={0}
+                                        value={row.qty}
+                                        onChange={(e) =>
+                                          setState((s) => {
+                                            const next = structuredClone(s);
+                                            const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                            next.days[dayIndex].meals[mIdx].items[iIdx].qty = Number(e.target.value);
+                                            return next;
+                                          })
+                                        }
+                                      />
+                                    </td>
+
+                                    <td className="p-2 w-[88px]">
+                                      <select
+                                        className="w-full border rounded p-2"
+                                        value={row.unit}
+                                        onChange={(e) =>
+                                          setState((s) => {
+                                            const next = structuredClone(s);
+                                            const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                            next.days[dayIndex].meals[mIdx].items[iIdx].unit =
+                                              e.target.value as FoodRow["unit"];
+                                            return next;
+                                          })
+                                        }
+                                      >
+                                        <option>g</option>
+                                        <option>ml</option>
+                                        <option>pcs</option>
+                                        <option>cup</option>
+                                        <option>tbsp</option>
+                                        <option>tsp</option>
+                                        <option>slice</option>
+                                      </select>
+                                    </td>
+
+                                    <td className="p-2 align-middle">{values.kcal || 0}</td>
+                                    <td className="p-2 align-middle">{values.protein_g || 0}</td>
+                                    <td className="p-2 align-middle">{values.carbs_g || 0}</td>
+                                    <td className="p-2 align-middle">{values.fiber_g || 0}</td>
+                                    <td className="p-2 align-middle">{values.fat_g || 0}</td>
+                                  </tr>
+                                );
+                              })}
+
+                              <tr className="border-t-0" key={`add-${d.day}-${meal.position}`}>
+                                <td className="p-2" />
+                                <td className="p-2" />
+                                <td className="p-2" colSpan={3}>
+                                  <button
+                                    type="button"
+                                    className="px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-50 text-sm"
+                                    onClick={() =>
+                                      setState((s) => {
+                                        const next = structuredClone(s);
+                                        const dayIndex = next.days.findIndex((x) => x.day === d.day);
                                         next.days[dayIndex].meals[mIdx].items.push({
                                           qty: 100,
                                           unit: "g",
@@ -1070,195 +1151,40 @@ export default function NutritionPage() {
                                           fiber_g: null,
                                           _per100: null,
                                         });
-                                      }
-                                      return next;
-                                    })
-                                  }
-                                  title="Elimina riga"
-                                >
-                                  ✕
-                                </button>
-                              </td>
+                                        return next;
+                                      })
+                                    }
+                                  >
+                                    + Aggiungi alimento a “{meal.name}”
+                                  </button>
+                                </td>
+                                <td className="p-2" />
+                                <td className="p-2" />
+                                <td className="p-2" />
+                                <td className="p-2" />
+                              </tr>
 
-                              {/* PASTO (select per spostare la riga tra i pasti) */}
-                              <td className="p-2">
-                                <select
-                                  className="w-full border rounded p-2"
-                                  value={meal.position}
-                                  onChange={(e) =>
-                                    setState((s) => {
-                                      const next = structuredClone(s);
-                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
-                                      const fromMealIdx = mIdx;
-                                      const toPos = Number(e.target.value);
-                                      // sposta l'item
-                                      const moved = next.days[dayIndex].meals[fromMealIdx].items.splice(iIdx, 1)[0];
-                                      const toMealIdx = next.days[dayIndex].meals.findIndex((mm) => mm.position === toPos);
-                                      if (toMealIdx >= 0) {
-                                        next.days[dayIndex].meals[toMealIdx].items.push(moved);
-                                      }
-                                      // riga minima
-                                      if (next.days[dayIndex].meals[fromMealIdx].items.length === 0) {
-                                        next.days[dayIndex].meals[fromMealIdx].items.push({
-                                          qty: 100,
-                                          unit: "g",
-                                          description: "",
-                                          kcal: null,
-                                          protein_g: null,
-                                          carbs_g: null,
-                                          fat_g: null,
-                                          fiber_g: null,
-                                          _per100: null,
-                                        });
-                                      }
-                                      return next;
-                                    })
-                                  }
-                                >
-                                  {d.meals.map((opt) => (
-                                    <option key={opt.position} value={opt.position}>
-                                      {opt.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </td>
-
-                              {/* ALIMENTO: react-select async */}
-                              <td className="p-2 min-w-[280px]">
-                                <FoodAsyncSelect
-                                  token={token}
-                                  value={foodApiFromRow(row)}
-                                  onChange={(food) => {
-                                    setState((s) => {
-                                      const next = structuredClone(s);
-                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
-                                      const target = next.days[dayIndex].meals[mIdx].items[iIdx];
-
-                                      if (food) {
-                                        target.id = food.id;
-                                        target.description = food.name;
-                                        target._per100 = {
-                                          kcal: food.kcal_per_100,
-                                          protein: food.protein_per_100,
-                                          carbs: food.carbs_per_100,
-                                          fat: food.fat_per_100,
-                                          fiber: food.fiber_per_100 ?? null,
-                                        };
-                                        // opzionale: usa unit di default del food
-                                        target.unit = food.default_unit;
-                                      } else {
-                                        // clear selezione
-                                        target.id = null;
-                                        target._per100 = null;
-                                        // se vuoi svuotare anche il testo:
-                                        // target.description = "";
-                                      }
-                                      return next;
-                                    });
-                                  }}
-                                  placeholder="Cerca alimento…"
-                                />
-                              </td>
-
-                              {/* QTY */}
-                              <td className="p-2">
-                                <input
-                                  type="number"
-                                  className="w-full border rounded p-2"
-                                  min={0}
-                                  value={row.qty}
-                                  onChange={(e) =>
-                                    setState((s) => {
-                                      const next = structuredClone(s);
-                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
-                                      next.days[dayIndex].meals[mIdx].items[iIdx].qty = Number(e.target.value);
-                                      return next;
-                                    })
-                                  }
-                                />
-                              </td>
-
-                              {/* UNIT */}
-                              <td className="p-2">
-                                <select
-                                  className="w-full border rounded p-2"
-                                  value={row.unit}
-                                  onChange={(e) =>
-                                    setState((s) => {
-                                      const next = structuredClone(s);
-                                      const dayIndex = next.days.findIndex((x) => x.day === d.day);
-                                      next.days[dayIndex].meals[mIdx].items[iIdx].unit = e.target.value as FoodRow["unit"];
-                                      return next;
-                                    })
-                                  }
-                                >
-                                  <option>g</option>
-                                  <option>ml</option>
-                                  <option>pcs</option>
-                                  <option>cup</option>
-                                  <option>tbsp</option>
-                                  <option>tsp</option>
-                                  <option>slice</option>
-                                </select>
-                              </td>
-
-                              {/* MACRO (non editabili) */}
-                              <td className="p-2 align-middle">{values.kcal || 0}</td>
-                              <td className="p-2 align-middle">{values.protein_g || 0}</td>
-                              <td className="p-2 align-middle">{values.carbs_g || 0}</td>
-                              <td className="p-2 align-middle">{values.fiber_g || 0}</td>
-                              <td className="p-2 align-middle">{values.fat_g || 0}</td>
-                            </tr>
+                              <tr className="bg-indigo-50 border-t" key={`tot-${d.day}-${meal.position}`}>
+                                <td className="p-2" />
+                                <td className="p-2 font-semibold text-indigo-700">Totale {meal.name}</td>
+                                <td className="p-2" />
+                                <td className="p-2" />
+                                <td className="p-2" />
+                                <td className="p-2 font-medium">{mealTotals.kcal}</td>
+                                <td className="p-2 font-medium">{mealTotals.protein.toFixed(1)}</td>
+                                <td className="p-2 font-medium">{mealTotals.carbs.toFixed(1)}</td>
+                                <td className="p-2 font-medium">{mealTotals.fiber.toFixed(1)}</td>
+                                <td className="p-2 font-medium">{mealTotals.fat.toFixed(1)}</td>
+                              </tr>
+                            </>
                           );
-                        })
-                      )}
-                    </tbody>
-                  </table>
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-
-                {/* Aggiungi riga per un pasto specifico */}
-                <div className="mt-3 flex items-center gap-2">
-                  <span className="text-sm text-gray-600">Aggiungi riga sul pasto:</span>
-                  <select
-                    className="border rounded p-2 text-sm"
-                    onChange={(e) =>
-                      setState((s) => {
-                        if (e.target.value === "") return s;
-                        const next = structuredClone(s);
-                        const dayIndex = next.days.findIndex((x) => x.day === d.day);
-                        const toPos = Number(e.target.value);
-                        const toMealIdx = next.days[dayIndex].meals.findIndex((mm) => mm.position === toPos);
-                        if (toMealIdx >= 0) {
-                          next.days[dayIndex].meals[toMealIdx].items.push({
-                            qty: 100,
-                            unit: "g",
-                            description: "",
-                            kcal: null,
-                            protein_g: null,
-                            carbs_g: null,
-                            fat_g: null,
-                            fiber_g: null,
-                            _per100: null,
-                          });
-                        }
-                        (e.target as HTMLSelectElement).value = "";
-                        return next;
-                      })
-                    }
-                    defaultValue=""
-                  >
-                    <option value="" disabled>
-                      Seleziona pasto…
-                    </option>
-                    {d.meals.map((m) => (
-                      <option key={m.position} value={m.position}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
