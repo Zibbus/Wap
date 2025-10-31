@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import FoodAsyncSelect from "../components/FoodAsyncSelect";
-import type { FoodApi as FoodApiType } from "../components/FoodAsyncSelect";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-// 👇 aggiunte per export compatibile
+import FoodAsyncSelect from "../components/FoodAsyncSelect";
 import Html2CanvasExportButton from "../components/Html2CanvasExportButton";
 import ExportNutritionPreview, { type ExportDay } from "../export/ExportNutritionPreview";
+
+import type { FoodApi as FoodApiType } from "../components/FoodAsyncSelect";
 
 /* ===== Tipi ===== */
 type Goal =
@@ -268,14 +269,17 @@ function foodApiFromRow(row: FoodRow): FoodApiType | null {
 
 /* ===== COMPONENTE ===== */
 export default function NutritionPage() {
+  const navigate = useNavigate();
+
   const { user, token } = readAuthSnapshot();
   const [userType, setUserType] = useState<"utente" | "professionista" | "admin" | undefined>(undefined);
   const selfCustomerIdFromLogin: number | null = user.customer?.id ?? null;
 
   const [loadingSelf, setLoadingSelf] = useState(false);
   const [selfData, setSelfData] = useState<UserAnthro>({});
-  const previewRef = useRef<HTMLDivElement>(null);
+  const [savedOk, setSavedOk] = useState<{ planId: number } | null>(null);
 
+  const previewRef = useRef<HTMLDivElement>(null);
   // 👇 ref per la VISTA SAFE da “fotografare”
   const exportRef = useRef<HTMLElement>(null);
 
@@ -374,6 +378,47 @@ export default function NutritionPage() {
         };
       });
   }, [state.days, state.cheatDays]);
+  
+  // === VISTA SOLO-MESSAGGIO (centrata) ===
+  if (savedOk) {
+    return (
+      <div className="min-h-screen grid place-items-center px-6">
+        <div className="text-center space-y-4">
+          <div className="flex items-center justify-center gap-3 text-emerald-700">
+            {/* spunta verde cerchiata */}
+            <span className="inline-flex items-center justify-center rounded-full border border-emerald-600 text-emerald-600 h-8 w-8">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 011.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </span>
+            <span className="font-semibold text-lg">
+              Hai salvato con successo il tuo piano nutrizionale
+            </span>
+          </div>
+
+          <p className="text-base">
+            <button
+              type="button"
+              className="underline underline-offset-2 text-emerald-700 hover:no-underline"
+              onClick={() => navigate("/nutrition/plans")} // cambia la rotta se serve
+            >
+              Clicca qui per visualizzare l&apos;elenco dei tuoi piani nutrizionali
+            </button>
+          </p>
+
+          <div className="pt-2">
+            <button
+              type="button"
+              className="px-5 py-2.5 rounded-xl border border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+              onClick={() => navigate("/nutrition/plans")} // cambia la rotta se serve
+            >
+              Vai ai miei piani
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // 1) POPUP CONSENSO
   if (!state.consentAccepted) {
@@ -384,8 +429,20 @@ export default function NutritionPage() {
           <div className="text-sm text-gray-700 space-y-3">
             <p>
               Questo generatore di piano nutrizionale ha finalità informative ed educative. Non sostituisce il parere di un
+              medico o di un professionista sanitario. In presenza di condizioni cliniche, gravidanza, allattamento o terapie
+              farmacologiche, consulta il tuo medico prima di adottare qualunque piano alimentare.
               medico o di un professionista sanitario.
             </p>
+            <p>
+              Dichiari di utilizzare il piano sotto la tua esclusiva responsabilità. Gli autori dell’app non sono responsabili
+              per eventuali conseguenze derivanti da un uso improprio delle indicazioni fornite. In caso di dubbi, interrompi
+              l’utilizzo e chiedi un parere medico.
+            </p>
+            <ul className="list-disc ml-5">
+              <li>In caso di allergie/intolleranze, verifica sempre gli alimenti inseriti.</li>
+              <li>Bevi acqua a sufficienza e monitora eventuali segnali di malessere.</li>
+              <li>Integra attività fisica in modo proporzionato al tuo livello.</li>
+            </ul>
           </div>
           <div className="mt-6 flex justify-end gap-3">
             <button className="px-5 py-3 rounded-xl border border-gray-300 text-gray-700" onClick={() => window.history.back()}>
@@ -572,9 +629,7 @@ export default function NutritionPage() {
           });
           if (!mRes.ok) throw new Error("Errore creazione pasto");
           const mj = await mRes.json();
-          mealIdMap[`${
-            d.day
-          }-${meal.position}`] = mj.id;
+          mealIdMap[`${d.day}-${meal.position}`] = mj.id;
         }
       }
 
@@ -610,8 +665,8 @@ export default function NutritionPage() {
         });
         if (!iRes.ok) throw new Error("Errore salvataggio alimenti");
       }
-
-      alert("✅ Piano nutrizionale salvato!");
+      setSavedOk({ planId });
+      setState((s) => ({ ...s, showPreview: false }));
     } catch (e) {
       console.error(e);
       alert("❌ Errore salvataggio piano.");
@@ -930,6 +985,41 @@ export default function NutritionPage() {
           </div>
         </div>
       </div>
+      
+      {/* Messaggio di successo, senza sfondo/riquadro */}
+      {savedOk && (
+        <div className="mb-4">
+          <div className="flex items-center gap-2 text-emerald-700">
+            {/* spunta verde cerchiata */}
+            <span className="inline-flex items-center justify-center rounded-full border border-emerald-600 text-emerald-600 h-6 w-6">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 011.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </span>
+
+            <span className="font-semibold">
+              Hai salvato con successo il tuo piano nutrizionale,
+            </span>
+            <button
+              type="button"
+              className="underline underline-offset-2 hover:no-underline"
+              onClick={() => navigate("/nutrition/plans")} // cambia path se serve
+            >
+              clicca qui per visualizzare l&apos;elenco dei tuoi piani nutrizionali
+            </button>
+          </div>
+
+          <div className="mt-2">
+            <button
+              type="button"
+              className="px-4 py-2 rounded-xl border border-emerald-600 text-emerald-700 hover:bg-emerald-50"
+              onClick={() => navigate("/nutrition/plans")} // cambia path se serve
+            >
+              Vai ai miei piani
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* EDITOR SETTIMANA */}
       <div className="bg-white rounded-2xl shadow p-6">
@@ -993,7 +1083,7 @@ export default function NutritionPage() {
                           );
 
                           return (
-                            <>
+                            <Fragment key={`meal-${d.day}-${meal.position}`}>
                               {meal.items.map((row, iIdx) => {
                                 const values = computeRowMacros(row);
                                 const isFirst = iIdx === 0;
@@ -1176,7 +1266,7 @@ export default function NutritionPage() {
                                 <td className="p-2 font-medium">{mealTotals.fiber.toFixed(1)}</td>
                                 <td className="p-2 font-medium">{mealTotals.fat.toFixed(1)}</td>
                               </tr>
-                            </>
+                            </Fragment>
                           );
                         })}
                       </tbody>
