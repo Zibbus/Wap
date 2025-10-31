@@ -9,7 +9,7 @@ import ImageCarousel from "../components/homepage/ImageCarousel";
 export default function HomePage() {
 
   return (
-    <div className="flex-1 bg-gradient-to-b from-indigo-50 to-white text-gray-800">
+    <div className="flex-1 bg-gradient-to-b from-indigo-50 to-white text-gray-800 dark:from-gray-950 dark:to-gray-900 dark:text-gray-100">
       <main className="flex flex-col items-center">
         {/* 🔹 Carosello immagini */}
         <section className="w-full flex justify-center mt-10 mb-12 px-4">

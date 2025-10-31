@@ -1,10 +1,6 @@
-// src/components/FadeInSection.tsx
 import React, { useRef, useState, useEffect } from "react";
 
-type FadeInSectionProps = {
-  children: React.ReactNode;
-  className?: string;
-};
+type FadeInSectionProps = { children: React.ReactNode; className?: string };
 
 export default function FadeInSection({ children, className }: FadeInSectionProps) {
   const [isVisible, setVisible] = useState(false);
@@ -13,14 +9,9 @@ export default function FadeInSection({ children, className }: FadeInSectionProp
   useEffect(() => {
     const el = domRef.current;
     if (!el) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => setVisible(entry.isIntersecting));
-      },
-      { threshold: 0.12 } // entra con ~12% visibile
-    );
-
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => setVisible(entry.isIntersecting));
+    }, { threshold: 0.12 });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
@@ -28,7 +19,7 @@ export default function FadeInSection({ children, className }: FadeInSectionProp
   return (
     <div
       ref={domRef}
-      className={`transition-all duration-1000 ease-out transform ${
+      className={`transition-all duration-700 ease-out transform ${
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
       } ${className ?? ""}`}
     >

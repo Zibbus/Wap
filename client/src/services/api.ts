@@ -1,11 +1,14 @@
 // client/src/services/api.ts
-export const BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:3001";
-export const AUTH_BASE = import.meta.env.VITE_AUTH_BASE ?? "http://localhost:4000";
 
-// Se usi cookie/sessione cross-origin, metti true e NON ti serve il token.
+// In dev: usa path relativi (passano dal proxy di Vite)
+// In prod: imposta URL assoluti HTTPS via .env
+const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
+const AUTH_BASE = import.meta.env.VITE_AUTH_BASE ?? "/auth";
+
+// Se usi cookie/sessione cross-origin in prod, tieni include
 const USE_CREDENTIALS = true;
 
-// 👇 aggiungi queste due righe
+// Token opzionale (se non usi cookie)
 let authToken: string | null = null;
 export function setAuthToken(token: string | null) {
   authToken = token;
@@ -16,7 +19,6 @@ function makeClient(base: string) {
     const res = await fetch(`${base}${path}`, {
       headers: {
         "Content-Type": "application/json",
-        // 👇 usa il token se presente
         ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         ...(options?.headers || {}),
       },
@@ -25,9 +27,10 @@ function makeClient(base: string) {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(text || `HTTP ${res.status}`);
+      throw new Error(text || `HTTP ${res.status} ${res.statusText}`);
     }
-    return res.json() as Promise<T>;
+    const txt = await res.text();
+    return (txt ? JSON.parse(txt) : undefined) as T;
   };
 
   return {
@@ -36,9 +39,9 @@ function makeClient(base: string) {
       http<T>(path, { method: "POST", body: JSON.stringify(body ?? {}) }),
     put: <T>(path: string, body?: unknown) =>
       http<T>(path, { method: "PUT", body: JSON.stringify(body ?? {}) }),
-    del:  <T>(path: string) => http<T>(path, { method: "DELETE" }),
+    del: <T>(path: string) => http<T>(path, { method: "DELETE" }),
   };
 }
 
-export const api = makeClient(BASE);
-export const authApi = makeClient(AUTH_BASE);
+export const api = makeClient(API_BASE);     // chiamerai api.get("/settings")
+export const authApi = makeClient(AUTH_BASE); // chiamerai authApi.post("/login") ecc.

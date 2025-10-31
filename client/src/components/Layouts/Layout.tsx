@@ -11,15 +11,15 @@ export default function Layout() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center min-h-screen bg-white text-gray-600 text-xl">
+      <div className="flex justify-center items-center min-h-screen bg-white text-gray-600 dark:bg-gray-900 dark:text-gray-200 text-xl">
         Caricamento...
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-50 to-white text-gray-800 pt-20">
-      <Header /> {/* ✅ niente più props */}
+    <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-50 to-white text-gray-800 dark:from-gray-950 dark:to-gray-900 dark:text-gray-100 pt-20">
+      <Header />
       <main className="flex-1">
         <Outlet />
       </main>

@@ -115,7 +115,7 @@ function ExerciseSelect({
   return (
     <div ref={wrapRef} className="relative">
       <input
-        className="w-56 sm:w-60 p-2 rounded-md border border-indigo-200 bg-white"
+        className="w-56 sm:w-60 p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
         value={open ? query : displayText}
         onChange={(e) => {
           setQuery(e.target.value);
@@ -144,13 +144,13 @@ function ExerciseSelect({
       />
 
       {open && (
-        <div className="absolute z-30 mt-1 w-56 max-h-64 overflow-auto bg-white border border-indigo-200 rounded-md shadow">
+        <div className="absolute z-30 mt-1 w-56 max-h-64 overflow-auto bg-white text-gray-800 border border-indigo-200 rounded-md shadow dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700">
           {grouped.length === 0 ? (
-            <div className="px-3 py-2 text-sm text-gray-500">Nessun risultato</div>
+            <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400">Nessun risultato</div>
           ) : (
             grouped.map((g) => (
               <div key={g.gid} className="py-1">
-                <div className="px-3 py-1 text-xs font-semibold text-indigo-600 sticky top-0 bg-white/95">
+                <div className="px-3 py-1 text-xs font-semibold text-indigo-600 sticky top-0 bg-white/95 dark:bg-gray-900/95 dark:text-indigo-300">
                   {g.label}
                 </div>
                 {g.items.map((opt) => {
@@ -160,7 +160,7 @@ function ExerciseSelect({
                     <button
                       key={opt.id}
                       type="button"
-                      className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 ${active ? "bg-indigo-50" : ""}`}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-gray-800 ${active ? "bg-indigo-50 dark:bg-gray-800" : ""}`}
                       onMouseEnter={() => setActiveIdx(idx)}
                       onClick={() => selectByIdx(idx)}
                     >
@@ -386,7 +386,7 @@ export default function WorkoutPage() {
     );
   };
 
-  // ✅ toggle note: crea textarea con "" (placeholder visibile), rimuove completamente se clicchi di nuovo
+  // ✅ toggle note
   const handleToggleNota = (index: number) => {
     setGiorniAllenamento((prev) =>
       prev.map((g) => {
@@ -394,10 +394,8 @@ export default function WorkoutPage() {
         const next = g.esercizi.map((ex, i) => {
           if (i !== index) return ex;
           if (ex.note === undefined) {
-            // crea il campo e mostra subito il placeholder
             return { ...ex, note: "" };
           } else {
-            // rimuovi completamente il campo => textarea sparisce
             const { note, ...rest } = ex as any;
             return rest as Esercizio;
           }
@@ -423,7 +421,6 @@ export default function WorkoutPage() {
 
   const handleDownloadPDF = async () => {
     try {
-      // 1) Mappa lo stato corrente → payload per l'endpoint LaTeX
       const days = (giorniAllenamento || []).map((g) => ({
         number: g.giorno,
         groups: g.gruppi || [],
@@ -436,16 +433,12 @@ export default function WorkoutPage() {
         })),
       }));
 
-      // Creator: se hai lo username salvato nel localStorage
       const auth = JSON.parse(localStorage.getItem("authData") || "{}");
       const creator = auth?.username || "MyFit";
-
-      // Logo: se non hai un path locale leggibile dal backend, lascia stringa vuota
-      const logoPath = ""; // es: "C:\\progetti\\myfit\\assets\\IconaMyFit.png"
+      const logoPath = "";
 
       const payload = { creator, logoPath, days };
 
-      // 2) Chiama il backend che compila LaTeX → PDF
       const res = await fetch("http://localhost:4000/api/pdf/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -453,7 +446,6 @@ export default function WorkoutPage() {
       });
 
       if (!res.ok) {
-        // prova a leggere l’errore restituito
         let msg = `HTTP ${res.status} ${res.statusText}`;
         try {
           const data = await res.json();
@@ -462,7 +454,6 @@ export default function WorkoutPage() {
         throw new Error(msg);
       }
 
-      // 3) Scarica il blob come file
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -478,7 +469,6 @@ export default function WorkoutPage() {
     }
   };
 
-  // Salva piano + schedule + schedule_exercise
   const handleSaveToDb = async () => {
     try {
       if (!expireDate || !goal || !giorniAllenamento.length) {
@@ -486,11 +476,7 @@ export default function WorkoutPage() {
         return;
       }
 
-      // 1️⃣ Crea la schedule (piano)
-      const schedulePayload = {
-        expire: expireDate,
-        goal,
-      };
+      const schedulePayload = { expire: expireDate, goal };
 
       const res = await fetch("http://localhost:4000/api/schedules", {
         method: "POST",
@@ -505,7 +491,6 @@ export default function WorkoutPage() {
       const schedule = await res.json();
       const scheduleId = schedule.id;
 
-      // 2️⃣ Crea i giorni associati
       const dayMap: Record<number, number> = {};
       for (const g of giorniAllenamento) {
         const dayRes = await fetch("http://localhost:4000/api/schedules/day", {
@@ -521,7 +506,6 @@ export default function WorkoutPage() {
         dayMap[g.giorno] = day.id;
       }
 
-      // 3️⃣ Inserisci tutti gli esercizi
       const allExercises = giorniAllenamento.flatMap((g) =>
         g.esercizi
           .filter((ex) => ex.exerciseId)
@@ -562,11 +546,11 @@ export default function WorkoutPage() {
      ========================= */
   if (modalita === "nutrizione") {
     return (
-      <div className="min-h-screen bg-indigo-50 px-8 py-12">
+      <div className="min-h-screen bg-indigo-50 dark:bg-gray-950 px-8 py-12 text-gray-800 dark:text-gray-100">
         <div className="max-w-6xl mx-auto mb-4">
           <button
             onClick={() => setMode("iniziale")}
-            className="px-4 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            className="px-4 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-gray-700 dark:text-indigo-300 dark:hover:bg-gray-800"
           >
             ← Torna alla scelta
           </button>
@@ -580,7 +564,7 @@ export default function WorkoutPage() {
      Render (Allenamento)
      ========================= */
   return (
-    <div className="min-h-screen flex flex-col items-center bg-indigo-50 px-8 py-12">
+    <div className="min-h-screen flex flex-col items-center bg-indigo-50 dark:bg-gray-950 px-8 py-12 text-gray-800 dark:text-gray-100">
       {/* Scelta iniziale */}
       <AnimatePresence>
         {modalita === "iniziale" && !showPreview && (
@@ -636,15 +620,15 @@ export default function WorkoutPage() {
           key="allenamento-giorni"
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-xl p-10 w-full max-w-2xl mt-10 text-center"
+          className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-10 w-full max-w-2xl mt-10 text-center border border-transparent dark:border-gray-800"
         >
-          <h2 className="text-3xl font-bold text-indigo-700 mb-6">Quanti giorni a settimana vuoi allenarti?</h2>
+          <h2 className="text-3xl font-bold text-indigo-700 dark:text-indigo-300 mb-6">Quanti giorni a settimana vuoi allenarti?</h2>
           <div className="flex justify-center flex-wrap gap-5">
             {[1, 2, 3, 4, 5, 6, 7].map((num) => (
               <button
                 key={num}
                 onClick={() => setGiorni(num)}
-                className="w-14 h-14 rounded-full bg-indigo-100 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold transition-all shadow"
+                className="w-14 h-14 rounded-full bg-indigo-100 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold transition-all shadow dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-gray-700"
               >
                 {num}
               </button>
@@ -659,7 +643,7 @@ export default function WorkoutPage() {
           key="wizard"
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-xl p-10 w-full max-w-5xl mt-10 flex flex-col items-center"
+          className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-10 w-full max-w-5xl mt-10 flex flex-col items-center border border-transparent dark:border-gray-800"
         >
           {/* Pulsanti Giorni */}
           <div className="flex flex-wrap justify-center gap-3 mb-6">
@@ -668,7 +652,9 @@ export default function WorkoutPage() {
                 key={i}
                 onClick={() => handleSwitchDay(i + 1)}
                 className={`px-4 py-2 rounded-xl font-semibold transition-all ${
-                  currentDay === i + 1 ? "bg-indigo-600 text-white" : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                  currentDay === i + 1
+                    ? "bg-indigo-600 text-white"
+                    : "bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-gray-700"
                 }`}
               >
                 Giorno {i + 1}
@@ -681,26 +667,26 @@ export default function WorkoutPage() {
             <button
               onClick={() => handleSwitchDay(Math.max(1, currentDay - 1))}
               disabled={currentDay === 1}
-              className="p-3 rounded-full bg-indigo-100 hover:bg-indigo-200 disabled:opacity-50"
+              className="p-3 rounded-full bg-indigo-100 hover:bg-indigo-200 disabled:opacity-50 dark:bg-gray-800 dark:hover:bg-gray-700"
             >
-              <ChevronLeft className="w-6 h-6 text-indigo-700" />
+              <ChevronLeft className="w-6 h-6 text-indigo-700 dark:text-indigo-300" />
             </button>
-            <h2 className="text-2xl font-bold text-indigo-700">
+            <h2 className="text-2xl font-bold text-indigo-700 dark:text-indigo-300">
               Giorno {currentDay} di {giorni}
             </h2>
             <button
               onClick={() => handleSwitchDay(Math.min(giorni, currentDay + 1))}
               disabled={currentDay === giorni}
-              className="p-3 rounded-full bg-indigo-100 hover:bg-indigo-200 disabled:opacity-50"
+              className="p-3 rounded-full bg-indigo-100 hover:bg-indigo-200 disabled:opacity-50 dark:bg-gray-800 dark:hover:bg-gray-700"
             >
-              <ChevronRight className="w-6 h-6 text-indigo-700" />
+              <ChevronRight className="w-6 h-6 text-indigo-700 dark:text-indigo-300" />
             </button>
           </div>
 
           {/* selezione gruppi / esercizi */}
           {!mostraEsercizi ? (
             <>
-              <p className="text-indigo-700 mb-6">Seleziona i gruppi muscolari da allenare</p>
+              <p className="text-indigo-700 dark:text-indigo-300 mb-6">Seleziona i gruppi muscolari da allenare</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-md mb-8">
                 {["Petto", "Dorso", "Gambe", "Spalle", "Braccia", "Addome", "Full Body"].map((g) => {
                   const selezionato = !!giornoCorrente?.gruppi.includes(g);
@@ -712,7 +698,7 @@ export default function WorkoutPage() {
                       className={`py-3 px-4 rounded-xl border text-sm font-semibold transition-all ${
                         selezionato
                           ? "bg-indigo-600 text-white border-indigo-600"
-                          : "bg-indigo-50 hover:bg-indigo-100 border-indigo-100 text-indigo-700"
+                          : "bg-indigo-50 hover:bg-indigo-100 border-indigo-100 text-indigo-700 dark:bg-gray-800 dark:text-indigo-300 dark:border-gray-700 dark:hover:bg-gray-700"
                       }`}
                     >
                       {g}
@@ -732,13 +718,13 @@ export default function WorkoutPage() {
           ) : (
             <>
               <div className="flex items-center justify-between w-full mb-4">
-                <h3 className="text-xl font-bold text-indigo-700">Esercizi — Giorno {currentDay}</h3>
-                <button onClick={handleCambiaGruppo} className="text-indigo-700 hover:underline">
+                <h3 className="text-xl font-bold text-indigo-700 dark:text-indigo-300">Esercizi — Giorno {currentDay}</h3>
+                <button onClick={handleCambiaGruppo} className="text-indigo-700 dark:text-indigo-300 hover:underline">
                   Modifica gruppi
                 </button>
               </div>
 
-              {loadingEx && <div className="w-full mb-3 text-sm text-indigo-700">Caricamento esercizi dal database…</div>}
+              {loadingEx && <div className="w-full mb-3 text-sm text-indigo-700 dark:text-indigo-300">Caricamento esercizi dal database…</div>}
 
               {/* Righe esercizi */}
               {giornoCorrente?.esercizi.map((ex, i) => {
@@ -749,7 +735,7 @@ export default function WorkoutPage() {
                 const needWeightButEmpty = requires && (!ex.peso || ex.peso.trim() === "");
 
                 return (
-                  <div key={i} className="flex flex-col gap-2 mb-4 bg-indigo-50 p-3 rounded-lg w-full">
+                  <div key={i} className="flex flex-col gap-2 mb-4 bg-indigo-50 dark:bg-gray-800 p-3 rounded-lg w-full">
                     {/* Riga principale con campi */}
                     <div className="flex flex-wrap items-center gap-3">
                       <ExerciseSelect
@@ -764,7 +750,7 @@ export default function WorkoutPage() {
                       <input
                         type="number"
                         placeholder="Serie"
-                        className="w-20 p-2 rounded-md border border-indigo-200"
+                        className="w-20 p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
                         value={ex.serie}
                         onChange={(e) => handleAggiornaEsercizio(i, "serie", e.target.value)}
                         min={0}
@@ -772,7 +758,7 @@ export default function WorkoutPage() {
                       <input
                         type="number"
                         placeholder="Rip."
-                        className="w-20 p-2 rounded-md border border-indigo-200"
+                        className="w-20 p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
                         value={ex.ripetizioni}
                         onChange={(e) => handleAggiornaEsercizio(i, "ripetizioni", e.target.value)}
                         min={0}
@@ -780,8 +766,10 @@ export default function WorkoutPage() {
                       <input
                         type="number"
                         placeholder="Kg"
-                        className={`w-20 p-2 rounded-md border ${
-                          requires ? (needWeightButEmpty ? "border-red-400" : "border-indigo-200") : "border-gray-200 opacity-50"
+                        className={`w-20 p-2 rounded-md border bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 ${
+                          requires
+                            ? (needWeightButEmpty ? "border-red-400 dark:border-red-400" : "border-indigo-200 dark:border-gray-700")
+                            : "border-gray-200 dark:border-gray-700 opacity-50"
                         }`}
                         value={ex.peso ?? ""}
                         onChange={(e) => handleAggiornaEsercizio(i, "peso", e.target.value)}
@@ -792,28 +780,27 @@ export default function WorkoutPage() {
                       <input
                         type="number"
                         placeholder="Rec. (s)"
-                        className="w-24 p-2 rounded-md border border-indigo-200"
+                        className="w-24 p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
                         value={ex.recupero}
                         onChange={(e) => handleAggiornaEsercizio(i, "recupero", e.target.value)}
                         min={0}
                       />
 
-                      {/* ✅ Pulsante toggle note */}
+                      {/* Toggle note */}
                       <button
                         type="button"
                         onClick={() => handleToggleNota(i)}
-                        className="px-3 py-2 text-sm rounded-md bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold"
+                        className="px-3 py-2 text-sm rounded-md bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-semibold dark:bg-gray-800 dark:text-indigo-300 dark:hover:bg-gray-700"
                       >
                         {ex.note === undefined ? "Aggiungi nota" : "Rimuovi nota"}
                       </button>
                     </div>
 
-                    {/* ✅ Textarea visibile solo se ex.note è definito */}
                     {ex.note !== undefined && (
                       <textarea
-                        className="w-full mt-2 p-2 rounded-md border border-indigo-200 text-sm"
+                        className="w-full mt-2 p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700 text-sm"
                         placeholder="Inserisci note (es. tecnica, respirazione, durata...)"
-                        value={ex.note ?? ""} // "" => placeholder visibile
+                        value={ex.note ?? ""}
                         onChange={(e) => handleAggiornaEsercizio(i, "note", e.target.value)}
                       />
                     )}
@@ -822,7 +809,7 @@ export default function WorkoutPage() {
               })}
               <button
                 onClick={handleAggiungiEsercizio}
-                className="mt-4 flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-semibold"
+                className="mt-4 flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-semibold dark:text-indigo-300 dark:hover:text-indigo-200"
               >
                 <PlusCircle className="w-5 h-5" />
                 Aggiungi esercizio
@@ -832,19 +819,19 @@ export default function WorkoutPage() {
 
           {/* Riepilogo + form impostazioni scheda */}
           <div className="mt-10 w-full">
-            <h3 className="text-lg font-semibold text-indigo-700 mb-3 text-center">Riepilogo allenamento</h3>
+            <h3 className="text-lg font-semibold text-indigo-700 dark:text-indigo-300 mb-3 text-center">Riepilogo allenamento</h3>
             <div className="flex flex-wrap justify-center gap-3 mb-6">
               {Array.from({ length: giorni }).map((_, i) => {
                 const g = giorniAllenamento.find((x) => x.giorno === i + 1);
                 const eserciziCount = g?.esercizi.length ?? 0;
                 return (
-                  <div key={i} className="bg-indigo-50 border border-indigo-100 rounded-lg px-4 py-2 text-sm">
+                  <div key={i} className="bg-indigo-50 dark:bg-gray-800 border border-indigo-100 dark:border-gray-700 rounded-lg px-4 py-2 text-sm">
                     Giorno {i + 1}:{" "}
-                    <span className="font-semibold text-indigo-700">
+                    <span className="font-semibold text-indigo-700 dark:text-indigo-300">
                       {g?.gruppi.length ? g.gruppi.join(", ") : "-"}
                     </span>
                     {g?.gruppiConfermati ? (
-                      <span className="ml-2 text-xs text-green-700">
+                      <span className="ml-2 text-xs text-green-700 dark:text-green-300">
                         (confermato{eserciziCount ? `, ${eserciziCount} esercizi` : ""})
                       </span>
                     ) : null}
@@ -854,27 +841,27 @@ export default function WorkoutPage() {
             </div>
 
             {/* Form: scadenza + obiettivo */}
-            <div className="max-w-2xl mx-auto bg-indigo-50/60 border border-indigo-100 rounded-xl p-5 mb-6">
-              <h4 className="text-base font-semibold text-indigo-800 mb-4">Impostazioni scheda</h4>
+            <div className="max-w-2xl mx-auto bg-indigo-50/60 dark:bg-gray-800 border border-indigo-100 dark:border-gray-700 rounded-xl p-5 mb-6">
+              <h4 className="text-base font-semibold text-indigo-800 dark:text-indigo-300 mb-4">Impostazioni scheda</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col">
-                  <label className="text-sm text-indigo-700 mb-1">Scadenza scheda</label>
+                  <label className="text-sm text-indigo-700 dark:text-indigo-300 mb-1">Scadenza scheda</label>
                   <input
                     type="date"
-                    className="p-2 rounded-md border border-indigo-200 bg-white"
+                    className="p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
                     value={expireDate}
                     onChange={(e) => setExpireDate(e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-sm text-indigo-700 mb-1">Obiettivo</label>
+                  <label className="text-sm text-indigo-700 dark:text-indigo-300 mb-1">Obiettivo</label>
                   <select
-                    className="w-56 sm:w-60 p-2 rounded-md border border-indigo-200 bg-white"
+                    className="w-56 sm:w-60 p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
                     value={goal || ""}
                     onChange={(e) => {
                       const v = e.target.value as Goal | "altro" | "";
-                      if (v === "") return; // non tornare al placeholder
-                      if (v === "altro") setGoal(""); // blocchiamo nel passo successivo
+                      if (v === "") return;
+                      if (v === "altro") setGoal("");
                       else setGoal(v);
                     }}
                   >
@@ -886,7 +873,7 @@ export default function WorkoutPage() {
                     <option value="aumento_peso">Aumento peso</option>
                     <option value="altro">Altro…</option>
                   </select>
-                  <p className="text-xs text-indigo-600 mt-2">
+                  <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-2">
                     Nota: “Altro…” non è salvabile. Scegli uno dei tre obiettivi per procedere.
                   </p>
                 </div>
@@ -911,16 +898,16 @@ export default function WorkoutPage() {
           key="preview"
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl shadow-xl p-10 w-full max-w-5xl mt-6"
+          className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-10 w-full max-w-5xl mt-6 border border-transparent dark:border-gray-800"
         >
-          <h2 className="text-3xl font-bold text-indigo-700 mb-6 text-center">Anteprima scheda allenamento</h2>
+          <h2 className="text-3xl font-bold text-indigo-700 dark:text-indigo-300 mb-6 text-center">Anteprima scheda allenamento</h2>
 
           {/* contenitore da “fotografare” */}
-          <div ref={previewRef} className="relative bg-white p-6 rounded-xl border border-gray-200">
+          <div ref={previewRef} className="relative bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
             {/* HEADER */}
             <div className="relative h-28 mb-4">
-              <div className="absolute top-0 left-0 w-24 h-24 bg-white rounded-md" />
-              <h3 className="absolute bottom-2 left-0 text-xl font-semibold">Piano settimanale</h3>
+              <div className="absolute top-0 left-0 w-24 h-24 bg-white dark:bg-gray-900 rounded-md border border-gray-200 dark:border-gray-700" />
+              <h3 className="absolute bottom-2 left-0 text-xl font-semibold text-gray-800 dark:text-gray-100">Piano settimanale</h3>
               <img
                 src="/assets/IconaMyFit.png"
                 alt="MyFit"
@@ -935,15 +922,15 @@ export default function WorkoutPage() {
               {Array.from({ length: giorni ?? 0 }).map((_, i) => {
                 const g = giorniAllenamento.find((x) => x.giorno === i + 1);
                 return (
-                  <div key={i} className="border rounded-lg p-4">
+                  <div key={i} className="border rounded-lg p-4 border-gray-200 dark:border-gray-700">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-bold">Giorno {i + 1}</h4>
-                      <span className="text-sm text-gray-500">{g?.gruppi?.length ? g.gruppi.join(", ") : "—"}</span>
+                      <h4 className="font-bold text-gray-800 dark:text-gray-100">Giorno {i + 1}</h4>
+                      <span className="text-sm text-gray-500 dark:text-gray-400">{g?.gruppi?.length ? g.gruppi.join(", ") : "—"}</span>
                     </div>
                     <div className="space-y-2">
                       {g?.esercizi?.length ? (
                         g.esercizi.map((ex, idx) => (
-                          <div key={idx} className="text-sm flex flex-wrap gap-3">
+                          <div key={idx} className="text-sm flex flex-wrap gap-3 text-gray-800 dark:text-gray-100">
                             <span className="font-medium">{ex.nome || "—"}</span>
                             <span>Serie: {ex.serie || "—"}</span>
                             <span>Ripetizioni: {ex.ripetizioni || "—"}</span>
@@ -952,7 +939,7 @@ export default function WorkoutPage() {
                           </div>
                         ))
                       ) : (
-                        <div className="text-sm text-gray-500">Nessun esercizio inserito</div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">Nessun esercizio inserito</div>
                       )}
                     </div>
                   </div>
@@ -964,7 +951,7 @@ export default function WorkoutPage() {
           <div className="mt-6 flex flex-wrap gap-3 justify-center">
             <button
               onClick={() => setShowPreview(false)}
-              className="px-5 py-3 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+              className="px-5 py-3 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-gray-700 dark:text-indigo-300 dark:hover:bg-gray-800"
             >
               Torna alla modifica
             </button>

@@ -6,7 +6,6 @@ import type { Professional } from "../types/professional";
 import List from "../components/professionisti/List";
 import Filters from "../components/professionisti/Filters";
 import { useAuth } from "../hooks/useAuth";
-import { useLoginModal } from "../hooks/useLoginModal";
 
 type FiltersState = {
   q: string;
@@ -18,11 +17,10 @@ type FiltersState = {
 
 export default function Professionisti() {
   const navigate = useNavigate();
-  const { authData } = useAuth();
-  const { openLoginModal } = useLoginModal();
+  const { requireLogin } = useAuth();
 
   const [items, setItems] = useState<Professional[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   const [filters, setFilters] = useState<FiltersState>({
@@ -35,10 +33,10 @@ export default function Professionisti() {
 
   useEffect(() => {
     let stop = false;
-    setLoading(true);
-    setError(null);
 
     (async () => {
+      setLoading(true);
+      setError(null);
       try {
         const data = await listProfessionals(filters);
         if (!stop) setItems(data);
@@ -49,7 +47,9 @@ export default function Professionisti() {
       }
     })();
 
-    return () => { stop = true; };
+    return () => {
+      stop = true;
+    };
   }, [filters]);
 
   const handleOpen = (id: number) => {
@@ -57,34 +57,33 @@ export default function Professionisti() {
   };
 
   const handleContact = (id: number) => {
-    if (!authData) {
-      openLoginModal();       // 👈 se non loggato, apri modal
-      return;
-    }
-    // 👇 se loggato, procedi (puoi cambiare rotta verso /chat/:id quando pronta)
-    navigate(`/professionisti/${id}`);
+    requireLogin(() => navigate(`/chat/${id}`));
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8 text-gray-800 dark:text-gray-100">
       <h1 className="text-2xl md:text-3xl font-semibold">Professionisti</h1>
 
-      {/* Filtri: il componente emette tutto in onChange */}
+      {/* Filtri */}
       <div className="mt-6">
-        <Filters onChange={setFilters} />
+        <div className="rounded-2xl border border-indigo-100 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 shadow-sm">
+          <Filters onChange={(next) => setFilters(next)} />
+        </div>
       </div>
 
       {/* Stato */}
-      {loading && <div className="mt-6 text-gray-600">Caricamento…</div>}
+      {loading && <div className="mt-6 text-gray-600 dark:text-gray-300">Caricamento…</div>}
 
       {error && !loading && (
-        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-3 text-red-700">
+        <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-3 text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-200">
           Errore: {error}
         </div>
       )}
 
       {!loading && !error && (
-        <List items={items} onOpen={handleOpen} onContact={handleContact} />
+        <div className="mt-6">
+          <List items={items} onOpen={handleOpen} onContact={handleContact} />
+        </div>
       )}
     </div>
   );

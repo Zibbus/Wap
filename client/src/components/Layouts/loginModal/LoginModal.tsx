@@ -1,17 +1,30 @@
-import { useId, useState } from "react";
+// client/src/components/Layouts/loginModal/LoginModal.tsx
+import { useEffect, useId, useState } from "react";
 import { useAuth } from "../../../hooks/useAuth";
 import { useLoginModal } from "../../../hooks/useLoginModal";
 
-/** ------- Sottocomponente locale per password con bottone occhio ------- */
-type PasswordFieldProps = {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  name?: string;
-  autoComplete?: string;
-  className?: string;
-};
+// Se usi proxy Vite: AUTH_BASE = "http://localhost:4000" o import.meta.env.VITE_AUTH_BASE
+const AUTH_BASE = import.meta.env.VITE_AUTH_BASE ?? "http://localhost:4000";
 
+/* ---------------------------------- Icons ---------------------------------- */
+// Occhio aperto/chiuso minimal (niente librerie extra)
+function EyeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path>
+      <circle cx="12" cy="12" r="3"></circle>
+    </svg>
+  );
+}
+function EyeOffIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 3l18 18M10.6 10.6a3 3 0 104.2 4.2M9.88 4.24A9.77 9.77 0 0112 4c6.5 0 10 8 10 8a18.38 18.38 0 01-3.23 4.36M6.1 6.1C3.36 7.89 2 12 2 12a18.47 18.47 0 005.41 6.08"></path>
+    </svg>
+  );
+}
+
+/* ----------------------------- Password Field ------------------------------ */
 function PasswordField({
   value,
   onChange,
@@ -19,17 +32,22 @@ function PasswordField({
   name,
   autoComplete = "current-password",
   className = "",
-}: PasswordFieldProps) {
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  name?: string;
+  autoComplete?: string;
+  className?: string;
+}) {
   const [show, setShow] = useState(false);
   const [wink, setWink] = useState(false);
   const id = useId();
-
   const toggle = () => {
     setShow((s) => !s);
     setWink(true);
-    setTimeout(() => setWink(false), 180); // micro-animazione "blink"
+    setTimeout(() => setWink(false), 180);
   };
-
   return (
     <div className={`relative ${className}`}>
       <input
@@ -40,22 +58,15 @@ function PasswordField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         autoComplete={autoComplete}
-        className="w-full border border-indigo-200 rounded-lg pl-3 pr-11 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-400 placeholder:text-gray-400"
+        className="w-full border border-indigo-200 rounded-lg pl-3 pr-11 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-400 placeholder:text-gray-400 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
       />
-
       <button
         type="button"
         onClick={toggle}
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition dark:hover:bg-gray-800"
         aria-label={show ? "Nascondi password" : "Mostra password"}
-        aria-pressed={show}
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 inline-flex items-center justify-center w-8 h-8 rounded-md border-0 bg-transparent hover:bg-indigo-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition"
-        title={show ? "Nascondi" : "Mostra"}
       >
-        <span
-          className={`transition-transform duration-200 ${
-            show ? "rotate-6 scale-95" : ""
-          } ${wink ? "scale-y-75" : ""}`}
-        >
+        <span className={`transition-transform duration-200 ${show ? "rotate-6 scale-95" : ""} ${wink ? "scale-y-75" : ""}`}>
           {show ? <EyeOffIcon /> : <EyeIcon />}
         </span>
       </button>
@@ -63,211 +74,137 @@ function PasswordField({
   );
 }
 
-function EyeIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle
-        cx="12" cy="12" r="3"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function EyeOffIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M4 20L20 4"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-/** ---------------------------------------------------------------------- */
-
+/* --------------------------------- Modal ---------------------------------- */
 export default function LoginModal() {
   const { login } = useAuth();
   const { closeLoginModal } = useLoginModal();
 
   const [isRegister, setIsRegister] = useState(false);
 
-  // Campi comuni
+  // comuni
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
 
-  // Campi registrazione
+  // registrazione
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [dob, setDob] = useState("");
   const [sex, setSex] = useState<"M" | "F" | "O" | "">("");
   const [userType, setUserType] = useState<"utente" | "professionista">("utente");
+  const [email, setEmail] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [weight, setWeight] = useState<number | "">("");
   const [height, setHeight] = useState<number | "">("");
-  const [email, setEmail] = useState("");
   const [vat, setVat] = useState("");
 
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  // avatar (solo registrazione, opzionale)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
-  const resetMessages = () => {
+  // messaggi / stato
+  const [loading, setLoading] = useState(false);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Iniziali per fallback avatar
+  const initials = (() => {
+    const A = (firstName || "").trim();
+    const B = (lastName || "").trim();
+    if (A && B) return (A[0] + B[0]).toUpperCase();
+    if (A) return A.slice(0, 2).toUpperCase();
+    if (B) return B.slice(0, 2).toUpperCase();
+    return (username || "U").slice(0, 2).toUpperCase();
+  })();
+
+  function resetMessages() {
     setError(null);
     setSuccessMsg(null);
-  };
+  }
 
-  const validateEmail = (e: string) => /^\S+@\S+\.\S+$/.test(e);
+  function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] || null;
+    setAvatarFile(f);
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    setAvatarPreview(f ? URL.createObjectURL(f) : null);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+    };
+  }, [avatarPreview]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     resetMessages();
-
-    if (!username.trim() || !password) {
-      setError("Inserisci username/email e password.");
-      return;
-    }
-
-    if (isRegister) {
-      if (!firstName.trim() || !lastName.trim()) {
-        setError("Nome e cognome sono obbligatori.");
-        return;
-      }
-      if (!dob) {
-        setError("Inserisci la data di nascita.");
-        return;
-      }
-
-      const today = new Date();
-      const birthDate = new Date(dob);
-      let age = today.getFullYear() - birthDate.getFullYear();
-      const monthDiff = today.getMonth() - birthDate.getMonth();
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
-
-      if (userType === "utente" && age < 14) {
-        setError("Devi avere almeno 14 anni per registrarti come utente.");
-        return;
-      }
-      if (userType === "professionista" && age < 18) {
-        setError("Devi avere almeno 18 anni per registrarti come professionista.");
-        return;
-      }
-      if (!sex) {
-        setError("Seleziona il sesso.");
-        return;
-      }
-      if (!validateEmail(email)) {
-        setError("Inserisci una email valida.");
-        return;
-      }
-      if (password.length < 6) {
-        setError("La password deve essere almeno 6 caratteri.");
-        return;
-      }
-      if (password !== confirmPassword) {
-        setError("Le password non corrispondono.");
-        return;
-      }
-      if (userType === "utente" && (weight === "" || height === "")) {
-        setError("Peso e altezza sono obbligatori per un utente.");
-        return;
-      }
-      if (userType === "professionista" && !vat.trim()) {
-        setError("Inserisci la partita IVA per il professionista.");
-        return;
-      }
-    }
+    setLoading(true);
 
     try {
-      setLoading(true);
-
-      if (isRegister) {
-        const payload: any = {
-          username: username.trim(),
-          password,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          dob,
-          sex,
-          type: userType,
-          email: email.trim(),
-        };
-
-        if (userType === "utente") {
-          payload.weight = Number(weight);
-          payload.height = Number(height);
-        } else {
-          payload.vat = vat.trim();
-        }
-
-        const res = await fetch("http://localhost:4000/api/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Errore durante la registrazione.");
-
-        setSuccessMsg("Registrazione completata! Ora effettua il login.");
-        setIsRegister(false);
-        setPassword("");
-        setConfirmPassword("");
-      } else {
-        const res = await fetch("http://localhost:4000/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ usernameOrEmail: username.trim(), password }),
-        });
-
-        const raw = await res.text();
-        let data: any = {};
-        try {
-          data = JSON.parse(raw);
-        } catch {}
-
-        if (!res.ok) throw new Error(data.error || data.message || `HTTP ${res.status}`);
-
-        const normalized = {
-          token: data.token,
-          userId: data.user?.id ?? data.userId,
-          username: data.user?.username,
-          role: data.user?.role ?? "utente",
-          avatarUrl: data.user?.avatarUrl ?? undefined,
-        };
-
-        // ✅ Salva nel contesto globale
-        localStorage.setItem("authData", JSON.stringify(normalized));
-        await login(username.trim(), password);
+      if (!isRegister) {
+        // ---- LOGIN ----
+        await login(username, password);
         closeLoginModal();
-
+        return;
       }
+
+      // ---- REGISTRAZIONE ----
+      if (password !== confirmPassword) {
+        throw new Error("Le password non coincidono.");
+      }
+
+      // Prepara payload base
+      const payload: any = {
+        username,
+        password,
+        firstName,
+        lastName,
+        dob: dob || null,
+        sex: sex || null,
+        type: userType, // 'utente' | 'professionista'
+        email,
+      };
+
+      if (userType === "utente") {
+        payload.weight = weight === "" ? null : Number(weight);
+        payload.height = height === "" ? null : Number(height);
+      } else {
+        payload.vat = vat || null;
+      }
+
+      // 1) registra utente
+      const res = await fetch(`${AUTH_BASE}/api/auth/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        throw new Error(t || `Errore registrazione (HTTP ${res.status})`);
+      }
+
+      // 2) se hai anche avatar, caricalo dopo (endpoint opzionale)
+      if (avatarFile) {
+        const fd = new FormData();
+        fd.append("avatar", avatarFile);
+        const up = await fetch(`${AUTH_BASE}/api/profile/avatar`, {
+          method: "POST",
+          credentials: "include",
+          body: fd,
+        });
+        // Non bloccare la registrazione se fallisce l'avatar
+        if (!up.ok) {
+          console.warn("Upload avatar fallito");
+        }
+      }
+
+      setSuccessMsg("Registrazione completata! Eseguo l'accesso…");
+
+      // 3) login automatico
+      await login(username, password);
+      closeLoginModal();
     } catch (err: any) {
-      setError(err?.message || "Errore di rete.");
+      setError(err?.message || "Operazione non riuscita");
     } finally {
       setLoading(false);
     }
@@ -276,174 +213,247 @@ export default function LoginModal() {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div
-        className={`bg-white rounded-xl shadow-xl p-7 w-full ${
-          isRegister ? "max-w-lg" : "max-w-sm"
-        }`}
+        className={`bg-white rounded-2xl shadow-xl border border-indigo-100 p-7 w-full ${
+          isRegister ? "max-w-xl" : "max-w-sm"
+        } dark:bg-gray-900 dark:border-gray-800`}
       >
-        {/* 🔹 Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-lg">
-            {isRegister ? "Registrazione" : "Accedi"}
-          </h3>
+        {/* Header */}
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="font-semibold text-xl text-gray-900 dark:text-gray-100">
+              {isRegister ? "Crea il tuo account" : "Accedi"}
+            </h3>
+            <p className="text-sm text-gray-500 mt-0.5 dark:text-gray-300">
+              {isRegister ? "Un minuto e sei dentro." : "Bentornato!"}
+            </p>
+          </div>
           <button
             onClick={() => {
               setIsRegister(false);
               closeLoginModal();
             }}
-            className="text-sm text-gray-500 hover:text-gray-700"
+            className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
           >
             Chiudi
           </button>
         </div>
 
-        {/* 🔹 Messaggi */}
+        {/* Messaggi */}
         {successMsg && (
-          <div className="mb-3 p-2 bg-green-50 border border-green-200 text-green-700 rounded">
+          <div className="mb-3 p-2.5 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg dark:bg-emerald-900/20 dark:border-emerald-800 dark:text-emerald-300">
             {successMsg}
           </div>
         )}
         {error && (
-          <div className="mb-3 p-2 bg-red-50 border border-red-200 text-red-700 rounded">
+          <div className="mb-3 p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg dark:bg-rose-900/20 dark:border-rose-800 dark:text-rose-300">
             {error}
           </div>
         )}
 
-        {/* 🔹 Form */}
-        <form onSubmit={handleSubmit} className="space-y-3">
-          {/* 🔸 Login */}
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* LOGIN */}
           {!isRegister && (
             <>
-              <input
-                className="w-full border border-indigo-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500"
-                placeholder="Username o Email"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
-              {/* Password con bottone occhio */}
-              <PasswordField
-                value={password}
-                onChange={setPassword}
-                placeholder="Password"
-                autoComplete="current-password"
-              />
-            </>
-          )}
-
-          {/* 🔸 Registrazione */}
-          {isRegister && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-sm text-gray-700 dark:text-gray-200">Username o Email</span>
                 <input
-                  className="border border-indigo-200 rounded-lg px-3 py-2"
-                  placeholder="Nome"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                />
-                <input
-                  className="border border-indigo-200 rounded-lg px-3 py-2"
-                  placeholder="Cognome"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <input
-                  type="date"
-                  className="border border-indigo-200 rounded-lg px-3 py-2"
-                  value={dob}
-                  onChange={(e) => setDob(e.target.value)}
-                />
-                <select
-                  value={sex}
-                  onChange={(e) => setSex(e.target.value as any)}
-                  className="border border-indigo-200 rounded-lg px-3 py-2 text-gray-700"
-                >
-                  <option value="" disabled hidden>
-                    Sesso
-                  </option>
-                  <option value="M">Maschile</option>
-                  <option value="F">Femminile</option>
-                  <option value="O">Altro</option>
-                </select>
-                <select
-                  value={userType}
-                  onChange={(e) => setUserType(e.target.value as any)}
-                  className="border border-indigo-200 rounded-lg px-3 py-2"
-                >
-                  <option value="utente">Utente</option>
-                  <option value="professionista">Professionista</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  type="email"
-                  className="border border-indigo-200 rounded-lg px-3 py-2"
-                  placeholder="Email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-                <input
-                  className="border border-indigo-200 rounded-lg px-3 py-2"
-                  placeholder="Username"
+                  className="mt-1 w-full border border-indigo-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                  placeholder="mario.rossi"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                 />
+              </label>
+              <label className="block">
+                <span className="text-sm text-gray-700 dark:text-gray-200">Password</span>
+                <PasswordField
+                  value={password}
+                  onChange={setPassword}
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  className="mt-1"
+                />
+              </label>
+            </>
+          )}
+
+          {/* REGISTRAZIONE */}
+          {isRegister && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-sm text-gray-700 dark:text-gray-200">Nome</span>
+                  <input
+                    className="mt-1 w-full border border-indigo-200 rounded-lg px-3 py-2 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                    placeholder="Mario"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-gray-700 dark:text-gray-200">Cognome</span>
+                  <input
+                    className="mt-1 w-full border border-indigo-200 rounded-lg px-3 py-2 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                    placeholder="Rossi"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <label className="block">
+                  <span className="text-sm text-gray-700 dark:text-gray-200">Data di nascita</span>
+                  <input
+                    type="date"
+                    className="mt-1 w-full border border-indigo-200 rounded-lg px-3 py-2 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                    value={dob}
+                    onChange={(e) => setDob(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-gray-700 dark:text-gray-200">Sesso</span>
+                  <select
+                    value={sex}
+                    onChange={(e) => setSex(e.target.value as any)}
+                    className="mt-1 w-full border border-indigo-200 rounded-lg px-3 py-2 bg-white text-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                  >
+                    <option value="" disabled hidden>
+                      Seleziona
+                    </option>
+                    <option value="M">Maschile</option>
+                    <option value="F">Femminile</option>
+                    <option value="O">Altro</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-sm text-gray-700 dark:text-gray-200">Tipo utente</span>
+                  <select
+                    value={userType}
+                    onChange={(e) => setUserType(e.target.value as any)}
+                    className="mt-1 w-full border border-indigo-200 rounded-lg px-3 py-2 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                  >
+                    <option value="utente">Utente</option>
+                    <option value="professionista">Professionista</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-sm text-gray-700 dark:text-gray-200">Email</span>
+                  <input
+                    type="email"
+                    className="mt-1 w-full border border-indigo-200 rounded-lg px-3 py-2 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                    placeholder="mario@esempio.it"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-gray-700 dark:text-gray-200">Username</span>
+                  <input
+                    className="mt-1 w-full border border-indigo-200 rounded-lg px-3 py-2 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                    placeholder="mario.rossi"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              {/* Avatar opzionale */}
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3 dark:bg-gray-800/40 dark:border-gray-700">
+                <span className="block text-sm text-gray-700 dark:text-gray-200 mb-2">Foto profilo (opzionale)</span>
+                <div className="flex items-center gap-4">
+                  <div
+                    className="w-16 h-16 rounded-full overflow-hidden ring-1 ring-indigo-100 bg-white flex items-center justify-center dark:bg-gray-900 dark:ring-gray-700"
+                    aria-label="Anteprima avatar"
+                  >
+                    {avatarPreview ? (
+                      <img src={avatarPreview} alt="Anteprima avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-sm font-medium text-gray-500 select-none leading-none dark:text-gray-300">{initials}</span>
+                    )}
+                  </div>
+
+                  <label className="inline-flex items-center gap-2 cursor-pointer">
+                    <span className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700">
+                      Carica foto
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp"
+                      className="hidden"
+                      onChange={onPickAvatar}
+                    />
+                    <span className="text-xs text-gray-500 dark:text-gray-300">PNG, JPG, WEBP • max 5MB</span>
+                  </label>
+                </div>
               </div>
 
               {userType === "utente" && (
                 <div className="grid grid-cols-2 gap-3">
-                  <input
-                    type="number"
-                    className="border border-indigo-200 rounded-lg px-3 py-2"
-                    placeholder="Peso (kg)"
-                    value={weight}
-                    onChange={(e) =>
-                      setWeight(e.target.value === "" ? "" : Number(e.target.value))
-                    }
-                  />
-                  <input
-                    type="number"
-                    className="border border-indigo-200 rounded-lg px-3 py-2"
-                    placeholder="Altezza (cm)"
-                    value={height}
-                    onChange={(e) =>
-                      setHeight(e.target.value === "" ? "" : Number(e.target.value))
-                    }
-                  />
+                  <label className="block">
+                    <span className="text-sm text-gray-700 dark:text-gray-200">Peso (kg)</span>
+                    <input
+                      type="number"
+                      className="mt-1 w-full border border-indigo-200 rounded-lg px-3 py-2 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                      placeholder="70"
+                      value={weight}
+                      onChange={(e) => setWeight(e.target.value === "" ? "" : Number(e.target.value))}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm text-gray-700 dark:text-gray-200">Altezza (cm)</span>
+                    <input
+                      type="number"
+                      className="mt-1 w-full border border-indigo-200 rounded-lg px-3 py-2 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                      placeholder="175"
+                      value={height}
+                      onChange={(e) => setHeight(e.target.value === "" ? "" : Number(e.target.value))}
+                    />
+                  </label>
                 </div>
               )}
 
               {userType === "professionista" && (
-                <input
-                  className="border border-indigo-200 rounded-lg px-3 py-2"
-                  placeholder="Partita IVA"
-                  value={vat}
-                  onChange={(e) => setVat(e.target.value)}
-                />
+                <label className="block">
+                  <span className="text-sm text-gray-700 dark:text-gray-200">Partita IVA</span>
+                  <input
+                    className="mt-1 w-full border border-indigo-200 rounded-lg px-3 py-2 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
+                    placeholder="IT12345678901"
+                    value={vat}
+                    onChange={(e) => setVat(e.target.value)}
+                  />
+                </label>
               )}
 
               <div className="grid grid-cols-2 gap-3">
-                {/* Password con bottone occhio */}
-                <PasswordField
-                  value={password}
-                  onChange={setPassword}
-                  placeholder="Password"
-                  autoComplete="new-password"
-                />
-                {/* Conferma password con bottone occhio */}
-                <PasswordField
-                  value={confirmPassword}
-                  onChange={setConfirmPassword}
-                  placeholder="Conferma Password"
-                  autoComplete="new-password"
-                />
+                <label className="block">
+                  <span className="text-sm text-gray-700 dark:text-gray-200">Password</span>
+                  <PasswordField
+                    value={password}
+                    onChange={setPassword}
+                    placeholder="Crea una password"
+                    autoComplete="new-password"
+                    className="mt-1"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm text-gray-700 dark:text-gray-200">Conferma password</span>
+                  <PasswordField
+                    value={confirmPassword}
+                    onChange={setConfirmPassword}
+                    placeholder="Ripeti la password"
+                    autoComplete="new-password"
+                    className="mt-1"
+                  />
+                </label>
               </div>
             </>
           )}
 
-          {/* 🔹 Footer form */}
+          {/* Footer form */}
           <div className="flex justify-between items-center pt-2">
             <button
               type="button"
@@ -451,17 +461,15 @@ export default function LoginModal() {
                 resetMessages();
                 setIsRegister((s) => !s);
               }}
-              className="text-sm text-indigo-600 hover:underline"
+              className="text-sm text-indigo-700 hover:underline dark:text-indigo-300"
             >
-              {isRegister
-                ? "Hai già un account? Accedi"
-                : "Non hai un account? Registrati!"}
+              {isRegister ? "Hai già un account? Accedi" : "Non hai un account? Registrati!"}
             </button>
 
             <div className="flex gap-2">
               <button
                 type="button"
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm"
+                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
                 onClick={closeLoginModal}
               >
                 Annulla
@@ -469,13 +477,9 @@ export default function LoginModal() {
               <button
                 type="submit"
                 disabled={loading}
-                className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50"
+                className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400"
               >
-                {loading
-                  ? "Attendi..."
-                  : isRegister
-                  ? "Registrati"
-                  : "Entra"}
+                {loading ? "Attendi..." : isRegister ? "Registrati" : "Entra"}
               </button>
             </div>
           </div>

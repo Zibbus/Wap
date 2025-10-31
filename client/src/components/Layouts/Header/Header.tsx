@@ -2,8 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { ChevronDown, User, Shield } from "lucide-react";
 import { useLoginModal } from "../../../hooks/useLoginModal";
-import { useAuth } from "../../../hooks/useAuth"; // ✅ aggiunto
+import { useAuth } from "../../../hooks/useAuth";
 import logo from "../../../assets/IconaMyFitNoBG.png";
+import ThemeToggle from "../Header/drop-down_menu/ThemeToggle";
 
 export default function Header() {
   const navigate = useNavigate();
@@ -12,14 +13,14 @@ export default function Header() {
   const [animateClose, setAnimateClose] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { openLoginModal } = useLoginModal();
-  const { authData, logout } = useAuth(); // ✅ ora legge direttamente dal contesto globale
+  const { authData, logout } = useAuth();
 
   const isLoggedIn = !!authData;
   const username = authData?.username;
   const userType = authData?.role ?? "utente";
   const avatarUrl = authData?.avatarUrl ?? null;
 
-  // 🔹 Chiudi il menu quando clicchi fuori
+  // Chiudi il menu quando clicchi fuori
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (!dropdownOpen) return;
@@ -31,7 +32,7 @@ export default function Header() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [dropdownOpen]);
 
-  // 🔹 Chiudi menu se cambi pagina
+  // Chiudi menu se cambi pagina
   useEffect(() => {
     if (dropdownOpen) closeDropdown();
   }, [location.pathname]);
@@ -50,18 +51,21 @@ export default function Header() {
   };
 
   const dropdownItemClass =
-    "px-6 py-3 text-left text-gray-700 text-base hover:bg-indigo-50 hover:text-indigo-600 font-medium transition-all duration-200 cursor-pointer";
+    "px-6 py-3 text-left text-base font-medium cursor-pointer transition-colors " +
+    "text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 " +
+    "dark:text-gray-200 dark:hover:bg-gray-800 dark:hover:text-white";
 
   return (
     <header
       className={`fixed top-0 left-0 right-0 py-5 px-10 flex justify-between items-center shadow-md z-50 transition-colors duration-300
-        ${userType === "admin" ? "bg-red-50" : "bg-white text-gray-800"}
+        ${userType === "admin" ? "bg-red-50" : "bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100"}
       `}
     >
-      {/* 🔹 Logo MyFit → Home */}
-      <div
+      {/* Logo MyFit → Home */}
+      <button
         onClick={() => navigate("/")}
-        className="flex items-center gap-3 cursor-pointer select-none"
+        className="flex items-center gap-3 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded-lg"
+        aria-label="Vai alla home"
       >
         <img src={logo} alt="Logo MyFit" className="h-12 w-12 drop-shadow-md" />
         <h1
@@ -73,10 +77,13 @@ export default function Header() {
         >
           MyFit
         </h1>
-      </div>
+      </button>
 
-      {/* 🔹 Menu centrale */}
-      <nav className="absolute left-1/2 transform -translate-x-1/2 flex items-center gap-10 font-semibold text-lg">
+      {/* Menu centrale */}
+      <nav
+        className="absolute left-1/2 -translate-x-1/2 flex items-center gap-10 font-semibold text-lg"
+        aria-label="Navigazione principale"
+      >
         {[
           { label: "Home", path: "/" },
           { label: "Chi siamo", path: "chi-siamo" },
@@ -98,8 +105,9 @@ export default function Header() {
               }
             }}
             className="
-              relative group text-gray-700 font-semibold px-4 py-2 rounded-lg overflow-hidden
+              relative group text-gray-700 dark:text-gray-200 font-semibold px-4 py-2 rounded-lg overflow-hidden
               transition-colors duration-300 cursor-pointer select-none
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40
             "
           >
             <span className="relative z-10 group-hover:text-white transition-colors duration-300">
@@ -111,36 +119,37 @@ export default function Header() {
                 opacity-0 group-hover:opacity-100 scale-0 group-hover:scale-100
                 transition-all duration-400 ease-out origin-center blur-[0.3px]
               "
-            ></span>
+            />
           </button>
         ))}
       </nav>
 
-      {/* 🔹 Area utente */}
-      <div className="relative flex items-center" ref={dropdownRef}>
+      {/* Area utente */}
+      <div className="relative flex items-center gap-3" ref={dropdownRef}>
+        {/* Toggle tema sempre visibile */}
+        <ThemeToggle />
+
         {isLoggedIn ? (
           <>
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                dropdownOpen ? closeDropdown() : setDropdownOpen(true);
+                setDropdownOpen((v) => !v);
               }}
-              className="flex items-center gap-2 font-bold text-lg px-3 py-1 rounded-lg hover:bg-gray-100 transition-colors"
+              className="flex items-center gap-2 font-bold text-lg px-3 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+              aria-haspopup="menu"
+              aria-expanded={dropdownOpen}
             >
-              <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden flex items-center justify-center">
                 {avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt="avatar"
-                    className="w-full h-full object-cover"
-                  />
+                  <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
                 ) : userType === "admin" ? (
                   <Shield className="w-6 h-6 text-red-500" />
                 ) : (
-                  <User className="w-6 h-6 text-gray-500" />
+                  <User className="w-6 h-6 text-gray-500 dark:text-gray-300" />
                 )}
               </div>
-              <span className="whitespace-nowrap text-gray-800 text-lg font-extrabold">
+              <span className="whitespace-nowrap text-gray-800 dark:text-gray-100 text-lg font-extrabold">
                 Ciao, {username}
               </span>
               <ChevronDown
@@ -150,36 +159,36 @@ export default function Header() {
               />
             </button>
 
-            {/* 🔽 Menu tendina */}
             {(dropdownOpen || animateClose) && (
               <div
-                className={`absolute top-full left-1/2 -translate-x-1/2 mt-2 w-52 bg-white/95 backdrop-blur border border-gray-200 shadow-2xl z-40 transition-all duration-300 overflow-hidden rounded-2xl ${
+                role="menu"
+                className={`absolute top-full right-0 mt-2 w-56 bg-white/95 dark:bg-gray-900/95 backdrop-blur border border-gray-200 dark:border-gray-700 shadow-2xl z-40 transition-all duration-300 overflow-hidden rounded-2xl ${
                   animateClose ? "animate-slide-up" : "animate-slide-down"
                 }`}
               >
-                <div className="flex flex-col divide-y divide-gray-100">
+                <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
                   <div
                     onClick={() => {
                       navigate("/profilo");
                       closeDropdown();
                     }}
                     className={dropdownItemClass}
+                    role="menuitem"
                   >
                     Profilo
                   </div>
 
-                  {/* 🔹 Opzioni comuni */}
                   <div
                     onClick={() => {
                       navigate("/impostazioni");
                       closeDropdown();
                     }}
                     className={dropdownItemClass}
+                    role="menuitem"
                   >
                     Impostazioni
                   </div>
 
-                  {/* 👤 Utente base */}
                   {userType === "utente" && (
                     <>
                       <div
@@ -188,6 +197,7 @@ export default function Header() {
                           closeDropdown();
                         }}
                         className={dropdownItemClass}
+                        role="menuitem"
                       >
                         I miei allenamenti
                       </div>
@@ -197,13 +207,13 @@ export default function Header() {
                           closeDropdown();
                         }}
                         className={dropdownItemClass}
+                        role="menuitem"
                       >
                         Progressi
                       </div>
                     </>
                   )}
 
-                  {/* 💼 Professionista */}
                   {userType === "professionista" && (
                     <>
                       <div
@@ -212,6 +222,7 @@ export default function Header() {
                           closeDropdown();
                         }}
                         className={dropdownItemClass}
+                        role="menuitem"
                       >
                         I miei clienti
                       </div>
@@ -221,13 +232,13 @@ export default function Header() {
                           closeDropdown();
                         }}
                         className={dropdownItemClass}
+                        role="menuitem"
                       >
                         Crea scheda cliente
                       </div>
                     </>
                   )}
 
-                  {/* 🛡️ Admin */}
                   {userType === "admin" && (
                     <>
                       <div
@@ -236,6 +247,7 @@ export default function Header() {
                           closeDropdown();
                         }}
                         className={dropdownItemClass}
+                        role="menuitem"
                       >
                         Dashboard Admin
                       </div>
@@ -245,6 +257,7 @@ export default function Header() {
                           closeDropdown();
                         }}
                         className={dropdownItemClass}
+                        role="menuitem"
                       >
                         Gestione utenti
                       </div>
@@ -254,16 +267,17 @@ export default function Header() {
                           closeDropdown();
                         }}
                         className={dropdownItemClass}
+                        role="menuitem"
                       >
                         Gestione professionisti
                       </div>
                     </>
                   )}
 
-                  {/* 🚪 Logout */}
                   <div
                     onClick={handleLogout}
-                    className="px-6 py-3 text-left text-red-600 text-base hover:bg-red-50 font-semibold transition-all duration-200 cursor-pointer"
+                    className="px-6 py-3 text-left text-red-600 dark:text-red-400 text-base hover:bg-red-50 dark:hover:bg-red-950/30 font-semibold transition-colors cursor-pointer"
+                    role="menuitem"
                   >
                     Logout
                   </div>
@@ -274,14 +288,14 @@ export default function Header() {
         ) : (
           <button
             onClick={openLoginModal}
-            className="bg-indigo-600 text-white px-5 py-2 rounded-lg text-base font-semibold hover:bg-indigo-700 transition-colors cursor-pointer"
+            className="btn btn-primary"
           >
             Accedi
           </button>
         )}
       </div>
 
-      {/* 🔹 Animazioni */}
+      {/* Animazioni locali */}
       <style>{`
         @keyframes slideDown {
           0% { opacity: 0; transform: translateY(-15px); }
@@ -291,12 +305,8 @@ export default function Header() {
           0% { opacity: 1; transform: translateY(0); }
           100% { opacity: 0; transform: translateY(-15px); }
         }
-        .animate-slide-down {
-          animation: slideDown 250ms ease-out forwards;
-        }
-        .animate-slide-up {
-          animation: slideUp 250ms ease-in forwards;
-        }
+        .animate-slide-down { animation: slideDown 250ms ease-out forwards; }
+        .animate-slide-up   { animation: slideUp   250ms ease-in forwards; }
       `}</style>
     </header>
   );

@@ -173,3 +173,61 @@ CREATE TABLE IF NOT EXISTS nutrition_day_targets (
   UNIQUE KEY uq_day_target (day_id),
   FOREIGN KEY (day_id) REFERENCES nutrition_days(id) ON DELETE CASCADE
 );
+
+/* =========================================================
+   PROFILO PUBBLICO PROFESSIONISTI
+   ========================================================= */
+CREATE TABLE IF NOT EXISTS professional_profiles (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  freelancer_id INT NOT NULL UNIQUE,             -- 1 profilo per freelancer
+  display_name VARCHAR(150) NOT NULL,            -- es. "Ruben Moretti"
+  role ENUM('personal_trainer','nutrizionista') NOT NULL DEFAULT 'personal_trainer',
+  city VARCHAR(120) NULL,
+  price_per_hour DECIMAL(8,2) DEFAULT 0.00,
+  specialties JSON DEFAULT (JSON_ARRAY()),       -- es. ["ipertrofia","dimagrimento"]
+  languages JSON DEFAULT (JSON_ARRAY()),         -- es. ["IT","EN"]
+  bio TEXT NULL,
+  avatar_url VARCHAR(500) NULL,                  -- URL assoluto o /uploads/...
+  verified TINYINT(1) NOT NULL DEFAULT 0,
+  online TINYINT(1) NOT NULL DEFAULT 0,
+  rating DECIMAL(3,2) NOT NULL DEFAULT 0.00,     -- 0..5
+  reviews_count INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_professional_profiles_freelancer
+    FOREIGN KEY (freelancer_id) REFERENCES freelancers(id) ON DELETE CASCADE
+);
+
+/* =========================================================
+   IMPOSTAZIONI UTENTE (preferenze personali)
+   ========================================================= */
+CREATE TABLE IF NOT EXISTS user_settings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL UNIQUE,
+
+  -- Copie "comode" per query/filtri
+  theme         ENUM('light','dark','system') NOT NULL DEFAULT 'system',
+  locale        VARCHAR(10)                   NOT NULL DEFAULT 'it-IT',
+  weight_unit   ENUM('kg','lb')               NOT NULL DEFAULT 'kg',
+  height_unit   ENUM('cm','in')               NOT NULL DEFAULT 'cm',
+  distance_unit ENUM('km','mi')               NOT NULL DEFAULT 'km',
+
+  -- Facoltativi: se vuoi riflettere altre chiavi a livello colonna
+  time_format   ENUM('24h','12h')             NOT NULL DEFAULT '24h',
+  currency      ENUM('EUR','USD','GBP')       NOT NULL DEFAULT 'EUR',
+  energy_unit   ENUM('kcal','kJ')             NOT NULL DEFAULT 'kcal',
+
+  -- Preferenze strutturate (comode ma opzionali)
+  notifications JSON DEFAULT (JSON_OBJECT('email', true, 'push', false, 'chat', true)),
+  privacy       JSON DEFAULT (JSON_OBJECT('profileVisibility','public','showOnline', true)),
+  accessibility JSON DEFAULT (JSON_OBJECT('reducedMotion', false, 'highContrast', false, 'fontScale', 100)),
+  professional  JSON DEFAULT (JSON_OBJECT('isAvailableOnline', false, 'autoAcceptChat', false)),
+
+  -- Fonte di verità completa
+  settings      JSON NULL,
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+  CONSTRAINT fk_user_settings_user
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
