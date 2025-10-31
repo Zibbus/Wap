@@ -71,6 +71,8 @@ La home mostra logo, login/logout e schede introduttive. Dopo il login puoi coll
 - jsonwebtoken
 - typescript, tsx
 - bcryptjs
+- multer
+- -D @types/multer
 
 ### Frontend
 - react, react-dom
