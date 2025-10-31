@@ -1,46 +1,98 @@
+// client/src/components/Header/drop-down_menu/ThemeToggle.tsx
 import { useEffect, useState } from "react";
-import { setTheme, getStoredTheme, type AppTheme, applyTheme } from "../../../../theme/ThemeController";
-import { Sun, Moon, MonitorSmartphone } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 
+/* ==========================
+   Utilities incluse qui
+   ========================== */
+type AppTheme = "light" | "dark";
+const LS_KEY = "myfit-theme";
+
+function getStoredTheme(): AppTheme {
+  try {
+    const t = localStorage.getItem(LS_KEY);
+    return t === "dark" ? "dark" : "light"; // default: light
+  } catch {
+    return "light";
+  }
+}
+
+function applyTheme(theme: AppTheme) {
+  const root = document.documentElement; // <html>
+  const isDark = theme === "dark";
+  root.classList.toggle("dark", isDark);
+  root.setAttribute("data-theme", isDark ? "dark" : "light"); // opzionale
+}
+
+function setStoredTheme(theme: AppTheme) {
+  try {
+    localStorage.setItem(LS_KEY, theme);
+  } catch {}
+  applyTheme(theme);
+}
+
+/* ==========================
+   Componente Toggle Tema
+   ========================== */
 export default function ThemeToggle() {
-  const [theme, setLocal] = useState<AppTheme>(() => getStoredTheme());
+  const [theme, setTheme] = useState<AppTheme>("light");
 
+  // All'avvio: leggi da LS e applica
   useEffect(() => {
-    // assicurati che quando rientri in pagina, applichi quello salvato
-    applyTheme(theme);
-  }, [theme]);
+    const initial = getStoredTheme();
+    setTheme(initial);
+    applyTheme(initial);
+  }, []);
 
-  const setAll = (t: AppTheme) => {
-    setLocal(t);
-    setTheme(t); // salva e applica globalmente
+  // Sincronizza tra tab del browser
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === LS_KEY) {
+        const v = (e.newValue === "dark" ? "dark" : "light") as AppTheme;
+        setTheme(v);
+        applyTheme(v);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const toggle = () => {
+    const next: AppTheme = theme === "dark" ? "light" : "dark";
+    setTheme(next);        // aggiorna UI
+    setStoredTheme(next);  // persisti + applica a <html>
   };
 
-  const btn = "px-2 py-1 rounded-lg border text-sm flex items-center gap-2";
-  const active = "bg-indigo-600 text-white border-indigo-600";
-  const idle = "bg-white text-gray-700 border-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-700 dark:hover:bg-gray-700";
-
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-3 select-none">
+      <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Tema</span>
+
       <button
-        className={`${btn} ${theme === "light" ? active : idle}`}
-        onClick={() => setAll("light")}
-        title="Tema chiaro"
+        type="button"
+        onClick={toggle}
+        aria-pressed={theme === "dark"}
+        className={`relative inline-flex h-9 w-16 items-center rounded-full transition-colors
+          ${theme === "dark" ? "bg-gray-800 ring-1 ring-gray-700" : "bg-indigo-600 ring-1 ring-indigo-600"}
+          focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500`}
+        title={theme === "dark" ? "Passa a chiaro" : "Passa a scuro"}
       >
-        <Sun className="w-4 h-4" /> Chiaro
-      </button>
-      <button
-        className={`${btn} ${theme === "dark" ? active : idle}`}
-        onClick={() => setAll("dark")}
-        title="Tema scuro"
-      >
-        <Moon className="w-4 h-4" /> Scuro
-      </button>
-      <button
-        className={`${btn} ${theme === "system" ? active : idle}`}
-        onClick={() => setAll("system")}
-        title="Segui sistema"
-      >
-        <MonitorSmartphone className="w-4 h-4" /> Sistema
+        {/* bagliore leggero sul binario */}
+        <span
+          className={`absolute inset-0 rounded-full opacity-20 ${theme === "dark" ? "bg-white" : "bg-black"}`}
+          aria-hidden
+        />
+        {/* thumb */}
+        <span
+          className={`z-10 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white
+            transform transition-transform duration-300 shadow
+            ${theme === "dark" ? "translate-x-8" : "translate-x-1"}`}
+        >
+          {theme === "dark" ? (
+            <Moon className="w-4 h-4 text-gray-900" />
+          ) : (
+            <Sun className="w-4 h-4 text-indigo-600" />
+          )}
+        </span>
       </button>
     </div>
   );
