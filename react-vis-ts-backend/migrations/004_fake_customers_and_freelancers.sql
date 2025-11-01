@@ -1,27 +1,27 @@
 /*
 Credenziali di esempio (solo dev/demo):
-- Utente:          username = user_marco   | password = P@ssw0rdMarco!
-- Professionista:  username = pro_sara     | password = P@ssw0rdSara!
+- Utente:          username = user_marco   | password = pollo1 
+- Professionista:  username = pro_sara     | password = pollo1  <-- è uguale per tutti
 */
 
 /* ====== UTENTI (type = 'utente') ====== */
 INSERT INTO users (username, password, first_name, last_name, dob, sex, type, email)
-SELECT 'user_marco', 'P@ssw0rdMarco!', 'Marco', 'Rossi', '1990-04-12', 'M', 'utente', 'marco.rossi@example.com'
+SELECT 'user_marco', '$2b$10$VL8OfYwAigN/IDlNRrRhK.SXw54UiPjqjHJq1MlCzf4ZyV15PPeie', 'Marco', 'Rossi', '1990-04-12', 'M', 'utente', 'marco.rossi@example.com'
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='user_marco');
 
 INSERT INTO users (username, password, first_name, last_name, dob, sex, type, email)
-SELECT 'user_luca', 'P@ssw0rdLuca!', 'Luca', 'Bianchi', '1988-11-03', 'M', 'utente', 'luca.bianchi@example.com'
+SELECT 'user_luca', '$2b$10$VL8OfYwAigN/IDlNRrRhK.SXw54UiPjqjHJq1MlCzf4ZyV15PPeie', 'Luca', 'Bianchi', '1988-11-03', 'M', 'utente', 'luca.bianchi@example.com'
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='user_luca');
 
 INSERT INTO users (username, password, first_name, last_name, dob, sex, type, email)
-SELECT 'user_lucia', 'P@ssw0rdLucia!', 'Lucia', 'Verdi', '1993-06-21', 'F', 'utente', 'lucia.verdi@example.com'
+SELECT 'user_lucia', '$2b$10$VL8OfYwAigN/IDlNRrRhK.SXw54UiPjqjHJq1MlCzf4ZyV15PPeie', 'Lucia', 'Verdi', '1993-06-21', 'F', 'utente', 'lucia.verdi@example.com'
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='user_lucia');
 
 INSERT INTO users (username, password, first_name, last_name, dob, sex, type, email)
-SELECT 'user_giulia', 'P@ssw0rdGiulia!', 'Giulia', 'Neri', '1996-02-15', 'F', 'utente', 'giulia.neri@example.com'
+SELECT 'user_giulia', '$2b$10$VL8OfYwAigN/IDlNRrRhK.SXw54UiPjqjHJq1MlCzf4ZyV15PPeie', 'Giulia', 'Neri', '1996-02-15', 'F', 'utente', 'giulia.neri@example.com'
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='user_giulia');
 
@@ -52,22 +52,22 @@ WHERE u.username='user_giulia'
 
 /* ====== PROFESSIONISTI (type = 'professionista') ====== */
 INSERT INTO users (username, password, first_name, last_name, dob, sex, type, email)
-SELECT 'pro_sara', 'P@ssw0rdSara!', 'Sara', 'Galli', '1987-09-10', 'F', 'professionista', 'sara.galli@studiofit.example.com'
+SELECT 'pro_sara', '$2b$10$VL8OfYwAigN/IDlNRrRhK.SXw54UiPjqjHJq1MlCzf4ZyV15PPeie', 'Sara', 'Galli', '1987-09-10', 'F', 'professionista', 'sara.galli@studiofit.example.com'
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='pro_sara');
 
 INSERT INTO users (username, password, first_name, last_name, dob, sex, type, email)
-SELECT 'pro_elena', 'P@ssw0rdElena!', 'Elena', 'Riva', '1991-12-28', 'F', 'professionista', 'elena.riva@nutriwell.example.com'
+SELECT 'pro_elena', '$2b$10$VL8OfYwAigN/IDlNRrRhK.SXw54UiPjqjHJq1MlCzf4ZyV15PPeie', 'Elena', 'Riva', '1991-12-28', 'F', 'professionista', 'elena.riva@nutriwell.example.com'
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='pro_elena');
 
 INSERT INTO users (username, password, first_name, last_name, dob, sex, type, email)
-SELECT 'pro_andrea', 'P@ssw0rdAndrea!', 'Andrea', 'Colombo', '1985-03-05', 'M', 'professionista', 'andrea.colombo@proshape.example.com'
+SELECT 'pro_andrea', '$2b$10$VL8OfYwAigN/IDlNRrRhK.SXw54UiPjqjHJq1MlCzf4ZyV15PPeie', 'Andrea', 'Colombo', '1985-03-05', 'M', 'professionista', 'andrea.colombo@proshape.example.com'
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='pro_andrea');
 
 INSERT INTO users (username, password, first_name, last_name, dob, sex, type, email)
-SELECT 'pro_pietro', 'P@ssw0rdPietro!', 'Pietro', 'Ricci', '1989-07-19', 'M', 'professionista', 'pietro.ricci@performlab.example.com'
+SELECT 'pro_pietro', '$2b$10$VL8OfYwAigN/IDlNRrRhK.SXw54UiPjqjHJq1MlCzf4ZyV15PPeie', 'Pietro', 'Ricci', '1989-07-19', 'M', 'professionista', 'pietro.ricci@performlab.example.com'
 FROM DUAL
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='pro_pietro');
 

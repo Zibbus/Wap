@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight, PlusCircle } from "lucide-react";
+import { ChevronLeft, ChevronRight, PlusCircle, Trash2 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import logoUrl from "../assets/IconaMyFit.png";
+import logoUrl from "../assets/IconaMyFitNoBG.png";
 
 import Html2CanvasExportButton from "../components/Html2CanvasExportButton";
 import ExportWorkoutPreview, { type ExportWorkoutDay } from "../export/ExportWorkoutPreview";
@@ -48,6 +48,64 @@ function isGoal(v: unknown): v is Goal {
 }
 
 /* =========================
+   ADD: Tipi intestatario + helper auth/eta
+   ========================= */
+type OwnerMode = "self" | "other";
+
+type UserAnthro = {
+  first_name?: string;
+  last_name?: string;
+  sex?: "M" | "F" | "O";
+  dob?: string; // YYYY-MM-DD
+  weight?: number | null;
+  height?: number | null;
+};
+
+function readAuthSnapshot() {
+  const raw = JSON.parse(localStorage.getItem("authData") || "{}");
+  const userFull = raw?.user ?? {};
+  return {
+    token: raw?.token ?? null,
+    user: {
+      id: userFull.id ?? raw?.userId ?? null,
+      username: userFull.username ?? raw?.username ?? null,
+      type: userFull.type ?? raw?.role ?? null,
+      sex: userFull.sex ?? null,
+      dob: userFull.dob ?? null,
+      customer: userFull.customer ?? null,
+      first_name: userFull.first_name ?? userFull.firstName ?? null,
+      last_name: userFull.last_name ?? userFull.lastName ?? null,
+    },
+  };
+}
+
+function ageFromDOB(dob?: string): number | undefined {
+  if (!dob) return undefined;
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const today = new Date();
+  let age = today.getFullYear() - d.getFullYear();
+  const m = today.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
+  return age;
+}
+
+function getProfessionalName(): string | undefined {
+  try {
+    const raw = JSON.parse(localStorage.getItem("authData") || "{}");
+    const u = raw?.user || {};
+    if (u?.type === "professionista") {
+      const prof = u.professional || u.prof || u.freelancer || null;
+      if (prof?.display_name && String(prof.display_name).trim()) return String(prof.display_name).trim();
+      const full = [u.first_name || u.firstName, u.last_name || u.lastName].filter(Boolean).join(" ").trim();
+      if (full) return full;
+      if (u.username) return String(u.username);
+    }
+  } catch {}
+  return undefined;
+}
+
+/* =========================
    Mappe gruppi
    ========================= */
 const GROUP_NAME_TO_ID: Record<string, number> = {
@@ -74,8 +132,8 @@ type ExerciseSelectProps = {
   placeholder?: string;
 };
 
-//Max di ripetizioni/sets/weight/rest
-  const toNum = (v: string) => (v === "" || v == null ? NaN : Number(v));
+// Max di ripetizioni/sets/weight/rest
+const toNum = (v: string) => (v === "" || v == null ? NaN : Number(v));
 
 function ExerciseSelect({
   valueId,
@@ -87,6 +145,7 @@ function ExerciseSelect({
 }: ExerciseSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  0
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
@@ -214,7 +273,31 @@ export default function WorkoutPage() {
 
   const exportRef = useRef<HTMLElement | null>(null);
 
-  // 🔹 sync stato con query param
+  // --- ADD: intestatario + consenso ---
+  const { user, token } = readAuthSnapshot();
+  const [consentAccepted, setConsentAccepted] = useState(false);
+
+  const [ownerMode, setOwnerMode] = useState<OwnerMode>("self");
+
+  const [loadingSelf, setLoadingSelf] = useState(false);
+  const [selfData, setSelfData] = useState<UserAnthro>({
+    first_name: user?.first_name ?? undefined,
+    last_name: user?.last_name ?? undefined,
+    sex: (user?.sex as any) ?? undefined,
+    dob: user?.dob ?? undefined,
+    weight: user?.customer?.weight ?? null,
+    height: user?.customer?.height ?? null,
+  });
+
+  const [otherPerson, setOtherPerson] = useState({
+    first_name: "",
+    last_name: "",
+    sex: "O" as "M" | "F" | "O",
+    age: "" as number | "",
+    weight: "" as number | "",
+    height: "" as number | "",
+  });
+
   useEffect(() => {
     if (qpMode && ["iniziale", "allenamento", "nutrizione"].includes(qpMode)) {
       setModalita(qpMode);
@@ -228,6 +311,35 @@ export default function WorkoutPage() {
     params.set("mode", m);
     navigate({ pathname: "/workout", search: params.toString() }, { replace: true });
   };
+
+  useEffect(() => {
+    if (ownerMode !== "self" || !token) return;
+
+    (async () => {
+      try {
+        setLoadingSelf(true);
+        const res = await fetch("http://localhost:4000/api/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const me = await res.json();
+          setSelfData({
+            first_name: me.first_name ?? undefined,
+            last_name: me.last_name ?? undefined,
+            sex: (me.sex ?? undefined) as any,
+            dob: me.dob ?? undefined,
+            weight: me.customer?.weight ?? null,
+            height: me.customer?.height ?? null,
+          });
+        }
+      } catch (e) {
+        console.error("Errore /api/me", e);
+      } finally {
+        setLoadingSelf(false);
+      }
+    })();
+  }, [ownerMode, token]);
+
 
   // Inizializza i giorni quando l’utente sceglie il numero
   useEffect(() => {
@@ -321,19 +433,19 @@ export default function WorkoutPage() {
       );
       setMostraEsercizi(true);
       setGiorniAllenamento((prev) =>
-      prev.map((g) => {
-        if (g.giorno !== currentDay) return g;
-        if (g.esercizi.length === 0) {
-          return {
-            ...g,
-            esercizi: [
-              { exerciseId: undefined, nome: "", serie: "", ripetizioni: "", recupero: "", peso: "", note: undefined },
-            ],
-          };
-        }
-        return g;
-      })
-    );
+        prev.map((g) => {
+          if (g.giorno !== currentDay) return g;
+          if (g.esercizi.length === 0) {
+            return {
+              ...g,
+              esercizi: [
+                { exerciseId: undefined, nome: "", serie: "", ripetizioni: "", recupero: "", peso: "", note: undefined },
+              ],
+            };
+          }
+          return g;
+        })
+      );
     } catch (e) {
       console.error(e);
       alert("Non sono riuscito a caricare gli esercizi dal database.");
@@ -349,7 +461,6 @@ export default function WorkoutPage() {
         g.giorno === currentDay ? { ...g, gruppi: [], esercizi: [], gruppiConfermati: false } : g
       )
     );
-    // svuoto la cache di quel giorno
     setAvailableByDay((prev) => {
       const { [currentDay]: _, ...rest } = prev;
       return rest;
@@ -362,7 +473,6 @@ export default function WorkoutPage() {
     setCurrentDay(num);
     const d = giorniAllenamento.find((g) => g.giorno === num);
     setMostraEsercizi(!!d?.gruppiConfermati);
-    // usa la cache se esiste
     setAvailableExercises(availableByDay[num] ?? []);
   };
 
@@ -379,6 +489,17 @@ export default function WorkoutPage() {
             }
           : g
       )
+    );
+  };
+
+  const handleEliminaEsercizio = (index: number) => {
+    setGiorniAllenamento((prev) =>
+      prev.map((g) => {
+        if (g.giorno !== currentDay) return g;
+        const next = [...g.esercizi];
+        next.splice(index, 1);
+        return { ...g, esercizi: next };
+      })
     );
   };
 
@@ -403,7 +524,7 @@ export default function WorkoutPage() {
   };
 
   const handleAggiornaEsercizio = (index: number, field: keyof Esercizio, value: string) => {
-    if (field === "nome" && value === "") return; // no placeholder
+    if (field === "nome" && value === "") return;
     setGiorniAllenamento((prev) =>
       prev.map((g) =>
         g.giorno === currentDay
@@ -433,20 +554,7 @@ export default function WorkoutPage() {
   };
 
   /* Anteprima / Download / Salvataggio */
-  const handleGoToPreview = () => {
-    if (!expireDate) {
-      alert("Imposta una data di scadenza prima di continuare.");
-      return;
-    }
-    if (!goal) {
-      alert("Seleziona un obiettivo.");
-      return;
-    }
-    setShowPreview(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  // --- Helpers numerici (mettili in alto nel file, fuori dal componente) ---
+  // Helpers numerici
   const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
   const toIntOrNull = (val: string | undefined | null, max: number): number | null => {
@@ -460,13 +568,64 @@ export default function WorkoutPage() {
     if (val === undefined || val === null || val === "") return null;
     const n = Number(val);
     if (!Number.isFinite(n)) return null;
-    // DECIMAL(6,2) -> 0..9999.99
     const clamped = clamp(n, 0, 9999.99);
-    // arrotonda a 2 decimali
     return Math.round(clamped * 100) / 100;
   };
 
-  // --- Sostituisci la tua handleSaveToDb con questa ---
+  // --- VALIDAZIONE: almeno un esercizio completo per ogni giorno confermato ---
+  const isExerciseComplete = (dayNum: number, ex: Esercizio): boolean => {
+    if (!ex.exerciseId) return false;
+    const hasSerie = ex.serie !== "";
+    const hasRip = ex.ripetizioni !== "";
+    const hasRec = ex.recupero !== "";
+    const list = availableByDay[dayNum] ?? [];
+    const opt = list.find((o) => o.id === ex.exerciseId);
+    const needsWeight = opt?.weightRequired ?? false;
+    const hasPeso = needsWeight ? (ex.peso != null && ex.peso !== "") : true;
+    return hasSerie && hasRip && hasRec && hasPeso;
+  };
+
+  const allConfirmedDaysHaveAtLeastOneComplete = (): { ok: boolean; missingDay?: number } => {
+    for (const g of giorniAllenamento) {
+      if (!g.gruppiConfermati) continue;
+      const anyComplete = (g.esercizi || []).some((ex) => isExerciseComplete(g.giorno, ex));
+      if (!anyComplete) return { ok: false, missingDay: g.giorno };
+    }
+    return { ok: true };
+  };
+
+  const handleGoToPreview = () => {
+    if (!expireDate) {
+      alert("Imposta una data di scadenza prima di continuare.");
+      return;
+    }
+    if (!goal) {
+      alert("Seleziona un obiettivo.");
+      return;
+    }
+    if (ownerMode === "other") {
+      const okOwner =
+        otherPerson.first_name.trim() &&
+        otherPerson.last_name.trim() &&
+        otherPerson.sex &&
+        otherPerson.age !== "" &&
+        otherPerson.weight !== "" &&
+        otherPerson.height !== "";
+      if (!okOwner) {
+        alert("Compila i dati dell’intestatario.");
+        return;
+      }
+    }
+    const chk = allConfirmedDaysHaveAtLeastOneComplete();
+    if (!chk.ok) {
+      alert(`Completa almeno un esercizio nel Giorno ${chk.missingDay}.`);
+      return;
+    }
+
+    setShowPreview(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const handleSaveToDb = async () => {
     try {
       if (!expireDate || !goal || !giorniAllenamento.length) {
@@ -477,13 +636,13 @@ export default function WorkoutPage() {
       // 1) Crea la schedule
       const schedulePayload = { expire: expireDate, goal };
       const auth = JSON.parse(localStorage.getItem("authData") || "{}");
-      const token = auth?.token;
+      const tokenLS = auth?.token;
 
       const res = await fetch("http://localhost:4000/api/schedules", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(tokenLS ? { Authorization: `Bearer ${tokenLS}` } : {}),
         },
         body: JSON.stringify(schedulePayload),
       });
@@ -499,7 +658,7 @@ export default function WorkoutPage() {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(tokenLS ? { Authorization: `Bearer ${tokenLS}` } : {}),
           },
           body: JSON.stringify({ schedule_id: scheduleId, day: g.giorno }),
         });
@@ -509,10 +668,6 @@ export default function WorkoutPage() {
       }
 
       // 3) Prepara gli esercizi con i cap coerenti con il DB
-      //    sets TINYINT (0..255)
-      //    reps TINYINT (0..255)
-      //    rest_seconds SMALLINT (0..65535)
-      //    weight_value DECIMAL(6,2) (0..9999.99)
       const allExercises = giorniAllenamento.flatMap((g) =>
         g.esercizi
           .filter((ex) => ex.exerciseId)
@@ -535,27 +690,26 @@ export default function WorkoutPage() {
           })
       );
 
-    // 4) Salva gli esercizi (se presenti)
-    if (allExercises.length) {
-      const exRes = await fetch("http://localhost:4000/api/schedules/exercises", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ scheduleId, items: allExercises }),
-      });
+      // 4) Salva gli esercizi (se presenti)
+      if (allExercises.length) {
+        const exRes = await fetch("http://localhost:4000/api/schedules/exercises", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(tokenLS ? { Authorization: `Bearer ${tokenLS}` } : {}),
+          },
+          body: JSON.stringify({ scheduleId, items: allExercises }),
+        });
 
-      if (!exRes.ok) throw new Error("Errore salvataggio esercizi");
+        if (!exRes.ok) throw new Error("Errore salvataggio esercizi");
+      }
+
+      alert("✅ Scheda salvata con successo!");
+    } catch (err: any) {
+      console.error(err);
+      alert("❌ Errore durante il salvataggio della scheda.");
     }
-
-    alert("✅ Scheda salvata con successo!");
-  } catch (err: any) {
-    console.error(err);
-    alert("❌ Errore durante il salvataggio della scheda.");
-  }
-};
-
+  };
 
   /* =========================
      ↩️ Early return: Mod. Nutrizione
@@ -572,6 +726,49 @@ export default function WorkoutPage() {
           </button>
         </div>
         <NutritionPage />
+      </div>
+    );
+  }
+
+  /* =========================
+     Gate di consenso (liberatoria)
+     ========================= */
+  if (!consentAccepted) {
+    return (
+      <div className="min-h-screen grid place-items-center px-6">
+        <div className="w-full max-w-3xl bg-white dark:bg-gray-900 rounded-2xl shadow p-6 border dark:border-gray-800">
+          <h2 className="text-2xl font-bold text-indigo-700 dark:text-indigo-300 mb-3">
+            Informativa & consenso per la scheda di allenamento
+          </h2>
+          <div className="text-sm text-gray-700 dark:text-gray-200 space-y-3">
+            <p>
+              Le indicazioni di allenamento fornite dall’app hanno finalità informative/educative e <strong>non sostituiscono</strong> il parere di un medico, fisioterapista o professionista qualificato.
+            </p>
+            <p>
+              Valuta il tuo stato di salute prima di intraprendere qualunque programma di esercizi. In presenza di infortuni,
+              patologie, gravidanza o terapie, consulta preventivamente il tuo medico.
+            </p>
+            <ul className="list-disc ml-5">
+              <li>Interrompi immediatamente l’attività in caso di dolore, vertigini o malessere.</li>
+              <li>Usa attrezzatura idonea e tecnica corretta per ridurre il rischio di infortuni.</li>
+              <li>Gli autori dell’app <strong>non sono responsabili</strong> per danni o conseguenze da uso improprio.</li>
+            </ul>
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              className="px-5 py-3 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200"
+              onClick={() => window.history.back()}
+            >
+              Annulla
+            </button>
+            <button
+              className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
+              onClick={() => setConsentAccepted(true)}
+            >
+              Accetto e procedo
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -597,6 +794,11 @@ export default function WorkoutPage() {
      Render (Allenamento)
   ========================= */
   const goalForExport: Goal = isGoal(goal) && goal !== "altro" ? goal : "peso_costante";
+
+  const intestatarioLabel =
+    ownerMode === "self"
+      ? `${selfData.first_name ?? ""} ${selfData.last_name ?? ""}`.trim() || (JSON.parse(localStorage.getItem("authData") || "{}")?.username || "—")
+      : `${otherPerson.first_name} ${otherPerson.last_name}`.trim() || "Intestatario esterno";
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-indigo-50 dark:bg-gray-950 px-8 py-12 text-gray-800 dark:text-gray-100">
@@ -771,6 +973,22 @@ export default function WorkoutPage() {
 
                 return (
                   <div key={i} className="flex flex-col gap-2 mb-4 bg-indigo-50 dark:bg-gray-800 p-3 rounded-lg w-full">
+                    {/* LABEL esercizio + elimina */}
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center text-[13px] font-semibold text-indigo-700 dark:text-indigo-300">
+                        Esercizio {i + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleEliminaEsercizio(i)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-red-600 text-red-600 hover:bg-red-600 hover:text-white"
+                        title="Elimina esercizio"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Elimina
+                      </button>
+                    </div>
+
                     {/* Riga principale con campi */}
                     <div className="flex flex-wrap items-center gap-3">
                       <ExerciseSelect
@@ -895,9 +1113,109 @@ export default function WorkoutPage() {
               })}
             </div>
 
-            {/* Form: scadenza + obiettivo */}
+            {/* Form: intestatario + scadenza + obiettivo */}
             <div className="max-w-2xl mx-auto bg-indigo-50/60 dark:bg-gray-800 border border-indigo-100 dark:border-gray-700 rounded-xl p-5 mb-6">
               <h4 className="text-base font-semibold text-indigo-800 dark:text-indigo-300 mb-4">Impostazioni scheda</h4>
+
+              {/* Intestatario */}
+              <div className="mb-4">
+                <label className="block text-sm text-indigo-700 dark:text-indigo-300 mb-2">Intestatario</label>
+                <div className="flex flex-wrap items-center gap-6">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      checked={ownerMode === "self"}
+                      onChange={() => setOwnerMode("self")}
+                    />
+                    <span>Me stesso</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      checked={ownerMode === "other"}
+                      onChange={() => setOwnerMode("other")}
+                    />
+                    <span>Un’altra persona</span>
+                  </label>
+                </div>
+
+                {ownerMode === "self" ? (
+                  <div className="mt-3 text-sm text-gray-700 dark:text-gray-200">
+                    {loadingSelf ? (
+                      <span>Caricamento profilo…</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-6">
+                        <div>Nome: <strong>{selfData.first_name ?? "-"}</strong></div>
+                        <div>Cognome: <strong>{selfData.last_name ?? "-"}</strong></div>
+                        <div>Sesso: <strong>{selfData.sex ?? "-"}</strong></div>
+                        <div>Età: <strong>{ageFromDOB(selfData.dob) ?? "-"}</strong></div>
+                        <div>Peso: <strong>{selfData.weight ?? "-"} kg</strong></div>
+                        <div>Altezza: <strong>{selfData.height ?? "-"} cm</strong></div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Nome</label>
+                      <input
+                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                        value={otherPerson.first_name}
+                        onChange={(e) => setOtherPerson((s) => ({ ...s, first_name: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Cognome</label>
+                      <input
+                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                        value={otherPerson.last_name}
+                        onChange={(e) => setOtherPerson((s) => ({ ...s, last_name: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Sesso</label>
+                      <select
+                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                        value={otherPerson.sex}
+                        onChange={(e) => setOtherPerson((s) => ({ ...s, sex: e.target.value as any }))}
+                      >
+                        <option value="M">Maschio</option>
+                        <option value="F">Femmina</option>
+                        <option value="O">Altro</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Età</label>
+                      <input
+                        type="number"
+                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                        value={otherPerson.age}
+                        onChange={(e) => setOtherPerson((s) => ({ ...s, age: e.target.value === "" ? "" : Number(e.target.value) }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Peso (kg)</label>
+                      <input
+                        type="number"
+                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                        value={otherPerson.weight}
+                        onChange={(e) => setOtherPerson((s) => ({ ...s, weight: e.target.value === "" ? "" : Number(e.target.value) }))}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Altezza (cm)</label>
+                      <input
+                        type="number"
+                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                        value={otherPerson.height}
+                        onChange={(e) => setOtherPerson((s) => ({ ...s, height: e.target.value === "" ? "" : Number(e.target.value) }))}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Scadenza + Obiettivo */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col">
                   <label className="text-sm text-indigo-700 dark:text-indigo-300 mb-1">Scadenza scheda</label>
@@ -912,7 +1230,7 @@ export default function WorkoutPage() {
                   <label className="text-sm text-indigo-700 dark:text-indigo-300 mb-1">Obiettivo</label>
                   <select
                     className="w-56 sm:w-60 p-2 rounded-md border border-indigo-200 bg-white"
-                    value={goal || ""}                       // placeholder quando è ""
+                    value={goal || ""}
                     onChange={(e) => setGoal(e.target.value as Goal | "")}
                   >
                     <option value="" disabled hidden>Seleziona obiettivo</option>
@@ -941,42 +1259,78 @@ export default function WorkoutPage() {
       {showPreview && (
         <motion.div
           key="preview"
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-10 w-full max-w-5xl mt-6 border border-transparent dark:border-gray-800"
+          className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 w-full max-w-5xl mt-4 border border-transparent dark:border-gray-800"
         >
-          <h2 className="text-3xl font-bold text-indigo-700 dark:text-indigo-300 mb-6 text-center">Anteprima scheda allenamento</h2>
+          <h2 className="text-2xl font-bold text-indigo-700 dark:text-indigo-300 mb-3 text-center">
+            Anteprima scheda allenamento
+          </h2>
 
-          {/* Vista OFF-SCREEN per l'export (NON visibile, ma montata) */}
-          <ExportWorkoutPreview
-            ref={exportRef}
-            offscreen
-            meta={{
-              expire: expireDate || "—",
-              goal: goalForExport,
-              creator: JSON.parse(localStorage.getItem("authData") || "{}")?.username || "MyFit",
-              logoPath: logoUrl,
+          {/* VISTA OFF-SCREEN per export: non occupa spazio */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: "-100000px",
+              top: 0,
+              width: 0,
+              height: 0,
+              overflow: "hidden",
+              pointerEvents: "none",
             }}
-            days={exportDays}
-          />
+          >
+            <ExportWorkoutPreview
+              ref={exportRef}
+              meta={{
+                expire: expireDate || "—",
+                goal: goalForExport,
+                logoPath: logoUrl,
+                ownerName: intestatarioLabel,
+                professionalName: getProfessionalName(),
+              }}
+              days={exportDays}
+            />
+          </div>
 
-          {/* Anteprima visiva (quello che vedi a video) */}
-          <div className="relative bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
-            {/* HEADER */}
-            <div className="relative h-28 mb-4">
-              <div className="absolute top-0 left-0 w-24 h-24 bg-white dark:bg-gray-900 rounded-md border border-gray-200 dark:border-gray-700" />
-              <h3 className="absolute bottom-2 left-0 text-xl font-semibold text-gray-800 dark:text-gray-100">Piano settimanale</h3>
-              <img
-                src={logoUrl}
-                alt="MyFit"
-                className="absolute top-0 right-0 w-24 h-24 object-contain pointer-events-none select-none"
-                loading="eager"
-                crossOrigin="anonymous"
-              />
-            </div>
+
+          {/* Anteprima visiva compatta */}
+          <div className="relative bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+            {/* HEADER COMPATTO */}
+            <div className="mb-2">
+              <div className="flex items-start justify-between">
+                <div className="leading-tight">
+                  <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100 m-0">
+                    Scheda Allenamento{intestatarioLabel ? ` di: ${intestatarioLabel}` : ""}
+                  </h3>
+                  {getProfessionalName() && (
+                    <div className="text-sm text-gray-500 dark:text-gray-400 -mt-0.5">
+                      <em>curata da: {getProfessionalName()}</em>
+                    </div>
+                  )}
+                </div>
+                <img
+                  src={logoUrl}
+                  alt="MyFit"
+                  className="w-12 h-12 object-contain pointer-events-none select-none"
+                  loading="eager"
+                  crossOrigin="anonymous"
+                />
+              </div>
+
+              {/* metadati, margine piccolo */}
+              <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+                <span className="mr-4"><strong>Scadenza:</strong> {expireDate || "—"}</span>
+                <span><strong>Obiettivo:</strong> {
+                  goalForExport === "peso_costante" ? "Peso costante" :
+                  goalForExport === "perdita_peso" ? "Perdita peso" :
+                  goalForExport === "aumento_peso" ? "Aumento peso" : "—"
+                }</span>
+              </div>
+            </div> 
 
             {/* scheda */}
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid md:grid-cols-2 gap-4">
               {Array.from({ length: giorni ?? 0 }).map((_, i) => {
                 const g = giorniAllenamento.find((x) => x.giorno === i + 1);
                 return (
@@ -985,15 +1339,17 @@ export default function WorkoutPage() {
                       <h4 className="font-bold text-gray-800 dark:text-gray-100">Giorno {i + 1}</h4>
                       <span className="text-sm text-gray-500 dark:text-gray-400">{g?.gruppi?.length ? g.gruppi.join(", ") : "—"}</span>
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {g?.esercizi?.length ? (
                         g.esercizi.map((ex, idx) => (
-                          <div key={idx} className="text-sm flex flex-wrap gap-3 text-gray-800 dark:text-gray-100">
-                            <span className="font-medium">{ex.nome || "—"}</span>
-                            <span>Serie: {ex.serie || "—"}</span>
-                            <span>Ripetizioni: {ex.ripetizioni || "—"}</span>
-                            <span>Recupero: {ex.recupero || "—"}</span>
-                            {ex.peso && ex.peso !== "" ? <span>Peso: {ex.peso} kg</span> : null}
+                          <div key={idx} className="text-sm text-gray-800 dark:text-gray-100">
+                            <div className="font-semibold">{ex.nome || "—"}</div>
+                            <div className="text-[13px] text-gray-700 dark:text-gray-300">
+                              Serie: {ex.serie || "—"}, Rip: {ex.ripetizioni || "—"}, Kg: {ex.peso || "—"}, Rec: {ex.recupero || "—"}
+                            </div>
+                            {ex.note && ex.note.trim() !== "" ? (
+                              <div className="text-[12px] text-gray-600 dark:text-gray-400 italic">{ex.note}</div>
+                            ) : null}
                           </div>
                         ))
                       ) : (
@@ -1006,7 +1362,7 @@ export default function WorkoutPage() {
             </div>
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-3 justify-center">
+          <div className="mt-4 flex flex-wrap gap-3 justify-center">
             <button
               onClick={() => setShowPreview(false)}
               className="px-5 py-3 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-gray-700 dark:text-indigo-300 dark:hover:bg-gray-800"
