@@ -4,7 +4,7 @@ import cors from "cors";
 import http from "http";
 import path from "path";
 import authRoutes from "./routes/auth";
-import { router as chatRouter } from "./routes/chat.js";
+import chatRoutes from "./routes/chat";
 import exercisesRoutes from "./routes/exercises";
 import schedulesRoutes from "./routes/schedules";
 
@@ -24,7 +24,7 @@ app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 app.use(express.json());
 
 // API
-app.use("/api/chat", chatRouter);
+app.use("/api/chat", chatRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/exercises", exercisesRoutes);
 app.use("/api/schedules", schedulesRoutes);

@@ -1,6 +1,6 @@
 // client/src/components/professionisti/Filters.tsx
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Search, X, Wifi, Star } from "lucide-react";
+import { Search, X, Star } from "lucide-react";
 
 type Role = "all" | "personal_trainer" | "nutrizionista";
 

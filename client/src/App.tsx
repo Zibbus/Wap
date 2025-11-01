@@ -14,6 +14,7 @@ import SettingsPage from "./pages/SettingsPage";
 
 import Professionisti from "./pages/Professionisti";
 import ProfessionistaDettaglio from "./pages/ProfessionistaDettaglio";
+import ChatPage from "./pages/ChatPage";
 
 // (opzionale) protezione rotta se vuoi che sia accessibile solo ai loggati
 import { useAuth } from "./hooks/useAuth";
@@ -36,6 +37,8 @@ export default function App() {
           <Route path="/workout" element={<WorkoutPage />} />
           <Route path="/workout/nutrition" element={<Navigate to="/workout?mode=nutrizione" replace />} />
           <Route path="/workout/workout"   element={<Navigate to="/workout?mode=allenamento" replace />} />
+
+          <Route path="/chat" element={<ChatPage />} />
 
           <Route path="/schedules" element={<ScheduleListPage />} />
           <Route path="/schedules/:id" element={<ScheduleDetailPage />} />

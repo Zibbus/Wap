@@ -193,6 +193,15 @@ export default function Header() {
                     <>
                       <div
                         onClick={() => {
+                          navigate("/chat");
+                          closeDropdown();
+                        }}
+                        className={dropdownItemClass}
+                      >
+                        Le mie chat
+                      </div>
+                      <div
+                        onClick={() => {
                           navigate("/allenamenti");
                           closeDropdown();
                         }}

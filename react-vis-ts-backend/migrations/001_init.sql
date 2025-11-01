@@ -234,22 +234,21 @@ CREATE TABLE IF NOT EXISTS user_settings (
    CHAT / MESSAGGI
    =========================== */
 
--- Conversazioni (1-1 o future 1-N)
+-- Conversazioni (thread)
 CREATE TABLE IF NOT EXISTS conversations (
   id BIGINT AUTO_INCREMENT PRIMARY KEY,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
--- Partecipanti per conversazione (qui andremo di 2 partecipanti)
+-- Partecipanti (2 o più), qui bastano 2: utente e professionista
 CREATE TABLE IF NOT EXISTS conversation_participants (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
   conversation_id BIGINT NOT NULL,
   user_id INT NOT NULL,
   joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_conv_user (conversation_id, user_id),
-  KEY idx_user (user_id),
+  PRIMARY KEY (conversation_id, user_id),
   CONSTRAINT fk_cp_conv FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-  CONSTRAINT fk_cp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  CONSTRAINT fk_cp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_cp_user (user_id)
 ) ENGINE=InnoDB;
 
 -- Messaggi
@@ -259,21 +258,10 @@ CREATE TABLE IF NOT EXISTS messages (
   sender_id INT NOT NULL,
   body TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  KEY idx_conv_created (conversation_id, created_at),
   CONSTRAINT fk_msg_conv FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-  CONSTRAINT fk_msg_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE
+  CONSTRAINT fk_msg_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
+  INDEX idx_msg_conv_created (conversation_id, created_at)
 ) ENGINE=InnoDB;
 
--- (Opzionale) lettura messaggi
-CREATE TABLE IF NOT EXISTS message_reads (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  message_id BIGINT NOT NULL,
-  user_id INT NOT NULL,
-  read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_msg_user (message_id, user_id),
-  KEY idx_user (user_id),
-  CONSTRAINT fk_mr_msg FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
-  CONSTRAINT fk_mr_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-) ENGINE=InnoDB;
-
--- Helper: trova/crea conversazione 1-1 tra due utenti (logica sarà lato backend)
+-- Vista utile: “conversazione già esistente tra due user?”
+-- (facoltativa; noi lo gestiamo via query in app)

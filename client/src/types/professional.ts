@@ -17,6 +17,8 @@ export type Professional = {
   bio?: string;
   certificates?: string[];
   yearsExp?: number;
+  userId?: number;
+  email?: string | null;
 };
 
 export const ROLE_LABEL: Record<ProfessionalRole, string> = {
