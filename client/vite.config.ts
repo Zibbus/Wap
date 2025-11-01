@@ -7,7 +7,7 @@ export default defineConfig({
     proxy: {
       // API principale
       "/api": {
-        target: "http://localhost:3001", // <-- backend API
+        target: "http://localhost:4000", // <-- backend API
         changeOrigin: true,
       },
       // Servizi di autenticazione (separati)

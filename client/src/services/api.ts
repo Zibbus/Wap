@@ -3,7 +3,10 @@
 // In dev: usa path relativi (passano dal proxy di Vite)
 // In prod: imposta URL assoluti HTTPS via .env
 const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
-const AUTH_BASE = import.meta.env.VITE_AUTH_BASE ?? "/auth";
+const AUTH_BASE =
+  import.meta.env.VITE_AUTH_BASE ??
+  (import.meta.env.DEV ? "http://localhost:4000" : "/auth");
+
 
 // Se usi cookie/sessione cross-origin in prod, tieni include
 const USE_CREDENTIALS = true;
