@@ -1292,8 +1292,6 @@ export default function WorkoutPage() {
             />
           </div>
 
-
-
           {/* Anteprima visiva compatta */}
           <div className="relative bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
             {/* HEADER COMPATTO */}

@@ -280,8 +280,10 @@ export default function NutritionPage() {
   const [savedOk, setSavedOk] = useState<{ planId: number } | null>(null);
 
   const previewRef = useRef<HTMLDivElement>(null);
-  // 👇 ref per la VISTA SAFE da “fotografare”
   const exportRef = useRef<HTMLElement>(null);
+
+  // destinazioni per la "tendina" di aggiunta alimento per ogni pasto
+  const [addTarget, setAddTarget] = useState<Record<string, number>>({});
 
   const [state, setState] = useState<PlanState>({
     ownerMode: "self",
@@ -378,14 +380,13 @@ export default function NutritionPage() {
         };
       });
   }, [state.days, state.cheatDays]);
-  
+
   // === VISTA SOLO-MESSAGGIO (centrata) ===
   if (savedOk) {
     return (
       <div className="min-h-screen grid place-items-center px-6">
         <div className="text-center space-y-4">
           <div className="flex items-center justify-center gap-3 text-emerald-700">
-            {/* spunta verde cerchiata */}
             <span className="inline-flex items-center justify-center rounded-full border border-emerald-600 text-emerald-600 h-8 w-8">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 011.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd" />
@@ -400,7 +401,7 @@ export default function NutritionPage() {
             <button
               type="button"
               className="underline underline-offset-2 text-emerald-700 hover:no-underline"
-              onClick={() => navigate("/nutrition/plans")} // cambia la rotta se serve
+              onClick={() => navigate("/nutrition/plans")}
             >
               Clicca qui per visualizzare l&apos;elenco dei tuoi piani nutrizionali
             </button>
@@ -410,7 +411,7 @@ export default function NutritionPage() {
             <button
               type="button"
               className="px-5 py-2.5 rounded-xl border border-emerald-600 text-emerald-700 hover:bg-emerald-50"
-              onClick={() => navigate("/nutrition/plans")} // cambia la rotta se serve
+              onClick={() => navigate("/nutrition/plans")}
             >
               Vai ai miei piani
             </button>
@@ -423,7 +424,7 @@ export default function NutritionPage() {
   // 1) POPUP CONSENSO
   if (!state.consentAccepted) {
     return (
-      <div className="w-full max-w-3xl mx-auto mt-10">
+      <div className="w-full max-w-3xl mx-auto mt-10 mb-24">
         <div className="bg-white rounded-2xl shadow p-6 border">
           <h2 className="text-2xl font-bold text-indigo-700 mb-3">Informativa & consenso</h2>
           <div className="text-sm text-gray-700 space-y-3">
@@ -431,7 +432,6 @@ export default function NutritionPage() {
               Questo generatore di piano nutrizionale ha finalità informative ed educative. Non sostituisce il parere di un
               medico o di un professionista sanitario. In presenza di condizioni cliniche, gravidanza, allattamento o terapie
               farmacologiche, consulta il tuo medico prima di adottare qualunque piano alimentare.
-              medico o di un professionista sanitario.
             </p>
             <p>
               Dichiari di utilizzare il piano sotto la tua esclusiva responsabilità. Gli autori dell’app non sono responsabili
@@ -492,7 +492,7 @@ export default function NutritionPage() {
     };
 
     return (
-      <div className="w-full max-w-3xl mx-auto mt-10">
+      <div className="w-full max-w-3xl mx-auto mt-10 pb-24">
         <div className="bg-white rounded-2xl shadow p-6 border">
           <h2 className="text-2xl font-bold text-indigo-700 mb-4">Seleziona i giorni di “sgarro”</h2>
           <p className="text-sm text-gray-600 mb-4">
@@ -575,7 +575,6 @@ export default function NutritionPage() {
 
       const tkn = token;
 
-      // 1) crea plan
       const planRes = await fetch("http://localhost:4000/api/nutrition/plans", {
         method: "POST",
         headers: {
@@ -593,7 +592,6 @@ export default function NutritionPage() {
       const plan = await planRes.json();
       const planId = plan.id;
 
-      // 2) giorni NON sgarro
       const dayIdMap: Record<number, number> = {};
       for (const d of editableDays) {
         const dRes = await fetch("http://localhost:4000/api/nutrition/days", {
@@ -609,7 +607,6 @@ export default function NutritionPage() {
         dayIdMap[d.day] = dj.id;
       }
 
-      // 3) meals
       const mealIdMap: Record<string, number> = {};
       for (const d of editableDays) {
         const day_id = dayIdMap[d.day];
@@ -633,7 +630,6 @@ export default function NutritionPage() {
         }
       }
 
-      // 4) items
       const itemsPayload = editableDays.flatMap((d) =>
         d.meals.flatMap((meal) =>
           meal.items.map((it, idx) => {
@@ -673,11 +669,10 @@ export default function NutritionPage() {
     }
   };
 
-  // PREVIEW con ref esportabile
+  // PREVIEW
   if (state.showPreview) {
     return (
-      <div className="w-full max-w-5xl mx-auto mt-8">
-        {/* 👇 TUTTO ciò che vuoi nel PDF sta dentro questo wrapper */}
+      <div className="w-full max-w-5xl mx-auto mt-8 md:pt-24">
         <div ref={previewRef} data-export-onecol style={{ background: "#ffffff" }} className="rounded-2xl shadow p-6">
           <h2 className="text-2xl font-bold text-indigo-700 mb-4">Anteprima piano nutrizionale</h2>
 
@@ -698,7 +693,6 @@ export default function NutritionPage() {
             </div>
           </div>
 
-          {/* Griglia giorni — durante l’export la forziamo a una colonna */}
           <div className="grid md:grid-cols-2 gap-6" data-export-onecol>
             {editableDays.map((d) => {
               const totals = computeDayTotals(d);
@@ -743,7 +737,6 @@ export default function NutritionPage() {
           </div>
         </div>
 
-        {/* Bottoni FUORI dal ref (non finiscono nel PDF) */}
         <div className="mt-6 flex flex-wrap gap-3 justify-end">
           <button
             className="px-5 py-3 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
@@ -752,7 +745,6 @@ export default function NutritionPage() {
             Torna alla modifica
           </button>
 
-          {/* 👇 Export PNG “safe html2canvas” */}
           <Html2CanvasExportButton
             getTarget={() => exportRef.current}
             filename="piano-nutrizionale.png"
@@ -760,7 +752,6 @@ export default function NutritionPage() {
             label="Esporta PNG (compatibile)"
           />
 
-          {/* Salva nel DB */}
           <button
             className={`px-5 py-3 rounded-xl ${
               disabledSave ? "bg-gray-300 text-white" : "bg-emerald-600 text-white hover:bg-emerald-700"
@@ -772,7 +763,6 @@ export default function NutritionPage() {
           </button>
         </div>
 
-        {/* 👇 MONTIAMO la vista SAFE off-screen (catturata da html2canvas) */}
         <ExportNutritionPreview
           ref={exportRef}
           offscreen
@@ -791,21 +781,23 @@ export default function NutritionPage() {
     );
   }
 
-  // ===== EDITOR (resta uguale al tuo) =====
+  // ===== EDITOR =====
   return (
     <div className="w-full max-w-6xl mx-auto">
       {/* intestazione/owner */}
       <div className="bg-white rounded-2xl shadow p-6 mb-6">
-        <div className="flex items-start gap-3 justify-between">
+          <div className="flex items-start gap-3 justify-between">
           <h2 className="text-2xl font-bold text-indigo-700">Crea piano nutrizionale</h2>
+
+          {/* azioni in alto: Modifica sgarri + Anteprima */}
           <div className="flex gap-2">
             <button
               className="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sm"
               onClick={() => setState((s) => ({ ...s, cheatConfirmed: false }))}
-              title="Torna alla scelta dei giorni di sgarro"
             >
               Modifica sgarri
             </button>
+
             <button
               className="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm"
               onClick={() => setState((s) => ({ ...s, showPreview: true }))}
@@ -814,6 +806,7 @@ export default function NutritionPage() {
             </button>
           </div>
         </div>
+
 
         <div className="flex flex-wrap gap-4 items-end mt-4">
           <div className="flex items-center gap-3">
@@ -986,44 +979,9 @@ export default function NutritionPage() {
         </div>
       </div>
       
-      {/* Messaggio di successo, senza sfondo/riquadro */}
-      {savedOk && (
-        <div className="mb-4">
-          <div className="flex items-center gap-2 text-emerald-700">
-            {/* spunta verde cerchiata */}
-            <span className="inline-flex items-center justify-center rounded-full border border-emerald-600 text-emerald-600 h-6 w-6">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-7.25 7.25a1 1 0 01-1.414 0l-3-3a1 1 0 011.414-1.414l2.293 2.293 6.543-6.543a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-            </span>
-
-            <span className="font-semibold">
-              Hai salvato con successo il tuo piano nutrizionale,
-            </span>
-            <button
-              type="button"
-              className="underline underline-offset-2 hover:no-underline"
-              onClick={() => navigate("/nutrition/plans")} // cambia path se serve
-            >
-              clicca qui per visualizzare l&apos;elenco dei tuoi piani nutrizionali
-            </button>
-          </div>
-
-          <div className="mt-2">
-            <button
-              type="button"
-              className="px-4 py-2 rounded-xl border border-emerald-600 text-emerald-700 hover:bg-emerald-50"
-              onClick={() => navigate("/nutrition/plans")} // cambia path se serve
-            >
-              Vai ai miei piani
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* EDITOR SETTIMANA */}
       <div className="bg-white rounded-2xl shadow p-6">
-        <h3 className="text-xl font-bold text-indigo-700 mb-4">Settimana (giorni senza sgarro)</h3>
+        <h3 className="text-xl font-bold text-indigo-700 mb-4">Pianifica i tuoi pasti con semplicità!</h3>
 
         {editableDays.length === 0 ? (
           <div className="text-sm text-gray-600">
@@ -1219,41 +1177,68 @@ export default function NutritionPage() {
                                 );
                               })}
 
-                              <tr className="border-t-0" key={`add-${d.day}-${meal.position}`}>
+                              {/* Row: Aggiunta rapida a QUALSIASI pasto del giorno */}
+                              <tr className="border-t-0" key={`add-any-${d.day}-${meal.position}`}>
                                 <td className="p-2" />
-                                <td className="p-2" />
-                                <td className="p-2" colSpan={3}>
-                                  <button
-                                    type="button"
-                                    className="px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-50 text-sm"
-                                    onClick={() =>
-                                      setState((s) => {
-                                        const next = structuredClone(s);
-                                        const dayIndex = next.days.findIndex((x) => x.day === d.day);
-                                        next.days[dayIndex].meals[mIdx].items.push({
-                                          qty: 100,
-                                          unit: "g",
-                                          description: "",
-                                          kcal: null,
-                                          protein_g: null,
-                                          carbs_g: null,
-                                          fat_g: null,
-                                          fiber_g: null,
-                                          _per100: null,
-                                        });
-                                        return next;
-                                      })
-                                    }
-                                  >
-                                    + Aggiungi alimento a “{meal.name}”
-                                  </button>
+                                <td className="p-2" colSpan={2}>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm text-gray-700">Aggiungi alimento a:</span>
+                                    <select
+                                      className="border rounded p-2 text-sm"
+                                      value={addTarget[`${d.day}-${meal.position}`] ?? meal.position}
+                                      onChange={(e) =>
+                                        setAddTarget((prev) => ({
+                                          ...prev,
+                                          [`${d.day}-${meal.position}`]: Number(e.target.value),
+                                        }))
+                                      }
+                                    >
+                                      {d.meals.map((opt) => (
+                                        <option key={opt.position} value={opt.position}>
+                                          {opt.name}
+                                        </option>
+                                      ))}
+                                    </select>
+
+                                    <button
+                                      type="button"
+                                      className="px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-50 text-sm"
+                                      onClick={() =>
+                                        setState((s) => {
+                                          const next = structuredClone(s);
+                                          const dayIndex = next.days.findIndex((x) => x.day === d.day);
+
+                                          const targetPos =
+                                            addTarget[`${d.day}-${meal.position}`] ?? meal.position;
+                                          const toMealIdx = next.days[dayIndex].meals.findIndex(
+                                            (mm) => mm.position === targetPos
+                                          );
+
+                                          if (toMealIdx >= 0) {
+                                            next.days[dayIndex].meals[toMealIdx].items.push({
+                                              qty: 100,
+                                              unit: "g",
+                                              description: "",
+                                              kcal: null,
+                                              protein_g: null,
+                                              carbs_g: null,
+                                              fat_g: null,
+                                              fiber_g: null,
+                                              _per100: null,
+                                            });
+                                          }
+                                          return next;
+                                        })
+                                      }
+                                    >
+                                      + Aggiungi alimento
+                                    </button>
+                                  </div>
                                 </td>
-                                <td className="p-2" />
-                                <td className="p-2" />
-                                <td className="p-2" />
-                                <td className="p-2" />
+                                <td className="p-2" colSpan={6} />
                               </tr>
 
+                              {/* Totali pasto */}
                               <tr className="bg-indigo-50 border-t" key={`tot-${d.day}-${meal.position}`}>
                                 <td className="p-2" />
                                 <td className="p-2 font-semibold text-indigo-700">Totale {meal.name}</td>
@@ -1277,6 +1262,16 @@ export default function NutritionPage() {
             })}
           </div>
         )}
+
+        {/* 🔽 Pulsante ANTEPRIMA alla fine della scheda, allineato a destra nel bianco */}
+        <div className="mt-6 flex justify-end">
+          <button
+            className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
+            onClick={() => setState((s) => ({ ...s, showPreview: true }))}
+          >
+            Anteprima
+          </button>
+        </div>
       </div>
     </div>
   );

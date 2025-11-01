@@ -16,11 +16,15 @@ import Professionisti from "./pages/Professionisti";
 import ProfessionistaDettaglio from "./pages/ProfessionistaDettaglio";
 import ChatPage from "./pages/ChatPage";
 
-// (opzionale) protezione rotta se vuoi che sia accessibile solo ai loggati
+// 🔹 nuove import
+import PlanChooser from "./pages/PlanChooser";
+import NutritionPage from "./pages/NutritionPage";
+
+// (opzionale) protezione rotta
 import { useAuth } from "./hooks/useAuth";
 function RequireAuth({ children }: { children: ReactNode }) {
   const { authData, isLoading } = useAuth();
-  if (isLoading) return null; // oppure uno spinner
+  if (isLoading) return null;
   if (!authData) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
@@ -34,9 +38,16 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/shop" element={<ShopPage />} />
 
+          {/* 🔹 nuova pagina di scelta */}
+          <Route path="/planner" element={<PlanChooser />} />
+
+          {/* 🔹 pagine principali */}
           <Route path="/workout" element={<WorkoutPage />} />
-          <Route path="/workout/nutrition" element={<Navigate to="/workout?mode=nutrizione" replace />} />
-          <Route path="/workout/workout"   element={<Navigate to="/workout?mode=allenamento" replace />} />
+          <Route path="/nutrizione" element={<NutritionPage />} />
+
+          {/* redirect legacy */}
+          <Route path="/workout/nutrition" element={<Navigate to="/nutrizione" replace />} />
+          <Route path="/workout/workout"   element={<Navigate to="/workout" replace />} />
 
           <Route path="/chat" element={<ChatPage />} />
 
@@ -46,18 +57,23 @@ export default function App() {
           <Route path="/professionisti" element={<Professionisti />} />
           <Route path="/professionisti/:id" element={<ProfessionistaDettaglio />} />
 
-          <Route path="/profilo" element={
-            <RequireAuth>
-              <ProfilePage />
-            </RequireAuth>
-          } />
+          <Route
+            path="/profilo"
+            element={
+              <RequireAuth>
+                <ProfilePage />
+              </RequireAuth>
+            }
+          />
 
-          {/* 👇 nuova rotta */}
-          <Route path="/impostazioni" element={
-            <RequireAuth>
-              <SettingsPage />
-            </RequireAuth>
-          } />
+          <Route
+            path="/impostazioni"
+            element={
+              <RequireAuth>
+                <SettingsPage />
+              </RequireAuth>
+            }
+          />
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
