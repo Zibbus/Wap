@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, PlusCircle, Trash2 } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
 
 import logoUrl from "../assets/IconaMyFitNoBG.png";
 
 import Html2CanvasExportButton from "../components/Html2CanvasExportButton";
 import ExportWorkoutPreview, { type ExportWorkoutDay } from "../export/ExportWorkoutPreview";
-
-import NutritionPage from "./NutritionPage";
 
 /* =========================
    Tipi
@@ -251,12 +248,6 @@ function ExerciseSelect({
    Pagina
    ========================= */
 export default function WorkoutPage() {
-  // 🔹 routing mode via query param
-  const [search] = useSearchParams();
-  const navigate = useNavigate();
-  const qpMode = (search.get("mode") as "iniziale" | "allenamento" | "nutrizione" | null);
-
-  const [modalita, setModalita] = useState<"iniziale" | "allenamento" | "nutrizione">(qpMode ?? "iniziale");
   const [giorni, setGiorni] = useState<number | null>(null);
   const [currentDay, setCurrentDay] = useState(1);
   const [giorniAllenamento, setGiorniAllenamento] = useState<GiornoAllenamento[]>([]);
@@ -296,20 +287,6 @@ export default function WorkoutPage() {
     weight: "" as number | "",
     height: "" as number | "",
   });
-
-  useEffect(() => {
-    if (qpMode && ["iniziale", "allenamento", "nutrizione"].includes(qpMode)) {
-      setModalita(qpMode);
-    }
-  }, [qpMode]);
-
-  // 🔹 helper per cambiare modalità + aggiornare URL
-  const setMode = (m: "iniziale" | "allenamento" | "nutrizione") => {
-    setModalita(m);
-    const params = new URLSearchParams(window.location.search);
-    params.set("mode", m);
-    navigate({ pathname: "/workout", search: params.toString() }, { replace: true });
-  };
 
   useEffect(() => {
     if (ownerMode !== "self" || !token) return;
@@ -711,25 +688,6 @@ export default function WorkoutPage() {
   };
 
   /* =========================
-     ↩️ Early return: Mod. Nutrizione
-     ========================= */
-  if (modalita === "nutrizione") {
-    return (
-      <div className="min-h-screen bg-indigo-50 dark:bg-gray-950 px-8 py-12 text-gray-800 dark:text-gray-100">
-        <div className="max-w-6xl mx-auto mb-4">
-          <button
-            onClick={() => setMode("iniziale")}
-            className="px-4 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-gray-700 dark:text-indigo-300 dark:hover:bg-gray-700/40"
-          >
-            ← Torna alla scelta
-          </button>
-        </div>
-        <NutritionPage />
-      </div>
-    );
-  }
-
-  /* =========================
      Gate di consenso (liberatoria)
      ========================= */
   if (!consentAccepted) {
@@ -801,57 +759,7 @@ export default function WorkoutPage() {
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-indigo-50 dark:bg-gray-950 px-8 py-12 text-gray-800 dark:text-gray-100">
-      {/* Scelta iniziale */}
-      <AnimatePresence>
-        {modalita === "iniziale" && !showPreview && (
-          <motion.div
-            key="scelta"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -30 }}
-            className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-7xl w-full"
-          >
-            {/* Nutrizione */}
-            <div
-              onClick={() => setMode("nutrizione")}
-              className="relative h-[680px] md:h-[760px] rounded-3xl overflow-hidden group cursor-pointer shadow-lg"
-            >
-              <img
-                src="https://images.unsplash.com/photo-1601050690597-1a3c4d99d6b2?auto=format&fit=crop&w=1200&q=80"
-                alt="Scheda nutrizionale"
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 blur-[1px]"
-              />
-              <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white px-6 text-center">
-                <h2 className="text-3xl font-bold mb-3">Vuoi creare la tua scheda nutrizionale?</h2>
-                <p className="max-w-xl text-gray-200">
-                  Genera un piano alimentare personalizzato per i tuoi obiettivi di salute e forma fisica.
-                </p>
-              </div>
-            </div>
-
-            {/* Allenamento */}
-            <div
-              onClick={() => setMode("allenamento")}
-              className="relative h-[680px] md:h-[760px] rounded-3xl overflow-hidden group cursor-pointer shadow-lg"
-            >
-              <img
-                src="https://images.unsplash.com/photo-1599058917212-d750089bc07e?auto=format&fit=crop&w=1200&q=80"
-                alt="Scheda allenamento"
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 blur-[1px]"
-              />
-              <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white px-6 text-center">
-                <h2 className="text-3xl font-bold mb-3">Vuoi creare la tua scheda di allenamento?</h2>
-                <p className="max-w-xl text-gray-200">
-                  Crea la tua scheda personalizzata scegliendo giorni e gruppi muscolari.
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Step: scegli giorni */}
-      {modalita === "allenamento" && giorni === null && !showPreview && (
+      {giorni === null && !showPreview && (
         <motion.div
           key="allenamento-giorni"
           initial={{ opacity: 0, y: 30 }}
@@ -874,7 +782,7 @@ export default function WorkoutPage() {
       )}
 
       {/* Wizard giorni/esercizi */}
-      {modalita === "allenamento" && giorni !== null && !showPreview && (
+      {giorni !== null && !showPreview && (
         <motion.div
           key="wizard"
           initial={{ opacity: 0, y: 40 }}

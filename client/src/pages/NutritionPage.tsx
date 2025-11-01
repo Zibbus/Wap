@@ -785,8 +785,8 @@ export default function NutritionPage() {
   return (
     <div className="w-full max-w-6xl mx-auto">
       {/* intestazione/owner */}
-      <div className="bg-white rounded-2xl shadow p-6 mb-6">
-      <div className="flex items-start gap-3 justify-between">
+      <div className="bg-white rounded-2xl shadow p-6 mb-6 mt-10">
+        <div className="flex items-start gap-3 justify-between">
           <h2 className="text-2xl font-bold text-indigo-700">Crea piano nutrizionale</h2>
 
           {/* azioni in alto: Modifica sgarri + Anteprima */}
