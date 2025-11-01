@@ -67,7 +67,7 @@ export default function Header() {
         className="flex items-center gap-3 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 rounded-lg"
         aria-label="Vai alla home"
       >
-        <img src={logo} alt="Logo MyFit" className="h-12 w-12 drop-shadow-md" />
+        <img src={logo} alt="Logo MyFit" height={40} className="h-10 w-auto drop-shadow-md" />
         <h1
           className={`text-3xl font-extrabold tracking-tight transition-colors ${
             userType === "admin"
@@ -75,7 +75,7 @@ export default function Header() {
               : "text-indigo-600 hover:text-indigo-700"
           }`}
         >
-          MyFit
+        Fit
         </h1>
       </button>
 
