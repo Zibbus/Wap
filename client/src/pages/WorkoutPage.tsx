@@ -3,6 +3,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight, PlusCircle } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
+import logoUrl from "../assets/IconaMyFit.png";
+
+import Html2CanvasExportButton from "../components/Html2CanvasExportButton";
+import ExportWorkoutPreview, { type ExportWorkoutDay } from "../export/ExportWorkoutPreview";
+
 import NutritionPage from "./NutritionPage";
 
 /* =========================
@@ -36,7 +41,11 @@ type DBExercise = {
   defaultRecupero?: string;
 };
 
-type Goal = "peso_costante" | "perdita_peso" | "aumento_peso";
+type Goal = "peso_costante" | "perdita_peso" | "aumento_peso" | "altro";
+
+function isGoal(v: unknown): v is Goal {
+  return v === "peso_costante" || v === "perdita_peso" || v === "aumento_peso" || v === "altro";
+}
 
 /* =========================
    Mappe gruppi
@@ -64,6 +73,9 @@ type ExerciseSelectProps = {
   groupsOrder: number[];
   placeholder?: string;
 };
+
+//Max di ripetizioni/sets/weight/rest
+  const toNum = (v: string) => (v === "" || v == null ? NaN : Number(v));
 
 function ExerciseSelect({
   valueId,
@@ -198,9 +210,9 @@ export default function WorkoutPage() {
 
   const [loadingEx, setLoadingEx] = useState<boolean>(false);
   const [availableExercises, setAvailableExercises] = useState<DBExercise[]>([]);
-  const [availableByDay, setAvailableByDay] = useState<Record<number, DBExercise[]>>({}); // ✅ cache per giorno
+  const [availableByDay, setAvailableByDay] = useState<Record<number, DBExercise[]>>({});
 
-  const previewRef = useRef<HTMLDivElement | null>(null);
+  const exportRef = useRef<HTMLElement | null>(null);
 
   // 🔹 sync stato con query param
   useEffect(() => {
@@ -249,8 +261,9 @@ export default function WorkoutPage() {
     const ids = namesToGroupIds(groupNames);
     if (!ids.length) return [];
 
-    const qs = ids.map((id) => `groupIds=${encodeURIComponent(String(id))}`).join("&");
-    const res = await fetch(`/api/exercises?${qs}`);
+    const qs = `groupIds=${encodeURIComponent(ids.join(","))}`;
+    const res = await fetch(`http://localhost:4000/api/exercises?${qs}`);
+
     if (!res.ok) throw new Error(`Errore fetch esercizi: ${res.status}`);
 
     const raw = (await res.json()) as {
@@ -295,7 +308,7 @@ export default function WorkoutPage() {
     );
   };
 
-  // ✅ Fetch unico e cache per giorno
+  // Fetch unico e cache per giorno
   const handleConfermaGruppi = async () => {
     if (!giornoCorrente || !giornoCorrente.gruppi.length) return;
     try {
@@ -307,6 +320,20 @@ export default function WorkoutPage() {
         prev.map((g) => (g.giorno === currentDay ? { ...g, gruppiConfermati: true } : g))
       );
       setMostraEsercizi(true);
+      setGiorniAllenamento((prev) =>
+      prev.map((g) => {
+        if (g.giorno !== currentDay) return g;
+        if (g.esercizi.length === 0) {
+          return {
+            ...g,
+            esercizi: [
+              { exerciseId: undefined, nome: "", serie: "", ripetizioni: "", recupero: "", peso: "", note: undefined },
+            ],
+          };
+        }
+        return g;
+      })
+    );
     } catch (e) {
       console.error(e);
       alert("Non sono riuscito a caricare gli esercizi dal database.");
@@ -412,63 +439,34 @@ export default function WorkoutPage() {
       return;
     }
     if (!goal) {
-      alert("Seleziona un obiettivo tra: peso_costante, perdita_peso, aumento_peso.");
+      alert("Seleziona un obiettivo.");
       return;
     }
     setShowPreview(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleDownloadPDF = async () => {
-    try {
-      const days = (giorniAllenamento || []).map((g) => ({
-        number: g.giorno,
-        groups: g.gruppi || [],
-        exercises: (g.esercizi || []).map((ex) => ({
-          nome: ex.nome || "",
-          serie: ex.serie ?? "",
-          ripetizioni: ex.ripetizioni ?? "",
-          recupero: ex.recupero ?? "",
-          peso: ex.peso ?? "",
-        })),
-      }));
+  // --- Helpers numerici (mettili in alto nel file, fuori dal componente) ---
+  const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
-      const auth = JSON.parse(localStorage.getItem("authData") || "{}");
-      const creator = auth?.username || "MyFit";
-      const logoPath = "";
-
-      const payload = { creator, logoPath, days };
-
-      const res = await fetch("http://localhost:4000/api/pdf/schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        let msg = `HTTP ${res.status} ${res.statusText}`;
-        try {
-          const data = await res.json();
-          if (data?.error) msg += ` — ${data.error}`;
-        } catch {}
-        throw new Error(msg);
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "scheda-allenamento.pdf";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (err: any) {
-      console.error("Errore generazione PDF:", err);
-      alert("Errore generazione PDF: " + (err?.message || "sconosciuto"));
-    }
+  const toIntOrNull = (val: string | undefined | null, max: number): number | null => {
+    if (val === undefined || val === null || val === "") return null;
+    const n = Math.floor(Number(val));
+    if (!Number.isFinite(n)) return null;
+    return clamp(n, 0, max);
   };
 
+  const toWeightOrNull = (val: string | undefined | null): number | null => {
+    if (val === undefined || val === null || val === "") return null;
+    const n = Number(val);
+    if (!Number.isFinite(n)) return null;
+    // DECIMAL(6,2) -> 0..9999.99
+    const clamped = clamp(n, 0, 9999.99);
+    // arrotonda a 2 decimali
+    return Math.round(clamped * 100) / 100;
+  };
+
+  // --- Sostituisci la tua handleSaveToDb con questa ---
   const handleSaveToDb = async () => {
     try {
       if (!expireDate || !goal || !giorniAllenamento.length) {
@@ -476,70 +474,88 @@ export default function WorkoutPage() {
         return;
       }
 
+      // 1) Crea la schedule
       const schedulePayload = { expire: expireDate, goal };
+      const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+      const token = auth?.token;
 
       const res = await fetch("http://localhost:4000/api/schedules", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${JSON.parse(localStorage.getItem("authData") || "{}").token}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify(schedulePayload),
       });
 
       if (!res.ok) throw new Error("Errore creazione schedule");
       const schedule = await res.json();
-      const scheduleId = schedule.id;
+      const scheduleId: number = schedule.id;
 
+      // 2) Crea i giorni e costruisci la mappa day -> day_id
       const dayMap: Record<number, number> = {};
       for (const g of giorniAllenamento) {
         const dayRes = await fetch("http://localhost:4000/api/schedules/day", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${JSON.parse(localStorage.getItem("authData") || "{}").token}`,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({ schedule_id: scheduleId, day: g.giorno }),
         });
         if (!dayRes.ok) throw new Error("Errore creazione giorno");
         const day = await dayRes.json();
-        dayMap[g.giorno] = day.id;
+        dayMap[g.giorno] = day.id as number;
       }
 
+      // 3) Prepara gli esercizi con i cap coerenti con il DB
+      //    sets TINYINT (0..255)
+      //    reps TINYINT (0..255)
+      //    rest_seconds SMALLINT (0..65535)
+      //    weight_value DECIMAL(6,2) (0..9999.99)
       const allExercises = giorniAllenamento.flatMap((g) =>
         g.esercizi
           .filter((ex) => ex.exerciseId)
-          .map((ex, idx) => ({
-            day_id: dayMap[g.giorno],
-            exercise_id: ex.exerciseId!,
-            position: idx + 1,
-            sets: ex.serie ? parseInt(ex.serie) : null,
-            reps: ex.ripetizioni ? parseInt(ex.ripetizioni) : null,
-            rest_seconds: ex.recupero ? parseInt(ex.recupero) : null,
-            weight_value: ex.peso ? parseFloat(ex.peso) : null,
-            notes: ex.note ?? null,
-          }))
+          .map((ex, idx) => {
+            const sets = toIntOrNull(ex.serie, 255);
+            const reps = toIntOrNull(ex.ripetizioni, 255);
+            const rest_seconds = toIntOrNull(ex.recupero, 65535);
+            const weight_value = toWeightOrNull(ex.peso);
+
+            return {
+              day_id: dayMap[g.giorno],
+              exercise_id: ex.exerciseId as number,
+              position: idx + 1,
+              sets,
+              reps,
+              rest_seconds,
+              weight_value,
+              notes: ex.note ?? null,
+            };
+          })
       );
 
-      if (allExercises.length) {
-        const exRes = await fetch("http://localhost:4000/api/schedules/exercises", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${JSON.parse(localStorage.getItem("authData") || "{}").token}`,
-          },
-          body: JSON.stringify({ scheduleId, items: allExercises }),
-        });
+    // 4) Salva gli esercizi (se presenti)
+    if (allExercises.length) {
+      const exRes = await fetch("http://localhost:4000/api/schedules/exercises", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ scheduleId, items: allExercises }),
+      });
 
-        if (!exRes.ok) throw new Error("Errore salvataggio esercizi");
-      }
-
-      alert("✅ Scheda salvata con successo!");
-    } catch (err) {
-      console.error(err);
-      alert("❌ Errore durante il salvataggio della scheda.");
+      if (!exRes.ok) throw new Error("Errore salvataggio esercizi");
     }
-  };
+
+    alert("✅ Scheda salvata con successo!");
+  } catch (err: any) {
+    console.error(err);
+    alert("❌ Errore durante il salvataggio della scheda.");
+  }
+};
+
 
   /* =========================
      ↩️ Early return: Mod. Nutrizione
@@ -550,7 +566,7 @@ export default function WorkoutPage() {
         <div className="max-w-6xl mx-auto mb-4">
           <button
             onClick={() => setMode("iniziale")}
-            className="px-4 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-gray-700 dark:text-indigo-300 dark:hover:bg-gray-800"
+            className="px-4 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-gray-700 dark:text-indigo-300 dark:hover:bg-gray-700/40"
           >
             ← Torna alla scelta
           </button>
@@ -560,9 +576,28 @@ export default function WorkoutPage() {
     );
   }
 
+  // === Dati per la vista off-screen (export one-column)
+  const exportDays: ExportWorkoutDay[] = Array.from({ length: giorni ?? 0 }).map((_, i) => {
+    const g = giorniAllenamento.find((x) => x.giorno === i + 1);
+    return {
+      label: `Giorno ${i + 1}`,
+      groups: g?.gruppi ?? [],
+      items: (g?.esercizi ?? []).map((ex) => ({
+        name: ex.nome || "—",
+        serie: ex.serie ?? "",
+        ripetizioni: ex.ripetizioni ?? "",
+        recupero: ex.recupero ?? "",
+        peso: ex.peso ?? "",
+        note: ex.note ?? "",
+      })),
+    };
+  });
+
   /* =========================
      Render (Allenamento)
-     ========================= */
+  ========================= */
+  const goalForExport: Goal = isGoal(goal) && goal !== "altro" ? goal : "peso_costante";
+
   return (
     <div className="min-h-screen flex flex-col items-center bg-indigo-50 dark:bg-gray-950 px-8 py-12 text-gray-800 dark:text-gray-100">
       {/* Scelta iniziale */}
@@ -752,16 +787,26 @@ export default function WorkoutPage() {
                         placeholder="Serie"
                         className="w-20 p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
                         value={ex.serie}
-                        onChange={(e) => handleAggiornaEsercizio(i, "serie", e.target.value)}
                         min={0}
+                        max={255}
+                        onChange={(e) => {
+                          const v = toNum(e.target.value);
+                          const next = Number.isNaN(v) ? "" : String(clamp(v, 0, 255));
+                          handleAggiornaEsercizio(i, "serie", next);
+                        }}
                       />
                       <input
                         type="number"
                         placeholder="Rip."
                         className="w-20 p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
                         value={ex.ripetizioni}
-                        onChange={(e) => handleAggiornaEsercizio(i, "ripetizioni", e.target.value)}
                         min={0}
+                        max={255}
+                        onChange={(e) => {
+                          const v = toNum(e.target.value);
+                          const next = Number.isNaN(v) ? "" : String(clamp(v, 0, 255));
+                          handleAggiornaEsercizio(i, "ripetizioni", next);
+                        }}
                       />
                       <input
                         type="number"
@@ -772,18 +817,28 @@ export default function WorkoutPage() {
                             : "border-gray-200 dark:border-gray-700 opacity-50"
                         }`}
                         value={ex.peso ?? ""}
-                        onChange={(e) => handleAggiornaEsercizio(i, "peso", e.target.value)}
-                        disabled={!requires}
                         min={0}
+                        max={9999.99}
                         step="0.5"
+                        onChange={(e) => {
+                          const v = toNum(e.target.value);
+                          const next = Number.isNaN(v) ? "" : String(Math.round(clamp(v, 0, 9999.99) * 100) / 100);
+                          handleAggiornaEsercizio(i, "peso", next);
+                        }}
+                        disabled={!requires}
                       />
                       <input
                         type="number"
                         placeholder="Rec. (s)"
                         className="w-24 p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
                         value={ex.recupero}
-                        onChange={(e) => handleAggiornaEsercizio(i, "recupero", e.target.value)}
                         min={0}
+                        max={65535}
+                        onChange={(e) => {
+                          const v = toNum(e.target.value);
+                          const next = Number.isNaN(v) ? "" : String(clamp(v, 0, 65535));
+                          handleAggiornaEsercizio(i, "recupero", next);
+                        }}
                       />
 
                       {/* Toggle note */}
@@ -856,26 +911,16 @@ export default function WorkoutPage() {
                 <div className="flex flex-col">
                   <label className="text-sm text-indigo-700 dark:text-indigo-300 mb-1">Obiettivo</label>
                   <select
-                    className="w-56 sm:w-60 p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
-                    value={goal || ""}
-                    onChange={(e) => {
-                      const v = e.target.value as Goal | "altro" | "";
-                      if (v === "") return;
-                      if (v === "altro") setGoal("");
-                      else setGoal(v);
-                    }}
+                    className="w-56 sm:w-60 p-2 rounded-md border border-indigo-200 bg-white"
+                    value={goal || ""}                       // placeholder quando è ""
+                    onChange={(e) => setGoal(e.target.value as Goal | "")}
                   >
-                    <option value="" disabled hidden>
-                      Seleziona obiettivo
-                    </option>
+                    <option value="" disabled hidden>Seleziona obiettivo</option>
                     <option value="peso_costante">Peso costante</option>
                     <option value="perdita_peso">Perdita peso</option>
                     <option value="aumento_peso">Aumento peso</option>
-                    <option value="altro">Altro…</option>
+                    <option value="altro">Altro</option>
                   </select>
-                  <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-2">
-                    Nota: “Altro…” non è salvabile. Scegli uno dei tre obiettivi per procedere.
-                  </p>
                 </div>
               </div>
             </div>
@@ -902,14 +947,27 @@ export default function WorkoutPage() {
         >
           <h2 className="text-3xl font-bold text-indigo-700 dark:text-indigo-300 mb-6 text-center">Anteprima scheda allenamento</h2>
 
-          {/* contenitore da “fotografare” */}
-          <div ref={previewRef} className="relative bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
+          {/* Vista OFF-SCREEN per l'export (NON visibile, ma montata) */}
+          <ExportWorkoutPreview
+            ref={exportRef}
+            offscreen
+            meta={{
+              expire: expireDate || "—",
+              goal: goalForExport,
+              creator: JSON.parse(localStorage.getItem("authData") || "{}")?.username || "MyFit",
+              logoPath: logoUrl,
+            }}
+            days={exportDays}
+          />
+
+          {/* Anteprima visiva (quello che vedi a video) */}
+          <div className="relative bg-white dark:bg-gray-900 p-6 rounded-xl border border-gray-200 dark:border-gray-700">
             {/* HEADER */}
             <div className="relative h-28 mb-4">
               <div className="absolute top-0 left-0 w-24 h-24 bg-white dark:bg-gray-900 rounded-md border border-gray-200 dark:border-gray-700" />
               <h3 className="absolute bottom-2 left-0 text-xl font-semibold text-gray-800 dark:text-gray-100">Piano settimanale</h3>
               <img
-                src="/assets/IconaMyFit.png"
+                src={logoUrl}
                 alt="MyFit"
                 className="absolute top-0 right-0 w-24 h-24 object-contain pointer-events-none select-none"
                 loading="eager"
@@ -955,12 +1013,12 @@ export default function WorkoutPage() {
             >
               Torna alla modifica
             </button>
-            <button
-              onClick={handleDownloadPDF}
-              className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
-            >
-              Scarica PDF
-            </button>
+            <Html2CanvasExportButton
+              getTarget={() => exportRef.current}
+              filename="scheda-allenamento.png"
+              scale={2}
+              label="Scarica PNG"
+            />
             <button
               onClick={handleSaveToDb}
               className="px-5 py-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
