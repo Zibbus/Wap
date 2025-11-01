@@ -145,7 +145,6 @@ function ExerciseSelect({
 }: ExerciseSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  0
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
@@ -1271,17 +1270,17 @@ export default function WorkoutPage() {
           <div
             aria-hidden="true"
             style={{
-              position: "absolute",
-              left: "-100000px",
+              position: "fixed",
+              left: 0,
               top: 0,
-              width: 0,
-              height: 0,
-              overflow: "hidden",
+              opacity: 0,            // invisibile ma layouttato correttamente
               pointerEvents: "none",
+              zIndex: -1,
             }}
           >
             <ExportWorkoutPreview
               ref={exportRef}
+              /* NON passare offscreen qui */
               meta={{
                 expire: expireDate || "—",
                 goal: goalForExport,
@@ -1292,6 +1291,7 @@ export default function WorkoutPage() {
               days={exportDays}
             />
           </div>
+
 
 
           {/* Anteprima visiva compatta */}

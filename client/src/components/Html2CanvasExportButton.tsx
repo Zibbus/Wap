@@ -3,8 +3,8 @@ import html2canvas from "html2canvas";
 
 type Props = {
   getTarget: () => HTMLElement | null;
-  filename?: string;   // es: "piano.png"
-  scale?: number;      // 1..3 (default 2)
+  filename?: string;
+  scale?: number;
   label?: string;
   className?: string;
 };
@@ -26,15 +26,48 @@ export default function Html2CanvasExportButton({
     }
     setBusy(true);
     try {
+      // Misure reali del nodo (anche se offscreen)
+      const rect = node.getBoundingClientRect();
+      const width = Math.max(node.scrollWidth, Math.ceil(rect.width));
+      const height = Math.max(node.scrollHeight, Math.ceil(rect.height));
+
       const canvas = await html2canvas(node, {
         backgroundColor: "#ffffff",
         scale,
         logging: false,
         useCORS: true,
         allowTaint: true,
-        windowWidth: node.scrollWidth,
-        windowHeight: node.scrollHeight,
+        windowWidth: width,
+        windowHeight: height,
+        width,
+        height,
+        onclone: (clonedDoc) => {
+          // 1) Rimuovi tutti gli stili/link (elimina OKLCH & co. dal clone)
+          clonedDoc.querySelectorAll('link[rel="stylesheet"], style').forEach((el) => el.parentNode?.removeChild(el));
+
+          // 2) Aggiungi un CSS minimale sicuro (facoltativo)
+          const safe = clonedDoc.createElement("style");
+          safe.textContent = `
+            * { font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,Apple Color Emoji,Segoe UI Emoji !important; }
+            body { background: #ffffff !important; color: #111827 !important; }
+            img { image-rendering: auto; }
+          `;
+          clonedDoc.head.appendChild(safe);
+
+          // 3) (Facoltativo) Isola il target rispetto al resto del DOM
+          // Nascondi tutto tranne il nodo target, evitando overlay casuali
+          const target = clonedDoc.querySelector('[data-export-workout]') as HTMLElement | null;
+          if (target) {
+            // Nasconde altri nodi a livello body
+            Array.from(clonedDoc.body.children).forEach((child) => {
+              if (child !== target && !target.contains(child)) {
+                (child as HTMLElement).style.display = "none";
+              }
+            });
+          }
+        },
       });
+
       const link = document.createElement("a");
       link.download = filename;
       link.href = canvas.toDataURL("image/png");

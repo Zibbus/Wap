@@ -1,5 +1,5 @@
 // src/export/ExportWorkoutPreview.tsx
-import React, { forwardRef } from "react";
+import { forwardRef, useImperativeHandle, useRef } from "react";
 
 export type ExportWorkoutItem = {
   name: string;
@@ -13,21 +13,15 @@ export type ExportWorkoutItem = {
 export type ExportWorkoutMeta = {
   expire: string;
   goal: "peso_costante" | "perdita_peso" | "aumento_peso";
-  logoPath?: string;
-
-  /** Nome dell’intestatario (titolo “Scheda Allenamento di: …”) */
-  ownerName?: string;
-
-  /** Nome del professionista (riga “curata da: …”) */
-  professionalName?: string;
-
-  /** Legacy (non più mostrato, ma tenuto per compatibilità) */
-  creator?: string;
+  logoPath?: string;            // opzionale (non usiamo object-fit)
+  ownerName?: string;           // “Scheda Allenamento di: …”
+  professionalName?: string;    // “curata da: …”
+  creator?: string;             // legacy (non usato ma tenuto per compatibilità)
 };
 
 export type ExportWorkoutDay = {
-  label: string;
-  groups: string[];
+  label: string;        // es. "Giorno 1"
+  groups: string[];     // es. ["Petto","Spalle"]
   items: Array<{
     name: string;
     serie: string;
@@ -39,153 +33,225 @@ export type ExportWorkoutDay = {
 };
 
 type Props = {
-  offscreen?: boolean;
   meta: ExportWorkoutMeta;
   days: ExportWorkoutDay[];
+  offscreen?: boolean;
 };
 
-/**
- * Vista "safe" per html2canvas: solo inline style, layout semplice.
- */
-const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(function ExportWorkoutPreview(
-  { offscreen = false, meta, days },
-  ref
-) {
-  const wrapStyle: React.CSSProperties = offscreen
-    ? { position: "fixed", left: -100000, top: 0, width: 1100 }
-    : { width: 1100, margin: "0 auto" };
+const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
+  ({ meta, days, offscreen = false }, ref) => {
+    const rootRef = useRef<HTMLDivElement>(null);
+    useImperativeHandle(ref, () => rootRef.current as unknown as HTMLElement);
 
-  const cardStyle: React.CSSProperties = {
-    border: "1px solid #e5e7eb",
-    borderRadius: 12,
-    padding: 16,
-    background: "#ffffff",
-  };
+    // ====== STILI “SAFE” (solo proprietà supportate) ======
+    const baseBody: React.CSSProperties = {
+      margin: 0,
+      padding: 0,
+      background: "rgb(245,245,247)",
+      color: "rgb(17,24,39)",
+      fontFamily:
+        'system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", "Liberation Sans", sans-serif',
+      fontSize: "14px",
+      lineHeight: "1.4",
+    };
 
-  const small = (v?: string | null) => (v && String(v).trim() !== "" ? v : "—");
+    const page: React.CSSProperties = {
+      width: "800px",
+      maxWidth: "800px",
+      margin: "16px auto",
+      padding: "16px",
+      background: "rgb(255,255,255)",
+      border: "1px solid rgb(229,231,235)",
+      borderRadius: "8px",
+      boxSizing: "border-box",
+      position: offscreen ? "absolute" : "static",
+      left: offscreen ? "-10000px" : "auto",
+      top: offscreen ? "0" : "auto",
+      zIndex: offscreen ? 0 : "auto",
+    };
 
-  const goalLabel =
-    meta?.goal === "peso_costante"
-      ? "Peso costante"
-      : meta?.goal === "perdita_peso"
-      ? "Perdita peso"
-      : meta?.goal === "aumento_peso"
-      ? "Aumento peso"
-      : "—";
+    const headerRow: React.CSSProperties = {
+      margin: "0 0 12px 0",
+      padding: "0",
+    };
 
-  return (
-    <section
-      ref={ref}
-      data-export-workout
-      style={{
-        ...wrapStyle,
-        position: "relative",
-        fontFamily:
-          "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,Apple Color Emoji,Segoe UI Emoji",
-        background: "#ffffff",
-        color: "#111827",
-        padding: 24,
-      }}
-    >
-      {/* Logo in alto a destra (senza intestatario) */}
-      {meta.logoPath && (
-        <img
-          src={meta.logoPath}
-          alt="Logo"
-          crossOrigin="anonymous"
-          style={{
-            position: "absolute",
-            top: 24,
-            right: 24,
-            width: 88,
-            height: 88,
-            objectFit: "contain",
-          }}
-        />
-      )}
+    const title: React.CSSProperties = {
+      margin: "0 0 8px 0",
+      padding: "0",
+      fontSize: "22px",
+      fontWeight: 700,
+      color: "rgb(49,46,129)",
+      textAlign: "left",
+      textTransform: "none",
+    };
 
-      {/* Header */}
-      <div style={{ marginBottom: 12, paddingRight: 120 /* evita sovrapposizione col logo */ }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, margin: 0, color: "#334155" }}>
-          Scheda Allenamento{meta.ownerName ? ` di: ${meta.ownerName}` : ""}
-        </h1>
-        {meta.professionalName ? (
-          <div style={{ fontSize: 14, color: "#4b5563", marginTop: 4 }}>
-            <em>curata da: {meta.professionalName}</em>
-          </div>
-        ) : null}
-        <div style={{ fontSize: 14, color: "#374151", marginTop: 6 }}>
-          <span style={{ marginRight: 18 }}>
-            <strong>Scadenza:</strong> {small(meta?.expire ?? null)}
-          </span>
-          <span>
-            <strong>Obiettivo:</strong> {goalLabel}
-          </span>
-        </div>
-      </div>
+    const metaBox: React.CSSProperties = {
+      margin: "0 0 12px 0",
+      padding: "8px",
+      background: "rgb(238,242,255)",
+      border: "1px solid rgb(219,234,254)",
+      borderRadius: "6px",
+      boxSizing: "border-box",
+    };
 
-      {/* Giorni */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16 }}>
-        {days.map((day, idx) => (
-          <div key={idx} style={cardStyle}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                marginBottom: 8,
-              }}
-            >
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#1f2937" }}>
-                {day.label}
-              </h3>
-              <div style={{ fontSize: 12, color: "#6b7280" }}>
-                {day.groups && day.groups.length ? day.groups.join(", ") : "—"}
+    const row: React.CSSProperties = {
+      margin: "0 0 4px 0",
+      padding: "0",
+      whiteSpace: "normal",
+      wordWrap: "break-word",
+      wordBreak: "break-word",
+      overflowWrap: "anywhere",
+    };
+
+    const section: React.CSSProperties = {
+      margin: "12px 0 0 0",
+      padding: "12px",
+      border: "1px solid rgb(229,231,235)",
+      borderRadius: "6px",
+      background: "rgb(255,255,255)",
+    };
+
+    const sectionHead: React.CSSProperties = {
+      margin: "0 0 8px 0",
+      padding: "0",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+    };
+
+    const sectionTitle: React.CSSProperties = {
+      margin: 0,
+      padding: 0,
+      fontSize: "16px",
+      fontWeight: 700,
+      color: "rgb(31,41,55)",
+    };
+
+    const sectionSub: React.CSSProperties = {
+      margin: 0,
+      padding: 0,
+      fontSize: "12px",
+      color: "rgb(107,114,128)",
+    };
+
+    const exercise: React.CSSProperties = {
+      margin: "10px 0 0 0",
+      padding: "8px",
+      border: "1px solid rgb(229,231,235)",
+      borderRadius: "4px",
+      background: "rgb(255,255,255)",
+    };
+
+    const exerciseName: React.CSSProperties = {
+      margin: "0 0 4px 0",
+      padding: 0,
+      fontWeight: 600,
+      color: "rgb(31,41,55)",
+    };
+
+    const exerciseRow: React.CSSProperties = {
+      margin: 0,
+      padding: 0,
+      color: "rgb(55,65,81)",
+    };
+
+    const note: React.CSSProperties = {
+      margin: "4px 0 0 0",
+      padding: 0,
+      fontSize: "12px",
+      color: "rgb(75,85,99)",
+    };
+
+    const small = (v?: string | null) => (v && String(v).trim() !== "" ? v : "—");
+
+    const goalLabel =
+      meta.goal === "peso_costante"
+        ? "Peso costante"
+        : meta.goal === "perdita_peso"
+        ? "Perdita peso"
+        : meta.goal === "aumento_peso"
+        ? "Aumento peso"
+        : "—";
+
+    return (
+      <div style={baseBody}>
+        <div ref={rootRef} id="export-safe-root" style={page}>
+          {/* LOGO opzionale (niente object-fit) */}
+          {meta.logoPath ? (
+            <div style={{ position: "relative", height: "0px" }}>
+              <img
+                src={meta.logoPath}
+                alt="Logo"
+                crossOrigin="anonymous"
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: "-8px",
+                  width: "64px",
+                  height: "64px",
+                }}
+              />
+            </div>
+          ) : null}
+
+          {/* Header */}
+          <div style={headerRow}>
+            <h1 style={title}>
+              Anteprima scheda allenamento (compatibile)
+              {meta.ownerName ? ` — di: ${meta.ownerName}` : ""}
+            </h1>
+            {meta.professionalName ? (
+              <div style={{ margin: "0 0 8px 0", padding: 0, fontSize: "14px", color: "rgb(75,85,99)" }}>
+                <em>curata da: {meta.professionalName}</em>
+              </div>
+            ) : null}
+
+            <div style={metaBox}>
+              <div style={row}>
+                <strong>Scadenza:</strong> {small(meta.expire)}
+              </div>
+              <div style={row}>
+                <strong>Obiettivo:</strong> {goalLabel}
               </div>
             </div>
-
-            {/* Esercizi (no bullets) */}
-            {day.items && day.items.length ? (
-              <div style={{ marginTop: 10 }}>
-                {day.items.map((it, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      fontSize: 14,
-                      lineHeight: 1.35,
-                      marginBottom: 12,
-                    }}
-                  >
-                    {/* Riga 1: NOME (su riga dedicata) */}
-                    <div style={{ fontWeight: 600, marginBottom: 2 }}>
-                      {small(it.name)}
-                    </div>
-
-                    {/* Riga 2: DETTAGLI */}
-                    <div>
-                      Serie: {small(it.serie ?? null)},{" "}
-                      Ripetizioni: {small(it.ripetizioni ?? null)},{" "}
-                      Kg: {small(it.peso ?? null)},{" "}
-                      Rec: {small(it.recupero ?? null)}
-                    </div>
-
-                    {/* Riga 3: NOTA (se presente) */}
-                    {it.note && it.note.trim() !== "" ? (
-                      <div style={{ fontSize: 12, color: "#4b5563", marginTop: 2 }}>
-                        Note: {it.note}
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div style={{ fontSize: 14, color: "#9ca3af" }}>Nessun esercizio inserito</div>
-            )}
           </div>
-        ))}
+
+          {/* Giorni */}
+          {days.map((day, idx) => (
+            <div key={idx} style={section}>
+              <div style={sectionHead}>
+                <div style={sectionTitle}>{day.label}</div>
+                <div style={sectionSub}>
+                  {day.groups && day.groups.length ? day.groups.join(", ") : "—"}
+                </div>
+              </div>
+
+              {day.items && day.items.length ? (
+                <div>
+                  {day.items.map((it, i) => (
+                    <div key={i} style={exercise}>
+                      <div style={exerciseName}>{small(it.name)}</div>
+                      <div style={exerciseRow}>
+                        Serie: {small(it.serie)} • Ripetizioni: {small(it.ripetizioni)} • Kg:{" "}
+                        {small(it.peso ?? null)} • Rec: {small(it.recupero)}
+                      </div>
+                      {it.note && it.note.trim() !== "" ? (
+                        <div style={note}>Note: {it.note}</div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: "14px", color: "rgb(156,163,175)" }}>
+                  Nessun esercizio inserito
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       </div>
-    </section>
-  );
-});
+    );
+  }
+);
 
 export default ExportWorkoutPreview;
