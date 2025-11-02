@@ -18,7 +18,7 @@ import { getMyProfile, updateMyProfile, uploadAvatar, type MeResponse } from "..
 
 // Stili condivisi (light/dark) per i campi "ghost"
 const wrapBase = "mt-1 flex items-center px-0 py-2 border-b transition";
-const wrapRead = "border-transparent";
+// const wrapRead = "border-transparent"; // RIMOSSO: non usato
 const wrapEdit = "border-gray-200 focus-within:border-indigo-500 dark:border-gray-700 dark:focus-within:border-indigo-400";
 const inputBase = "flex-1 bg-transparent outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-900 dark:text-gray-100";
 const labelTitle = "text-base font-semibold text-gray-800 dark:text-gray-100";
@@ -514,17 +514,33 @@ export default function ProfilePage() {
 
               <div className="md:col-span-1">
                 <span className={labelTitle}>Specialità</span>
-                <div className="mt-1 flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-700 dark:text-gray-200">
                   <Tag className={iconMuted} />
-                  <span>{specialties?.trim() ? specialties : "Nessuna specialità impostata"}</span>
+                  {splitCsv(specialties).length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {splitCsv(specialties).map((s) => (
+                        <Chip key={s}>{s}</Chip>
+                      ))}
+                    </div>
+                  ) : (
+                    <span>Nessuna specialità impostata</span>
+                  )}
                 </div>
               </div>
 
               <div className="md:col-span-1">
                 <span className={labelTitle}>Lingue</span>
-                <div className="mt-1 flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-700 dark:text-gray-200">
                   <Globe className={iconMuted} />
-                  <span>{languages?.trim() ? languages : "Nessuna lingua impostata"}</span>
+                  {splitCsv(languages).length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {splitCsv(languages).map((lng) => (
+                        <Chip key={lng}>{lng}</Chip>
+                      ))}
+                    </div>
+                  ) : (
+                    <span>Nessuna lingua impostata</span>
+                  )}
                 </div>
               </div>
 
@@ -605,6 +621,15 @@ export default function ProfilePage() {
                     className={inputBase}
                   />
                 </div>
+
+                {/* Anteprima live chips */}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {splitCsv(specialties).length > 0 ? (
+                    splitCsv(specialties).map((s) => <Chip key={s}>{s}</Chip>)
+                  ) : (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Nessuna specialità • separa con virgole</span>
+                  )}
+                </div>
               </label>
 
               <label className="block">
@@ -617,6 +642,15 @@ export default function ProfilePage() {
                     placeholder="IT, EN"
                     className={inputBase}
                   />
+                </div>
+
+                {/* Anteprima live chips */}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {splitCsv(languages).length > 0 ? (
+                    splitCsv(languages).map((l) => <Chip key={l}>{l}</Chip>)
+                  ) : (
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Nessuna lingua • separa con virgole</span>
+                  )}
                 </div>
               </label>
 

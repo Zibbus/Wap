@@ -233,35 +233,43 @@ CREATE TABLE IF NOT EXISTS user_settings (
 /* ===========================
    CHAT / MESSAGGI
    =========================== */
-
 -- Conversazioni (thread)
-CREATE TABLE IF NOT EXISTS conversations (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS chat_threads (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-) ENGINE=InnoDB;
+);
 
--- Partecipanti (2 o più), qui bastano 2: utente e professionista
-CREATE TABLE IF NOT EXISTS conversation_participants (
-  conversation_id BIGINT NOT NULL,
-  user_id INT NOT NULL,
-  joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (conversation_id, user_id),
-  CONSTRAINT fk_cp_conv FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-  CONSTRAINT fk_cp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  INDEX idx_cp_user (user_id)
-) ENGINE=InnoDB;
+-- Partecipanti (2 nel tuo caso, ma aperta a N)
+CREATE TABLE IF NOT EXISTS chat_participants (
+  thread_id BIGINT UNSIGNED NOT NULL,
+  user_id   INT NOT NULL,
+  last_read_message_id BIGINT UNSIGNED NULL,
+  PRIMARY KEY (thread_id, user_id),
+  FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id)   REFERENCES users(id)        ON DELETE CASCADE
+);
 
 -- Messaggi
-CREATE TABLE IF NOT EXISTS messages (
-  id BIGINT AUTO_INCREMENT PRIMARY KEY,
-  conversation_id BIGINT NOT NULL,
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  thread_id BIGINT UNSIGNED NOT NULL,
   sender_id INT NOT NULL,
   body TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_msg_conv FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-  CONSTRAINT fk_msg_sender FOREIGN KEY (sender_id) REFERENCES users(id) ON DELETE CASCADE,
-  INDEX idx_msg_conv_created (conversation_id, created_at)
-) ENGINE=InnoDB;
+  FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (sender_id) REFERENCES users(id)        ON DELETE CASCADE
+);
 
--- Vista utile: “conversazione già esistente tra due user?”
--- (facoltativa; noi lo gestiamo via query in app)
+-- Per legare "utente X" e "professionista Y" ad un singolo thread
+-- (evita duplicati quando clicchi 'Contatta' più volte)
+CREATE TABLE IF NOT EXISTS chat_links (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_a INT NOT NULL,  -- ordiniamo min/max per unicità
+  user_b INT NOT NULL,
+  thread_id BIGINT UNSIGNED NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_pair (user_a, user_b),
+  FOREIGN KEY (user_a) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_b) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE
+);

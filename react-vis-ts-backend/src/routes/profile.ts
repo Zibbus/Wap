@@ -10,7 +10,7 @@ const router = Router();
 
 // ---- upload config
 const uploadsDir = path.join(process.cwd(), "uploads");
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
@@ -155,7 +155,7 @@ router.put("/", requireAuth, async (req: any, res) => {
 });
 
 // PATCH /api/profile/avatar — upload avatar (solo professionisti)
-router.patch("/avatar", requireAuth, upload.single("file"), async (req: any, res) => {
+router.patch("/avatar", requireAuth, upload.single("avatar"), async (req: any, res) => {
   try {
     if (!req.file) return res.status(415).json({ error: "Formato non supportato (png/jpg/webp)" });
 
@@ -172,13 +172,18 @@ router.patch("/avatar", requireAuth, upload.single("file"), async (req: any, res
     if (!prof) return res.status(400).json({ error: "Profilo professionista non trovato" });
 
     const oldUrl = prof.avatar_url as string | null | undefined;
-    const newUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+
+    // SALVA RELATIVO (meglio per il proxy /uploads di Vite)
+    const newUrl = `/uploads/${req.file.filename}`;
 
     await db.query(`UPDATE professional_profiles SET avatar_url=? WHERE id=?`, [newUrl, prof.id]);
 
+    // Prova a cancellare il vecchio file se era un upload locale
     if (isLocalUploadUrl(oldUrl)) {
       const fileName = oldUrl!.split("/uploads/")[1];
-      fs.promises.unlink(path.join(uploadsDir, fileName)).catch(() => {});
+      if (fileName) {
+        fs.promises.unlink(path.join(uploadsDir, fileName)).catch(() => {});
+      }
     }
 
     res.json({ ok: true, avatarUrl: newUrl });

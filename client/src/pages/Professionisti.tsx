@@ -6,6 +6,9 @@ import type { Professional } from "../types/professional";
 import List from "../components/professionisti/List";
 import Filters from "../components/professionisti/Filters";
 import { useAuth } from "../hooks/useAuth";
+import ChatModal from "../components/chat/ChatModal";
+// CHANGED: serve per aprire il modal di login se non autenticato
+import { useLoginModal } from "../hooks/useLoginModal";
 
 type FiltersState = {
   q: string;
@@ -17,7 +20,8 @@ type FiltersState = {
 
 export default function Professionisti() {
   const navigate = useNavigate();
-  const { requireLogin } = useAuth();
+  const { requireLogin, authData } = useAuth(); // CHANGED: uso anche authData
+  const { openLoginModal } = useLoginModal();   // CHANGED
 
   const [items, setItems] = useState<Professional[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -30,6 +34,9 @@ export default function Professionisti() {
     minRating: 0,
     maxPrice: "",
   });
+
+  // CHANGED: target per ChatModal (compose)
+  const [composeTarget, setComposeTarget] = useState<{ userId: number; name: string } | null>(null);
 
   useEffect(() => {
     let stop = false;
@@ -56,8 +63,22 @@ export default function Professionisti() {
     navigate(`/professionisti/${id}`);
   };
 
+  // CHANGED: nuova logica "Contatta" con compose e login modal
   const handleContact = (id: number) => {
-    requireLogin(() => navigate(`/chat/${id}`));
+    if (!authData) {
+      openLoginModal();
+      return;
+    }
+    const p = items.find((x) => x.id === id);
+    if (!p) return;
+
+    if (!("userId" in p) || !p.userId) {
+      console.warn("Professional senza userId: aggiungi userId nel payload dell'API");
+      // fallback: usa la rotta /chat (nel tuo App.tsx esiste /chat, non /chat/:id)
+      return requireLogin(() => navigate(`/chat`)); // CHANGED
+    }
+
+    setComposeTarget({ userId: p.userId, name: p.name });
   };
 
   return (
@@ -84,6 +105,16 @@ export default function Professionisti() {
         <div className="mt-6">
           <List items={items} onOpen={handleOpen} onContact={handleContact} />
         </div>
+      )}
+
+      {/* CHANGED: Chat compose modal */}
+      {composeTarget && (
+        <ChatModal
+          targetUserId={composeTarget.userId}
+          targetName={composeTarget.name}
+          onClose={() => setComposeTarget(null)}
+          onOpenChat={() => navigate(`/chat`)} // CHANGED: vai su /chat (la tua rotta esistente)
+        />
       )}
     </div>
   );

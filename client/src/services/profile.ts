@@ -34,39 +34,53 @@ export async function getMyProfile(): Promise<MeResponse> {
   return api.get<MeResponse>("/api/profile");
 }
 
-// Accetta campi opzionali; il backend aggiorna users e, se professionista, professional_profiles
+// Aggiorna profilo utente + (se pro) profilo professionista
 export async function updateMyProfile(body: {
   firstName?: string;
   lastName?: string;
   email?: string;
   dob?: string;                 // YYYY-MM-DD
   sex?: "M" | "F" | "O";
-
   displayName?: string;
   role?: "personal_trainer" | "nutrizionista";
   city?: string;
   pricePerHour?: number;
-  specialties?: string;         // CSV o JSON string per semplicità
+  specialties?: string;         // CSV o JSON string
   languages?: string;           // CSV o JSON string
   bio?: string;
 }) {
   return api.put<{ ok: true }>("/api/profile", body);
 }
 
-// Upload avatar (solo professionisti): PATCH multipart
-export async function uploadAvatar(file: File) {
+/**
+ * Upload avatar (solo professionisti).
+ * - Campo FormData: "avatar" (deve combaciare con multer.single("avatar"))
+ * - Non impostare Content-Type manualmente
+ * - Include Bearer token se presente in localStorage (AuthProvider salva "authData")
+ */
+export async function uploadAvatar(file: File): Promise<{ ok: true; avatarUrl: string }> {
   const form = new FormData();
-  form.append("file", file);
-  // qui servono fetch “puro” perché FormData non va con il wrapper JSON
-  const res = await fetch(`${import.meta.env.VITE_API_BASE ?? "http://localhost:4000"}/api/profile/avatar`, {
-    method: "PATCH",
-    body: form,
+  form.append("avatar", file); // <-- NOME CAMPO CORRETTO per multer.single("avatar")
+
+  // Recupero token dal localStorage dove AuthProvider salva "authData"
+  let token: string | undefined;
+  try {
+    const raw = localStorage.getItem("authData");
+    if (raw) token = JSON.parse(raw)?.token;
+  } catch {
+    /* ignore */
+  }
+
+  const res = await fetch(`/api/profile/avatar`, {
+    method: "PATCH",               // <-- usa PATCH come prima; se il route è POST, cambia in "POST"
+    body: form,                    // <-- niente JSON.stringify
     credentials: "include",
-    // Authorization arriva già da fetch? Se il tuo backend richiede il Bearer:
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("auth_token") || ""}`,
-    },
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json() as Promise<{ ok: true; avatarUrl: string }>;
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    throw new Error(txt || "Upload avatar fallito");
+  }
+  return res.json();
 }

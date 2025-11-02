@@ -17,11 +17,20 @@ const fmtEUR = new Intl.NumberFormat("it-IT", {
 });
 
 export default function Card({ p, onOpen, onContact }: Props) {
-  const price = useMemo(() => fmtEUR.format(p.pricePerHour), [p.pricePerHour]);
+  // SAFE: price con guardia
+  const price = useMemo(() => {
+    const value = Number.isFinite(p.pricePerHour as number) ? (p.pricePerHour as number) : 0;
+    return fmtEUR.format(value);
+  }, [p.pricePerHour]);
+
+  // SAFE: rating & reviews con fallback
+  const rating = typeof p.rating === "number" && Number.isFinite(p.rating) ? p.rating : 0;
+  const reviewsCount = typeof p.reviewsCount === "number" ? p.reviewsCount : 0;
+
   const specialties = Array.isArray(p.specialties) ? p.specialties : [];
   const shownSpecs = specialties.slice(0, 3);
   const extraCount = specialties.length > 3 ? specialties.length - 3 : 0;
-  const isNew = p.reviewsCount === 0;
+  const isNew = reviewsCount === 0; // CHANGED
   const languages = Array.isArray(p.languages) ? p.languages : [];
 
   return (
@@ -70,9 +79,7 @@ export default function Card({ p, onOpen, onContact }: Props) {
             {p.online ? (
               "Online"
             ) : p.city ? (
-              <>
-                In presenza – {p.city}
-              </>
+              <>In presenza – {p.city}</>
             ) : (
               "In presenza"
             )}
@@ -81,7 +88,8 @@ export default function Card({ p, onOpen, onContact }: Props) {
           <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-gray-700 dark:text-gray-200">
             <span className="inline-flex items-center gap-1">
               <Star className="h-4 w-4 text-amber-500" aria-hidden="true" />
-              {p.rating.toFixed(1)} ({p.reviewsCount})
+              {/* CHANGED: rating sicuro */}
+              {rating.toFixed(1)} ({reviewsCount})
             </span>
             {p.city && (
               <span className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-300">
@@ -135,6 +143,7 @@ export default function Card({ p, onOpen, onContact }: Props) {
           <div className="text-sm font-bold text-indigo-700 dark:text-indigo-300">{price} / h</div>
           <div className="flex gap-2">
             <button
+              type="button" // CHANGED
               onClick={onOpen}
               className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
               aria-label={`Apri il profilo di ${p.name}`}
@@ -142,6 +151,7 @@ export default function Card({ p, onOpen, onContact }: Props) {
               Vedi profilo
             </button>
             <button
+              type="button" // CHANGED
               onClick={onContact}
               className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
               aria-label={`Contatta ${p.name}`}

@@ -1,29 +1,32 @@
+// client/src/services/chat.ts
 import { api } from "./api";
 
-export type ConversationPeer = { id: number; name: string; email: string | null };
-export type ConversationSummary = {
-  conversationId: number;
-  lastMessageAt: string | null;
-  lastMessage: { senderId: number; body: string } | null;
-  peer: ConversationPeer;
-};
-export type Message = { id: number; senderId: number; body: string; createdAt: string };
-
-export async function openOrCreateConversation(targetUserId: number) {
-  return api.post<{ conversationId: number }>("/api/chat/conversations/open", { targetUserId });
+// alias: openOrCreateConversation -> /api/chat/start
+export async function openOrCreateConversation(toUserId: number): Promise<{ conversationId: number }> {
+  // la nostra start crea/riutilizza il thread e ritorna { threadId }
+  const res = await api.post<{ ok: true; threadId: number }>("/api/chat/start", { toUserId });
+  return { conversationId: res.threadId };
 }
 
-export async function getConversations() {
-  return api.get<ConversationSummary[]>("/api/chat/conversations");
+// alias: sendMessage -> POST /api/chat/:id/messages
+export async function sendMessage(conversationId: number, body: string): Promise<{ ok: true; id: number }> {
+  return api.post(`/api/chat/${conversationId}/messages`, { body });
 }
 
-export async function getMessages(conversationId: number, opts?: { before?: string; limit?: number }) {
-  const q = new URLSearchParams();
-  if (opts?.before) q.set("before", opts.before);
-  if (opts?.limit) q.set("limit", String(opts.limit));
-  return api.get<Message[]>(`/api/chat/conversations/${conversationId}/messages${q.toString() ? `?${q}` : ""}`);
+// (lista e messaggi)
+export async function listConversations(): Promise<Array<{
+  threadId: number;
+  otherUserId: number;
+  otherUsername: string;
+  otherEmail: string | null;
+  lastBody: string | null;
+  lastAt: string | null;
+}>> {
+  return api.get("/api/chat/threads");
 }
 
-export async function sendMessage(conversationId: number, body: string) {
-  return api.post<Message>(`/api/chat/conversations/${conversationId}/messages`, { body });
+export async function getMessages(conversationId: number): Promise<Array<{
+  id: number; senderId: number; body: string; createdAt: string;
+}>> {
+  return api.get(`/api/chat/${conversationId}/messages`);
 }

@@ -24,7 +24,15 @@ const fmtEUR = new Intl.NumberFormat("it-IT", {
 });
 
 export default function ProfileHeader({ p, onMessage }: Props) {
-  const price = useMemo(() => fmtEUR.format(p.pricePerHour), [p.pricePerHour]);
+  // SAFE: price con guardia
+  const price = useMemo(() => {
+    const value = Number.isFinite(p.pricePerHour as number) ? (p.pricePerHour as number) : 0;
+    return fmtEUR.format(value);
+  }, [p.pricePerHour]);
+
+  // SAFE: rating & reviews con fallback
+  const rating = typeof p.rating === "number" && Number.isFinite(p.rating) ? p.rating : 0;
+  const reviewsCount = typeof p.reviewsCount === "number" ? p.reviewsCount : 0;
 
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
@@ -46,9 +54,7 @@ export default function ProfileHeader({ p, onMessage }: Props) {
           title={p.online ? "Online" : "Offline"}
         >
           <Circle
-            className={`h-2.5 w-2.5 ${
-              p.online ? "text-emerald-500" : "text-gray-400"
-            }`}
+            className={`h-2.5 w-2.5 ${p.online ? "text-emerald-500" : "text-gray-400"}`}
             fill="currentColor"
           />
           <span className={p.online ? "text-emerald-600 dark:text-emerald-400" : "text-gray-500 dark:text-gray-400"}>
@@ -86,9 +92,10 @@ export default function ProfileHeader({ p, onMessage }: Props) {
         <div className="mt-1 flex flex-wrap items-center gap-3 text-sm">
           <span className="inline-flex items-center gap-1 text-gray-800 dark:text-gray-100">
             <Star className="h-4 w-4 text-amber-500" aria-hidden />
-            <span className="font-semibold">{p.rating.toFixed(1)}</span>
+            {/* CHANGED: rating & reviews sicuri */}
+            <span className="font-semibold">{rating.toFixed(1)}</span>
             <span className="text-gray-500 dark:text-gray-400">
-              ({p.reviewsCount} recensioni)
+              ({reviewsCount} recensioni)
             </span>
           </span>
 
@@ -102,6 +109,7 @@ export default function ProfileHeader({ p, onMessage }: Props) {
       {/* Azioni */}
       <div className="flex w-full justify-stretch gap-2 sm:w-auto sm:justify-end">
         <button
+          type="button" // CHANGED
           onClick={onMessage}
           className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 dark:bg-indigo-500 dark:hover:bg-indigo-400 sm:flex-none"
           aria-label={`Invia un messaggio a ${p.name}`}

@@ -1,0 +1,16 @@
+https://www.youtube.com/watch?v=Pee3Xsdj6ms
+
+Come funziona SonarCube:
+Ci sono 2 componenti principali :
+1: SonarCubeServer
+2: SonarCubeScanner
+Ipotizziamo di clonare una repository, dobbiamo scaricare lo scanner che analizzerà il codice della repo che lo trasmetetrà al server e verificherà la qualità del codice attraverso delle regole prestabilite in base al linguaggio che usi e salva la metrica (non ho capito) nel db. Quindi testiamo in maniera statica la sicurezza della nostra app/sito.
+
+COSA SCOPRE: 
+1 Code smell (cattive pratiche)
+2 Scoprire vulnerabilità note
+3 scoporire la code coverege in termini di test
+4 Scoprire eventuali duplicazioni di codice
+5 Potenziali problemi di sicurezza
+
+Come usare SonarCube:
