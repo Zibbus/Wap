@@ -39,44 +39,97 @@ type DBExercise = {
 };
 
 type Goal = "peso_costante" | "perdita_peso" | "aumento_peso" | "altro";
-
 function isGoal(v: unknown): v is Goal {
   return v === "peso_costante" || v === "perdita_peso" || v === "aumento_peso" || v === "altro";
 }
 
 /* =========================
-   ADD: Tipi intestatario + helper auth/eta
+   Intestatario + helper
    ========================= */
 type OwnerMode = "self" | "other";
+type OtherOwnerMode = "existing" | "manual";
 
-type UserAnthro = {
-  first_name?: string;
-  last_name?: string;
-  sex?: "M" | "F" | "O";
-  dob?: string; // YYYY-MM-DD
+type CustomerOption = {
+  customer_id: number;     // <-- ID tabella customers
+  user_id: number;         // join users.id
+  username: string;        // nickname
+  first_name: string;
+  last_name: string;
+  sex?: "M" | "F" | "O" | null;
+  dob?: string | null;
   weight?: number | null;
   height?: number | null;
 };
 
-function readAuthSnapshot() {
-  const raw = JSON.parse(localStorage.getItem("authData") || "{}");
-  const userFull = raw?.user ?? {};
-  return {
-    token: raw?.token ?? null,
-    user: {
-      id: userFull.id ?? raw?.userId ?? null,
-      username: userFull.username ?? raw?.username ?? null,
-      type: userFull.type ?? raw?.role ?? null,
-      sex: userFull.sex ?? null,
-      dob: userFull.dob ?? null,
-      customer: userFull.customer ?? null,
-      first_name: userFull.first_name ?? userFull.firstName ?? null,
-      last_name: userFull.last_name ?? userFull.lastName ?? null,
-    },
+type AuthUser = {
+  id: number | null;
+  username: string | null;
+  type: "utente" | "professionista" | null;
+  sex: "M" | "F" | "O" | null;
+  dob: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  customer: null | {
+    id?: number;
+    weight?: number | null;
+    height?: number | null;
   };
+  professional?: any | null;
+  prof?: any | null;
+  freelancer?: any | null;
+  freelancer_id?: number | null;
+};
+
+function readAuthSnapshot(): { token: string | null; user: AuthUser } {
+  try {
+    const raw = JSON.parse(localStorage.getItem("authData") || "{}");
+    const u = raw?.user ?? {};
+    return {
+      token: raw?.token ?? null,
+      user: {
+        id: u.id ?? raw?.userId ?? null,
+        username: u.username ?? raw?.username ?? null,
+        type: (u.type ?? raw?.role ?? null) as any, // "utente" | "professionista" | null
+        sex: (u.sex ?? null) as any,
+        dob: (u.dob ?? null) as any,
+        first_name: u.first_name ?? u.firstName ?? null,
+        last_name: u.last_name ?? u.lastName ?? null,
+        customer: u.customer ?? null,
+        // possibili posizioni del freelancer nella tua auth
+        professional: u.professional ?? null,
+        prof: u.prof ?? null,
+        freelancer: u.freelancer ?? null,
+        freelancer_id: (u.freelancer_id ?? raw?.freelancer_id ?? null) as any,
+      },
+    };
+  } catch {
+    return { token: null, user: {
+      id: null, username: null, type: null, sex: null, dob: null,
+      first_name: null, last_name: null, customer: null,
+      professional: null, prof: null, freelancer: null, freelancer_id: null
+    }};
+  }
 }
 
-function ageFromDOB(dob?: string): number | undefined {
+function getIsProfessional(user: AuthUser | undefined | null): boolean {
+  if (!user) return false;
+  if (user.type === "professionista") return true;
+  if (user.freelancer_id) return true;
+  if (user.freelancer && typeof user.freelancer === "object") return true;
+  if (user.professional && typeof user.professional === "object") return true;
+  if (user.prof && typeof user.prof === "object") return true;
+  return false;
+}
+
+function getFreelancerIdFromAuth(user: AuthUser | undefined | null): number | null {
+  if (!user) return null;
+  const nested = (user.freelancer as any)?.id ?? (user.professional as any)?.id ?? (user.prof as any)?.id;
+  if (nested) return Number(nested);
+  if (user.freelancer_id) return Number(user.freelancer_id);
+  return null;
+}
+
+function ageFromDOB(dob?: string | null): number | undefined {
   if (!dob) return undefined;
   const d = new Date(dob);
   if (Number.isNaN(d.getTime())) return undefined;
@@ -87,18 +140,15 @@ function ageFromDOB(dob?: string): number | undefined {
   return age;
 }
 
-function getProfessionalName(): string | undefined {
-  try {
-    const raw = JSON.parse(localStorage.getItem("authData") || "{}");
-    const u = raw?.user || {};
-    if (u?.type === "professionista") {
-      const prof = u.professional || u.prof || u.freelancer || null;
-      if (prof?.display_name && String(prof.display_name).trim()) return String(prof.display_name).trim();
-      const full = [u.first_name || u.firstName, u.last_name || u.lastName].filter(Boolean).join(" ").trim();
-      if (full) return full;
-      if (u.username) return String(u.username);
-    }
-  } catch {}
+function getProfessionalName(user: AuthUser | undefined | null): string | undefined {
+  if (!user) return undefined;
+  if (getIsProfessional(user)) {
+    const prof = (user as any).professional || (user as any).prof || (user as any).freelancer || null;
+    if (prof?.display_name && String(prof.display_name).trim()) return String(prof.display_name).trim();
+    const full = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+    if (full) return full;
+    if (user.username) return String(user.username);
+  }
   return undefined;
 }
 
@@ -106,19 +156,14 @@ function getProfessionalName(): string | undefined {
    Mappe gruppi
    ========================= */
 const GROUP_NAME_TO_ID: Record<string, number> = {
-  Spalle: 1,
-  Dorso: 2,
-  Gambe: 3,
-  Petto: 4,
-  Braccia: 5,
-  Addome: 6,
+  Spalle: 1, Dorso: 2, Gambe: 3, Petto: 4, Braccia: 5, Addome: 6,
 };
 const ID_TO_GROUP_NAME: Record<number, string> = Object.fromEntries(
   Object.entries(GROUP_NAME_TO_ID).map(([k, v]) => [v, k])
 ) as Record<number, string>;
 
 /* =========================
-   Combo Box cercabile (SOLO INPUT)
+   Combo Box cercabile (esercizi)
    ========================= */
 type ExerciseSelectProps = {
   valueId?: number;
@@ -128,17 +173,10 @@ type ExerciseSelectProps = {
   groupsOrder: number[];
   placeholder?: string;
 };
-
-// Max di ripetizioni/sets/weight/rest
 const toNum = (v: string) => (v === "" || v == null ? NaN : Number(v));
 
 function ExerciseSelect({
-  valueId,
-  valueName,
-  onChange,
-  options,
-  groupsOrder,
-  placeholder = "Seleziona esercizio",
+  valueId, valueName, onChange, options, groupsOrder, placeholder = "Seleziona esercizio",
 }: ExerciseSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -170,9 +208,7 @@ function ExerciseSelect({
   const selectByIdx = (idx: number) => {
     if (idx < 0 || idx >= flatList.length) return;
     onChange(flatList[idx]);
-    setQuery("");
-    setOpen(false);
-    setActiveIdx(-1);
+    setQuery(""); setOpen(false); setActiveIdx(-1);
   };
 
   const displayText = valueId
@@ -184,29 +220,16 @@ function ExerciseSelect({
       <input
         className="w-56 sm:w-60 p-2 rounded-md border border-indigo-200 bg-white text-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:border-gray-700"
         value={open ? query : displayText}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          if (!open) setOpen(true);
-          setActiveIdx(-1);
-        }}
+        onChange={(e) => { setQuery(e.target.value); if (!open) setOpen(true); setActiveIdx(-1); }}
         onFocus={() => setOpen(true)}
         placeholder={displayText || placeholder}
         onKeyDown={(e) => {
           if (!open && (e.key.length === 1 || e.key === "Backspace")) setOpen(true);
           if (!flatList.length) return;
-          if (e.key === "ArrowDown") {
-            e.preventDefault();
-            setActiveIdx((prev) => Math.min((prev < 0 ? -1 : prev) + 1, flatList.length - 1));
-          } else if (e.key === "ArrowUp") {
-            e.preventDefault();
-            setActiveIdx((prev) => Math.max(prev - 1, 0));
-          } else if (e.key === "Enter") {
-            e.preventDefault();
-            if (safeActiveIdx >= 0) selectByIdx(safeActiveIdx);
-            else if (flatList.length === 1) selectByIdx(0);
-          } else if (e.key === "Escape") {
-            setOpen(false);
-          }
+          if (e.key === "ArrowDown") { e.preventDefault(); setActiveIdx((p) => Math.min((p < 0 ? -1 : p) + 1, flatList.length - 1)); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setActiveIdx((p) => Math.max(p - 1, 0)); }
+          else if (e.key === "Enter") { e.preventDefault(); if (safeActiveIdx >= 0) selectByIdx(safeActiveIdx); else if (flatList.length === 1) selectByIdx(0); }
+          else if (e.key === "Escape") setOpen(false);
         }}
       />
 
@@ -248,6 +271,52 @@ function ExerciseSelect({
    Pagina
    ========================= */
 export default function WorkoutPage() {
+  // === Auth snapshot locale + hydration da /api/me ===
+  const snap = readAuthSnapshot();
+  const [token] = useState<string | null>(snap.token);
+  const [user, setUser] = useState<AuthUser>(snap.user);
+
+  // Se i dati sono incompleti (tipo mancano peso/altezza o manca il type), prova ad arricchirli da /api/me
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!token) return;
+        const needHydrate =
+          !user?.customer ||
+          (user.customer && (user.customer.weight == null || user.customer.height == null)) ||
+          !user?.type;
+
+        if (!needHydrate) return;
+
+        const res = await fetch("http://localhost:4000/api/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        // normalizza quello che serve
+        const enriched: Partial<AuthUser> = {
+          first_name: data?.user?.first_name ?? user.first_name,
+          last_name:  data?.user?.last_name  ?? user.last_name,
+          sex:        data?.user?.sex        ?? user.sex,
+          dob:        data?.user?.dob        ?? user.dob,
+          type:       (data?.user?.type ?? user.type) as any,
+          customer:   data?.customer ?? data?.user?.customer ?? user.customer ?? null,
+          professional: data?.professional ?? user.professional ?? null,
+          freelancer:   data?.freelancer   ?? user.freelancer   ?? null,
+          prof:         data?.prof         ?? user.prof         ?? null,
+          freelancer_id: data?.freelancer_id ?? user.freelancer_id ?? null,
+        };
+        if (!cancelled) setUser((prev) => ({ ...prev, ...enriched }));
+      } catch {
+        /* silenzioso: fallback ai dati presenti */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token, user?.customer, user?.type]);
+
+  const isProfessional = getIsProfessional(user);
+
   const [giorni, setGiorni] = useState<number | null>(null);
   const [currentDay, setCurrentDay] = useState(1);
   const [giorniAllenamento, setGiorniAllenamento] = useState<GiornoAllenamento[]>([]);
@@ -263,22 +332,12 @@ export default function WorkoutPage() {
 
   const exportRef = useRef<HTMLElement | null>(null);
 
-  // --- ADD: intestatario + consenso ---
-  const { user, token } = readAuthSnapshot();
   const [consentAccepted, setConsentAccepted] = useState(false);
 
   const [ownerMode, setOwnerMode] = useState<OwnerMode>("self");
+  const [otherOwnerMode, setOtherOwnerMode] = useState<OtherOwnerMode>(isProfessional ? "existing" : "manual");
 
-  const [loadingSelf, setLoadingSelf] = useState(false);
-  const [selfData, setSelfData] = useState<UserAnthro>({
-    first_name: user?.first_name ?? undefined,
-    last_name: user?.last_name ?? undefined,
-    sex: (user?.sex as any) ?? undefined,
-    dob: user?.dob ?? undefined,
-    weight: user?.customer?.weight ?? null,
-    height: user?.customer?.height ?? null,
-  });
-
+  // other (manual)
   const [otherPerson, setOtherPerson] = useState({
     first_name: "",
     last_name: "",
@@ -288,34 +347,85 @@ export default function WorkoutPage() {
     height: "" as number | "",
   });
 
-  useEffect(() => {
-    if (ownerMode !== "self" || !token) return;
+  // customers
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<number | "">("");
 
+  // carica TUTTI i customers (join users) quando serve
+  useEffect(() => {
+    if (!(getIsProfessional(user) && ownerMode === "other" && otherOwnerMode === "existing")) return;
+
+    let cancelled = false;
     (async () => {
       try {
-        setLoadingSelf(true);
-        const res = await fetch("http://localhost:4000/api/me", {
-          headers: { Authorization: `Bearer ${token}` },
+        setLoadingCustomers(true);
+        const res = await fetch("http://localhost:4000/api/customers", {
+          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         });
-        if (res.ok) {
-          const me = await res.json();
-          setSelfData({
-            first_name: me.first_name ?? undefined,
-            last_name: me.last_name ?? undefined,
-            sex: (me.sex ?? undefined) as any,
-            dob: me.dob ?? undefined,
-            weight: me.customer?.weight ?? null,
-            height: me.customer?.height ?? null,
-          });
-        }
+        const ok = res.ok;
+        const data = ok ? await res.json() : null;
+
+        const arr: any[] = Array.isArray(data)
+          ? data
+          : Array.isArray((data as any)?.items) ? (data as any).items
+          : Array.isArray((data as any)?.customers) ? (data as any).customers
+          : [];
+
+        const mapped: CustomerOption[] = arr.map((row) => {
+          const userPart = row.user || {};
+          const first_name = String(row.first_name ?? userPart.first_name ?? "").trim();
+          const last_name  = String(row.last_name  ?? userPart.last_name  ?? "").trim();
+          const username   = String(row.username   ?? userPart.username   ?? "").trim();
+          const sex        = (row.sex ?? userPart.sex ?? null) as any;
+          const dob        = (row.dob ?? userPart.dob ?? null) as any;
+          const weight     = row.weight ?? row.customer?.weight ?? null;
+          const height     = row.height ?? row.customer?.height ?? null;
+
+          return {
+            customer_id: Number(row.id),
+            user_id: Number(row.user_id ?? userPart.id),
+            username,
+            first_name,
+            last_name,
+            sex, dob, weight, height,
+          };
+        });
+
+        mapped.sort((a, b) => {
+          const aL = (a.last_name || "").toLowerCase();
+          const bL = (b.last_name || "").toLowerCase();
+          if (aL !== bL) return aL.localeCompare(bL);
+          return (a.first_name || "").toLowerCase().localeCompare((b.first_name || "").toLowerCase());
+        });
+
+        if (!cancelled) setCustomers(mapped);
       } catch (e) {
-        console.error("Errore /api/me", e);
+        if (!cancelled) setCustomers([]);
+        console.debug("[WorkoutPage] GET /api/customers error", e);
       } finally {
-        setLoadingSelf(false);
+        if (!cancelled) setLoadingCustomers(false);
       }
     })();
-  }, [ownerMode, token]);
 
+    return () => { cancelled = true; };
+  }, [user, ownerMode, otherOwnerMode, token]);
+
+  // autocompila i dettagli quando selezioni un cliente
+  useEffect(() => {
+    if (otherOwnerMode !== "existing" || !selectedCustomerId) return;
+    const c = customers.find((x) => x.customer_id === selectedCustomerId);
+    if (!c) return;
+    const age = ageFromDOB(c.dob ?? undefined);
+    setOtherPerson({
+      first_name: c.first_name || "",
+      last_name:  c.last_name  || "",
+      sex: (c.sex ?? "O") as any,
+      age: (typeof age === "number" ? age : "") as any,
+      weight: (c.weight ?? "") as any,
+      height: (c.height ?? "") as any,
+    });
+  }, [otherOwnerMode, selectedCustomerId, customers]);
 
   // Inizializza i giorni quando l’utente sceglie il numero
   useEffect(() => {
@@ -337,7 +447,7 @@ export default function WorkoutPage() {
 
   const giornoCorrente = giorniAllenamento.find((g) => g.giorno === currentDay);
 
-  /* Helpers */
+  /* Helpers gruppi/esercizi */
   const namesToGroupIds = (names: string[]) => {
     const expanded = names.includes("Full Body")
       ? Array.from(new Set([...names, ...Object.keys(GROUP_NAME_TO_ID)]))
@@ -348,19 +458,10 @@ export default function WorkoutPage() {
   const fetchExercisesForGroups = async (groupNames: string[]): Promise<DBExercise[]> => {
     const ids = namesToGroupIds(groupNames);
     if (!ids.length) return [];
-
     const qs = `groupIds=${encodeURIComponent(ids.join(","))}`;
     const res = await fetch(`http://localhost:4000/api/exercises?${qs}`);
-
     if (!res.ok) throw new Error(`Errore fetch esercizi: ${res.status}`);
-
-    const raw = (await res.json()) as {
-      id: number;
-      title: string;
-      musclegroups_id: number;
-      weight_required?: string;
-    }[];
-
+    const raw = (await res.json()) as { id: number; title: string; musclegroups_id: number; weight_required?: string; }[];
     return raw.map((r) => ({
       id: r.id,
       name: r.title,
@@ -520,7 +621,7 @@ export default function WorkoutPage() {
           if (ex.note === undefined) {
             return { ...ex, note: "" };
           } else {
-            const { note, ...rest } = ex as any;
+            const { note, ...rest } = (ex as any);
             return rest as Esercizio;
           }
         });
@@ -530,7 +631,6 @@ export default function WorkoutPage() {
   };
 
   /* Anteprima / Download / Salvataggio */
-  // Helpers numerici
   const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
   const toIntOrNull = (val: string | undefined | null, max: number): number | null => {
@@ -571,32 +671,26 @@ export default function WorkoutPage() {
   };
 
   const handleGoToPreview = () => {
-    if (!expireDate) {
-      alert("Imposta una data di scadenza prima di continuare.");
-      return;
-    }
-    if (!goal) {
-      alert("Seleziona un obiettivo.");
-      return;
-    }
+    if (!expireDate) { alert("Imposta una data di scadenza prima di continuare."); return; }
+    if (!goal) { alert("Seleziona un obiettivo."); return; }
+
     if (ownerMode === "other") {
-      const okOwner =
-        otherPerson.first_name.trim() &&
-        otherPerson.last_name.trim() &&
-        otherPerson.sex &&
-        otherPerson.age !== "" &&
-        otherPerson.weight !== "" &&
-        otherPerson.height !== "";
-      if (!okOwner) {
-        alert("Compila i dati dell’intestatario.");
-        return;
+      if (otherOwnerMode === "existing") {
+        if (!selectedCustomerId) { alert("Seleziona un cliente esistente."); return; }
+      } else {
+        const okOwner =
+          otherPerson.first_name.trim() &&
+          otherPerson.last_name.trim() &&
+          otherPerson.sex &&
+          otherPerson.age !== "" &&
+          otherPerson.weight !== "" &&
+          otherPerson.height !== "";
+        if (!okOwner) { alert("Compila i dati dell’intestatario."); return; }
       }
     }
+
     const chk = allConfirmedDaysHaveAtLeastOneComplete();
-    if (!chk.ok) {
-      alert(`Completa almeno un esercizio nel Giorno ${chk.missingDay}.`);
-      return;
-    }
+    if (!chk.ok) { alert(`Completa almeno un esercizio nel Giorno ${chk.missingDay}.`); return; }
 
     setShowPreview(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -609,33 +703,55 @@ export default function WorkoutPage() {
         return;
       }
 
-      // 1) Crea la schedule
-      const schedulePayload = { expire: expireDate, goal };
-      const auth = JSON.parse(localStorage.getItem("authData") || "{}");
-      const tokenLS = auth?.token;
+      // Determina customer_id secondo schema
+      let customer_id: number | null = null;
 
+      if (ownerMode === "self") {
+        customer_id = Number(user?.customer?.id ?? NaN);
+        if (!Number.isFinite(customer_id)) {
+          alert("Non trovo l'ID customer dell'utente corrente. Assicurati che il profilo abbia un record in 'customers'.");
+          return;
+        }
+      } else {
+        if (otherOwnerMode === "existing") {
+          if (!selectedCustomerId) { alert("Seleziona un cliente esistente."); return; }
+          customer_id = Number(selectedCustomerId);
+        } else {
+          alert("Per salvare nel DB serve un cliente esistente. Seleziona 'Cliente esistente' oppure crea il cliente prima.");
+          return;
+        }
+      }
+
+      const payload: any = {
+        customer_id,
+        expire: expireDate,
+        goal,
+      };
+
+      if (getIsProfessional(user)) {
+        const freelancer_id = getFreelancerIdFromAuth(user);
+        if (freelancer_id) payload.freelancer_id = freelancer_id;
+      }
+
+      const tokenLS = token;
+
+      // 1) Crea la schedule
       const res = await fetch("http://localhost:4000/api/schedules", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(tokenLS ? { Authorization: `Bearer ${tokenLS}` } : {}),
-        },
-        body: JSON.stringify(schedulePayload),
+        headers: { "Content-Type": "application/json", ...(tokenLS ? { Authorization: `Bearer ${tokenLS}` } : {}) },
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) throw new Error("Errore creazione schedule");
       const schedule = await res.json();
       const scheduleId: number = schedule.id;
 
-      // 2) Crea i giorni e costruisci la mappa day -> day_id
+      // 2) Crea i giorni e mappa
       const dayMap: Record<number, number> = {};
       for (const g of giorniAllenamento) {
         const dayRes = await fetch("http://localhost:4000/api/schedules/day", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(tokenLS ? { Authorization: `Bearer ${tokenLS}` } : {}),
-          },
+          headers: { "Content-Type": "application/json", ...(tokenLS ? { Authorization: `Bearer ${tokenLS}` } : {}) },
           body: JSON.stringify({ schedule_id: scheduleId, day: g.giorno }),
         });
         if (!dayRes.ok) throw new Error("Errore creazione giorno");
@@ -643,45 +759,33 @@ export default function WorkoutPage() {
         dayMap[g.giorno] = day.id as number;
       }
 
-      // 3) Prepara gli esercizi con i cap coerenti con il DB
+      // 3) Esercizi
       const allExercises = giorniAllenamento.flatMap((g) =>
         g.esercizi
           .filter((ex) => ex.exerciseId)
-          .map((ex, idx) => {
-            const sets = toIntOrNull(ex.serie, 255);
-            const reps = toIntOrNull(ex.ripetizioni, 255);
-            const rest_seconds = toIntOrNull(ex.recupero, 65535);
-            const weight_value = toWeightOrNull(ex.peso);
-
-            return {
-              day_id: dayMap[g.giorno],
-              exercise_id: ex.exerciseId as number,
-              position: idx + 1,
-              sets,
-              reps,
-              rest_seconds,
-              weight_value,
-              notes: ex.note ?? null,
-            };
-          })
+          .map((ex, idx) => ({
+            day_id: dayMap[g.giorno],
+            exercise_id: ex.exerciseId as number,
+            position: idx + 1,
+            sets: toIntOrNull(ex.serie, 255),
+            reps: toIntOrNull(ex.ripetizioni, 255),
+            rest_seconds: toIntOrNull(ex.recupero, 65535),
+            weight_value: toWeightOrNull(ex.peso),
+            notes: ex.note ?? null,
+          }))
       );
 
-      // 4) Salva gli esercizi (se presenti)
       if (allExercises.length) {
         const exRes = await fetch("http://localhost:4000/api/schedules/exercises", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(tokenLS ? { Authorization: `Bearer ${tokenLS}` } : {}),
-          },
+          headers: { "Content-Type": "application/json", ...(tokenLS ? { Authorization: `Bearer ${tokenLS}` } : {}) },
           body: JSON.stringify({ scheduleId, items: allExercises }),
         });
-
         if (!exRes.ok) throw new Error("Errore salvataggio esercizi");
       }
 
       alert("✅ Scheda salvata con successo!");
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
       alert("❌ Errore durante il salvataggio della scheda.");
     }
@@ -752,10 +856,19 @@ export default function WorkoutPage() {
   ========================= */
   const goalForExport: Goal = isGoal(goal) && goal !== "altro" ? goal : "peso_costante";
 
+  // Etichetta intestatario
+  const selectedCustomer = customers.find((c) => c.customer_id === selectedCustomerId);
+  const selectedCustomerFullname =
+    selectedCustomer ? `${(selectedCustomer.first_name || "").trim()} ${(selectedCustomer.last_name || "").trim()}`.trim() : "";
+  const selectedCustomerNickname = selectedCustomer?.username ? ` (${selectedCustomer.username})` : "";
+
   const intestatarioLabel =
     ownerMode === "self"
-      ? `${selfData.first_name ?? ""} ${selfData.last_name ?? ""}`.trim() || (JSON.parse(localStorage.getItem("authData") || "{}")?.username || "—")
-      : `${otherPerson.first_name} ${otherPerson.last_name}`.trim() || "Intestatario esterno";
+      ? `${(user?.first_name ?? "")} ${(user?.last_name ?? "")}`.trim() ||
+        (user?.username || "—")
+      : (otherOwnerMode === "existing" && selectedCustomer)
+        ? `${selectedCustomerFullname || selectedCustomer?.username || "—"}${selectedCustomerNickname}`
+        : `${otherPerson.first_name} ${otherPerson.last_name}`.trim() || "Intestatario esterno";
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-indigo-50 dark:bg-gray-950 px-8 py-12 text-gray-800 dark:text-gray-100">
@@ -1048,77 +1161,142 @@ export default function WorkoutPage() {
 
                 {ownerMode === "self" ? (
                   <div className="mt-3 text-sm text-gray-700 dark:text-gray-200">
-                    {loadingSelf ? (
-                      <span>Caricamento profilo…</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-6">
-                        <div>Nome: <strong>{selfData.first_name ?? "-"}</strong></div>
-                        <div>Cognome: <strong>{selfData.last_name ?? "-"}</strong></div>
-                        <div>Sesso: <strong>{selfData.sex ?? "-"}</strong></div>
-                        <div>Età: <strong>{ageFromDOB(selfData.dob) ?? "-"}</strong></div>
-                        <div>Peso: <strong>{selfData.weight ?? "-"} kg</strong></div>
-                        <div>Altezza: <strong>{selfData.height ?? "-"} cm</strong></div>
-                      </div>
-                    )}
+                    <div className="flex flex-wrap gap-6">
+                      <div>Nome: <strong>{user?.first_name ?? "-"}</strong></div>
+                      <div>Cognome: <strong>{user?.last_name ?? "-"}</strong></div>
+                      <div>Sesso: <strong>{user?.sex ?? "-"}</strong></div>
+                      <div>Età: <strong>{ageFromDOB(user?.dob) ?? "-"}</strong></div>
+                      <div>Peso: <strong>{user?.customer?.weight ?? "-"} kg</strong></div>
+                      <div>Altezza: <strong>{user?.customer?.height ?? "-"} cm</strong></div>
+                    </div>
                   </div>
                 ) : (
-                  <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Nome</label>
-                      <input
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.first_name}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, first_name: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Cognome</label>
-                      <input
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.last_name}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, last_name: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Sesso</label>
-                      <select
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.sex}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, sex: e.target.value as any }))}
+                  <>
+                    {/* Scelta: cliente esistente (solo professionisti) o inserimento manuale */}
+                    <div className="mt-4 mb-2 flex flex-wrap items-center gap-6">
+                      <label
+                        className={`flex items-center gap-2 ${!isProfessional ? "opacity-50 pointer-events-none" : ""}`}
+                        title={!isProfessional ? "Solo i professionisti possono scegliere un cliente esistente" : ""}
                       >
-                        <option value="M">Maschio</option>
-                        <option value="F">Femmina</option>
-                        <option value="O">Altro</option>
-                      </select>
+                        <input
+                          type="radio"
+                          disabled={!isProfessional}
+                          checked={otherOwnerMode === "existing"}
+                          onChange={() => setOtherOwnerMode("existing")}
+                        />
+                        <span>Cliente esistente</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          checked={otherOwnerMode === "manual"}
+                          onChange={() => setOtherOwnerMode("manual")}
+                        />
+                        <span>Inserimento manuale</span>
+                      </label>
                     </div>
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Età</label>
-                      <input
-                        type="number"
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.age}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, age: e.target.value === "" ? "" : Number(e.target.value) }))}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Peso (kg)</label>
-                      <input
-                        type="number"
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.weight}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, weight: e.target.value === "" ? "" : Number(e.target.value) }))}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Altezza (cm)</label>
-                      <input
-                        type="number"
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.height}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, height: e.target.value === "" ? "" : Number(e.target.value) }))}
-                      />
-                    </div>
-                  </div>
+
+                    {otherOwnerMode === "existing" ? (
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <label className="block text-sm text-indigo-700 dark:text-indigo-300 mb-1">Seleziona cliente</label>
+                          <select
+                            className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                            value={selectedCustomerId}
+                            onChange={(e) => setSelectedCustomerId(e.target.value === "" ? "" : Number(e.target.value))}
+                          >
+                            <option value="" disabled hidden> Scegli cliente </option>
+                            {loadingCustomers ? (
+                              <option value="" disabled>Caricamento clienti…</option>
+                            ) : customers.length ? (
+                              customers.map((c) => {
+                                const fullname = `${(c.first_name ?? "").trim()} ${(c.last_name ?? "").trim()}`.trim();
+                                return (
+                                  <option key={c.customer_id} value={c.customer_id}>
+                                    {fullname || c.username}{c.username ? ` (${c.username})` : ""}
+                                  </option>
+                                );
+                              })
+                            ) : (
+                              <option value="" disabled>Nessun cliente disponibile</option>
+                            )}
+                          </select>
+                        </div>
+
+                        {selectedCustomerId && (
+                          <div className="text-sm text-gray-700 dark:text-gray-200 bg-white/60 dark:bg-gray-900/60 border border-indigo-100 dark:border-gray-700 rounded-md p-3">
+                            <div className="flex flex-wrap gap-6">
+                              <div>Nome: <strong>{otherPerson.first_name || "-"}</strong></div>
+                              <div>Cognome: <strong>{otherPerson.last_name || "-"}</strong></div>
+                              <div>Nickname: <strong>{selectedCustomer?.username || "-"}</strong></div>
+                              <div>Sesso: <strong>{otherPerson.sex || "-"}</strong></div>
+                              <div>Età: <strong>{otherPerson.age || "-"}</strong></div>
+                              <div>Peso: <strong>{otherPerson.weight || "-"} kg</strong></div>
+                              <div>Altezza: <strong>{otherPerson.height || "-"} cm</strong></div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div>
+                          <label className="text-sm text-indigo-700 dark:text-indigo-300">Nome</label>
+                          <input
+                            className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                            value={otherPerson.first_name}
+                            onChange={(e) => setOtherPerson((s) => ({ ...s, first_name: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-indigo-700 dark:text-indigo-300">Cognome</label>
+                          <input
+                            className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                            value={otherPerson.last_name}
+                            onChange={(e) => setOtherPerson((s) => ({ ...s, last_name: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-indigo-700 dark:text-indigo-300">Sesso</label>
+                          <select
+                            className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                            value={otherPerson.sex}
+                            onChange={(e) => setOtherPerson((s) => ({ ...s, sex: e.target.value as any }))}
+                          >
+                            <option value="M">Maschio</option>
+                            <option value="F">Femmina</option>
+                            <option value="O">Altro</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-sm text-indigo-700 dark:text-indigo-300">Età</label>
+                          <input
+                            type="number"
+                            className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                            value={otherPerson.age}
+                            onChange={(e) => setOtherPerson((s) => ({ ...s, age: e.target.value === "" ? "" : Number(e.target.value) }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-indigo-700 dark:text-indigo-300">Peso (kg)</label>
+                          <input
+                            type="number"
+                            className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                            value={otherPerson.weight}
+                            onChange={(e) => setOtherPerson((s) => ({ ...s, weight: e.target.value === "" ? "" : Number(e.target.value) }))}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-indigo-700 dark:text-indigo-300">Altezza (cm)</label>
+                          <input
+                            type="number"
+                            className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                            value={otherPerson.height}
+                            onChange={(e) => setOtherPerson((s) => ({ ...s, height: e.target.value === "" ? "" : Number(e.target.value) }))}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -1181,20 +1359,19 @@ export default function WorkoutPage() {
               position: "fixed",
               left: 0,
               top: 0,
-              opacity: 0,            // invisibile ma layouttato correttamente
+              opacity: 0,
               pointerEvents: "none",
               zIndex: -1,
             }}
           >
             <ExportWorkoutPreview
               ref={exportRef}
-              /* NON passare offscreen qui */
               meta={{
                 expire: expireDate || "—",
                 goal: goalForExport,
                 logoPath: logoUrl,
                 ownerName: intestatarioLabel,
-                professionalName: getProfessionalName(),
+                professionalName: getProfessionalName(user),
               }}
               days={exportDays}
             />
@@ -1209,9 +1386,9 @@ export default function WorkoutPage() {
                   <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100 m-0">
                     Scheda Allenamento{intestatarioLabel ? ` di: ${intestatarioLabel}` : ""}
                   </h3>
-                  {getProfessionalName() && (
+                  {getProfessionalName(user) && (
                     <div className="text-sm text-gray-500 dark:text-gray-400 -mt-0.5">
-                      <em>curata da: {getProfessionalName()}</em>
+                      <em>curata da: {getProfessionalName(user)}</em>
                     </div>
                   )}
                 </div>
@@ -1224,7 +1401,7 @@ export default function WorkoutPage() {
                 />
               </div>
 
-              {/* metadati, margine piccolo */}
+              {/* metadati */}
               <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
                 <span className="mr-4"><strong>Scadenza:</strong> {expireDate || "—"}</span>
                 <span><strong>Obiettivo:</strong> {
@@ -1233,7 +1410,7 @@ export default function WorkoutPage() {
                   goalForExport === "aumento_peso" ? "Aumento peso" : "—"
                 }</span>
               </div>
-            </div> 
+            </div>
 
             {/* scheda */}
             <div className="grid md:grid-cols-2 gap-4">
