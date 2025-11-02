@@ -15,6 +15,8 @@ import profileRoutes from "./routes/profile";
 import settingsRoutes from "./routes/settings";
 import nutritionRouter from "./routes/nutrition.db";
 
+import customersRouter from "./routes/customers.js";
+
 import { attachWs } from "./ws.js";
 
 const app = express();
@@ -36,6 +38,8 @@ app.use("/api/profile", profileRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 app.use("/api/nutrition", nutritionRouter);
+
+app.use("/api/customers", customersRouter);
 
 // Health
 app.get("/health", (_req, res) => res.json({ ok: true }));
