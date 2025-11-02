@@ -95,3 +95,68 @@ SELECT u.id, 'IT45678901234'
 FROM users u
 WHERE u.username='pro_pietro'
   AND NOT EXISTS (SELECT 1 FROM freelancers f WHERE f.user_id = u.id);
+
+/* Aggiunta peso fake di user_marco */
+INSERT INTO weight_history (customer_id, weight, measured_at)
+SELECT c.id, 78.5, '2025-10-02 08:12:00'
+FROM users u
+JOIN customers c ON c.user_id = u.id
+WHERE u.username = 'user_marco'
+  AND NOT EXISTS (
+    SELECT 1 FROM weight_history wh
+    WHERE wh.customer_id = c.id AND DATE(wh.measured_at) = '2025-10-02'
+  );
+
+INSERT INTO weight_history (customer_id, weight, measured_at)
+SELECT c.id, 78.2, '2025-10-09 08:20:00'
+FROM users u
+JOIN customers c ON c.user_id = u.id
+WHERE u.username = 'user_marco'
+  AND NOT EXISTS (
+    SELECT 1 FROM weight_history wh
+    WHERE wh.customer_id = c.id AND DATE(wh.measured_at) = '2025-10-09'
+  );
+
+INSERT INTO weight_history (customer_id, weight, measured_at)
+SELECT c.id, 78.0, '2025-10-16 08:05:00'
+FROM users u
+JOIN customers c ON c.user_id = u.id
+WHERE u.username = 'user_marco'
+  AND NOT EXISTS (
+    SELECT 1 FROM weight_history wh
+    WHERE wh.customer_id = c.id AND DATE(wh.measured_at) = '2025-10-16'
+  );
+
+INSERT INTO weight_history (customer_id, weight, measured_at)
+SELECT c.id, 77.8, '2025-10-23 08:18:00'
+FROM users u
+JOIN customers c ON c.user_id = u.id
+WHERE u.username = 'user_marco'
+  AND NOT EXISTS (
+    SELECT 1 FROM weight_history wh
+    WHERE wh.customer_id = c.id AND DATE(wh.measured_at) = '2025-10-23'
+  );
+
+INSERT INTO weight_history (customer_id, weight, measured_at)
+SELECT c.id, 77.5, '2025-10-30 08:10:00'
+FROM users u
+JOIN customers c ON c.user_id = u.id
+WHERE u.username = 'user_marco'
+  AND NOT EXISTS (
+    SELECT 1 FROM weight_history wh
+    WHERE wh.customer_id = c.id AND DATE(wh.measured_at) = '2025-10-30'
+  );
+
+-- (opzionale) sincronizzare il campo current weight nella tabella customers:
+-- ATTENZIONE: esegui solo se vuoi mantenere ancora il campo weight in customers.
+-- Questo imposterà il peso corrente al valore dell'ultimo controllo inserito.
+UPDATE customers c
+JOIN users u ON c.user_id = u.id
+SET c.weight = (
+  SELECT wh2.weight
+  FROM weight_history wh2
+  WHERE wh2.customer_id = c.id
+  ORDER BY wh2.measured_at DESC
+  LIMIT 1
+)
+WHERE u.username = 'user_marco';

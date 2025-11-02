@@ -12,15 +12,14 @@ CREATE TABLE IF NOT EXISTS users (
   sex ENUM('M','F','O') NULL,
   type ENUM('utente','professionista') DEFAULT 'utente',
   email VARCHAR(150) NULL,
+  height FLOAT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS customers (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL UNIQUE, 
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-  weight FLOAT NULL,
-  height FLOAT NULL
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS freelancers (
@@ -28,6 +27,14 @@ CREATE TABLE IF NOT EXISTS freelancers (
   user_id INT NOT NULL UNIQUE, 
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   vat VARCHAR(30) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS weight_history (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  weight FLOAT NOT NULL,
+  measured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS muscle_groups (

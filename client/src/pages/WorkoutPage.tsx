@@ -121,14 +121,6 @@ function getIsProfessional(user: AuthUser | undefined | null): boolean {
   return false;
 }
 
-function getFreelancerIdFromAuth(user: AuthUser | undefined | null): number | null {
-  if (!user) return null;
-  const nested = (user.freelancer as any)?.id ?? (user.professional as any)?.id ?? (user.prof as any)?.id;
-  if (nested) return Number(nested);
-  if (user.freelancer_id) return Number(user.freelancer_id);
-  return null;
-}
-
 function ageFromDOB(dob?: string | null): number | undefined {
   if (!dob) return undefined;
   const d = new Date(dob);
@@ -150,6 +142,48 @@ function getProfessionalName(user: AuthUser | undefined | null): string | undefi
     if (user.username) return String(user.username);
   }
   return undefined;
+}
+
+function pickFirst<T = any>(...vals: any[]): T | null {
+  for (const v of vals) if (v != null) return v as T;
+  return null;
+}
+
+function normalizeProfessionalFromMePayload(me: any) {
+  // supporta /api/me che restituisce i campi sia top-level sia sotto user
+  const u = me?.user ?? {};
+  const professional =
+    pickFirst(
+      me?.professional,
+      me?.prof,
+      me?.freelancer,                 // a volte il profilo è chiamato "freelancer"
+      u?.professional,
+      u?.prof,
+      u?.freelancer
+    ) || null;
+
+  // id libero del "freelancer" (può essere id del profilo professionista)
+  const freelancer_id =
+    pickFirst(
+      me?.freelancer_id,
+      u?.freelancer_id,
+      professional?.id
+    ) ?? null;
+
+  // prova ad estrarre un display_name sensato
+  const display_name =
+    pickFirst(
+      professional?.display_name,
+      professional?.name,
+      [u?.first_name, u?.last_name].filter(Boolean).join(" ").trim() || null,
+      u?.username
+    ) ?? null;
+
+  return {
+    professional: professional || (display_name ? { display_name } : null),
+    freelancer: professional || null,  // teniamo entrambi per compatibilità con getIsProfessional()
+    freelancer_id: freelancer_id ? Number(freelancer_id) : null,
+  };
 }
 
 /* =========================
@@ -278,42 +312,53 @@ export default function WorkoutPage() {
 
   // Se i dati sono incompleti (tipo mancano peso/altezza o manca il type), prova ad arricchirli da /api/me
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        if (!token) return;
-        const needHydrate =
-          !user?.customer ||
-          (user.customer && (user.customer.weight == null || user.customer.height == null)) ||
-          !user?.type;
+  let cancelled = false;
+  (async () => {
+    try {
+      if (!token) return;
 
-        if (!needHydrate) return;
+      const needHydrate =
+        !user?.customer ||
+        (user.customer && (user.customer.weight == null || user.customer.height == null)) ||
+        !user?.type ||
+        // 👉 se manca qualunque traccia del profilo professionista, id o display_name
+        !getIsProfessional(user);
 
-        const res = await fetch("http://localhost:4000/api/me", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        // normalizza quello che serve
-        const enriched: Partial<AuthUser> = {
-          first_name: data?.user?.first_name ?? user.first_name,
-          last_name:  data?.user?.last_name  ?? user.last_name,
-          sex:        data?.user?.sex        ?? user.sex,
-          dob:        data?.user?.dob        ?? user.dob,
-          type:       (data?.user?.type ?? user.type) as any,
-          customer:   data?.customer ?? data?.user?.customer ?? user.customer ?? null,
-          professional: data?.professional ?? user.professional ?? null,
-          freelancer:   data?.freelancer   ?? user.freelancer   ?? null,
-          prof:         data?.prof         ?? user.prof         ?? null,
-          freelancer_id: data?.freelancer_id ?? user.freelancer_id ?? null,
-        };
-        if (!cancelled) setUser((prev) => ({ ...prev, ...enriched }));
-      } catch {
-        /* silenzioso: fallback ai dati presenti */
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [token, user?.customer, user?.type]);
+      if (!needHydrate) return;
+
+      const res = await fetch("http://localhost:4000/api/me", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // normalizza profilo professionista da /api/me in qualunque forma arrivi
+      const profNorm = normalizeProfessionalFromMePayload(data);
+
+      const enriched: Partial<AuthUser> = {
+        first_name: data?.user?.first_name ?? user.first_name,
+        last_name:  data?.user?.last_name  ?? user.last_name,
+        sex:        data?.user?.sex        ?? user.sex,
+        dob:        data?.user?.dob        ?? user.dob,
+        type:       (data?.user?.type ?? user.type) as any,
+        customer:   data?.customer ?? data?.user?.customer ?? user.customer ?? null,
+
+        // ✅ riempiamo in modo robusto
+        professional: profNorm.professional ?? user.professional ?? null,
+        freelancer:   profNorm.freelancer   ?? user.freelancer   ?? null,
+        prof:         user.prof ?? null, // lasciato per retro compatibilità, non forziamo da payload
+        freelancer_id: profNorm.freelancer_id ?? user.freelancer_id ?? null,
+      };
+
+      if (!cancelled) setUser((prev) => ({ ...prev, ...enriched }));
+    } catch {
+      // silenzioso
+    }
+  })();
+  return () => { cancelled = true; };
+  // includo user.* usati dal needHydrate, così se cambiano si ritenta
+}, [token, user?.customer, user?.type, user?.professional, user?.freelancer, user?.freelancer_id]);
+
 
   const isProfessional = getIsProfessional(user);
 
@@ -413,19 +458,19 @@ export default function WorkoutPage() {
 
   // autocompila i dettagli quando selezioni un cliente
   useEffect(() => {
-    if (otherOwnerMode !== "existing" || !selectedCustomerId) return;
-    const c = customers.find((x) => x.customer_id === selectedCustomerId);
-    if (!c) return;
-    const age = ageFromDOB(c.dob ?? undefined);
-    setOtherPerson({
-      first_name: c.first_name || "",
-      last_name:  c.last_name  || "",
-      sex: (c.sex ?? "O") as any,
-      age: (typeof age === "number" ? age : "") as any,
-      weight: (c.weight ?? "") as any,
-      height: (c.height ?? "") as any,
-    });
-  }, [otherOwnerMode, selectedCustomerId, customers]);
+  if (ownerMode !== "other" || otherOwnerMode !== "existing" || !selectedCustomerId) return;
+  const c = customers.find((x) => x.customer_id === selectedCustomerId);
+  if (!c) return;
+  const age = ageFromDOB(c.dob ?? undefined);
+  setOtherPerson({
+    first_name: c.first_name || "",
+    last_name:  c.last_name  || "",
+    sex: (c.sex ?? "O") as any,
+    age: (typeof age === "number" ? age : "") as any,
+    weight: (c.weight ?? "") as any,
+    height: (c.height ?? "") as any,
+  });
+}, [ownerMode, otherOwnerMode, selectedCustomerId, customers]);
 
   // Inizializza i giorni quando l’utente sceglie il numero
   useEffect(() => {
@@ -722,18 +767,12 @@ export default function WorkoutPage() {
         }
       }
 
+      const tokenLS = token;
       const payload: any = {
         customer_id,
         expire: expireDate,
         goal,
       };
-
-      if (getIsProfessional(user)) {
-        const freelancer_id = getFreelancerIdFromAuth(user);
-        if (freelancer_id) payload.freelancer_id = freelancer_id;
-      }
-
-      const tokenLS = token;
 
       // 1) Crea la schedule
       const res = await fetch("http://localhost:4000/api/schedules", {
@@ -1145,7 +1184,11 @@ export default function WorkoutPage() {
                     <input
                       type="radio"
                       checked={ownerMode === "self"}
-                      onChange={() => setOwnerMode("self")}
+                      onChange={() =>  {
+                        setOwnerMode("self");
+                        setSelectedCustomerId("");
+                        setOtherOwnerMode(isProfessional ? "existing" : "manual");
+                      }}
                     />
                     <span>Me stesso</span>
                   </label>
@@ -1153,7 +1196,10 @@ export default function WorkoutPage() {
                     <input
                       type="radio"
                       checked={ownerMode === "other"}
-                      onChange={() => setOwnerMode("other")}
+                      onChange={() => { 
+                        setOwnerMode("other");
+                        setSelectedCustomerId("");
+                    }}
                     />
                     <span>Un’altra persona</span>
                   </label>
