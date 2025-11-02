@@ -260,20 +260,12 @@ router.post("/login", async (req, res) => {
     if (!ok) return res.status(401).json({ error: "Credenziali errate" });
 
     let customer: any = null;
-    let freelancer: any = null;
-
     if (user.type === "utente") {
       const [cRows] = await db.query(
         `SELECT id, weight, height FROM customers WHERE user_id = ? LIMIT 1`,
         [user.id]
       );
       customer = (cRows as any[])[0] || null;
-    } else if (user.type === "professionista") {
-      const [fRows] = await db.query(
-        `SELECT id FROM freelancers WHERE user_id = ? LIMIT 1`,
-        [user.id]
-      );
-      freelancer = (fRows as any[])[0] || null;
     }
 
     const token = jwt.sign(
@@ -296,7 +288,6 @@ router.post("/login", async (req, res) => {
         customer: customer
           ? { id: customer.id, weight: customer.weight, height: customer.height }
           : null,
-        freelancer: freelancer ? { id: freelancer.id } : null,
       },
     });
   } catch (err) {

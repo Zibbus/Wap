@@ -1,26 +1,8 @@
 // src/routes/nutrition.db.ts
 import { Router } from "express";
 import db from "../db";
-import requireAuth, { type AuthUser } from "../middleware/requireAuth";
 
 const router = Router();
-
-/* ===========================
-   Helper: ricava freelancer_id
-   =========================== */
-async function resolveFreelancerIdForUser(user?: AuthUser): Promise<number | null> {
-  try {
-    if (!user || user.type !== "professionista") return null;
-    const [rows]: any = await db.query(
-      "SELECT id FROM freelancers WHERE user_id = ? LIMIT 1",
-      [user.id]
-    );
-    const row = rows?.[0];
-    return row ? Number(row.id) : null;
-  } catch {
-    return null;
-  }
-}
 
 /* =========================================================
    CREATE (compatibile con le chiamate esistenti del tuo FE)
@@ -29,22 +11,19 @@ async function resolveFreelancerIdForUser(user?: AuthUser): Promise<number | nul
 /** POST /api/nutrition/plans
  * Crea la "testa" del piano nutrizionale.
  * Body: { customer_id:number, expire:'YYYY-MM-DD', goal:'...', notes?:string|null }
- * - Se l’utente loggato è un professionista, salva automaticamente freelancer_id.
+ * Ritorna: il record creato in nutrition_plans
  */
-router.post("/plans", requireAuth, async (req, res) => {
+router.post("/plans", async (req, res) => {
   try {
     const { customer_id, expire, goal, notes } = req.body ?? {};
     if (!customer_id || !expire || !goal) {
       return res.status(400).json({ error: "customer_id, expire e goal sono obbligatori" });
     }
 
-    // freelancer_id determinato lato server (ignora qualsiasi body.freelancer_id)
-    const freelancer_id = await resolveFreelancerIdForUser(req.user);
-
     const [result]: any = await db.execute(
-      `INSERT INTO nutrition_plans (customer_id, freelancer_id, expire, goal, notes)
-       VALUES (?, ?, ?, ?, ?)`,
-      [customer_id, freelancer_id, expire, goal, notes ?? null]
+      `INSERT INTO nutrition_plans (customer_id, expire, goal, notes)
+       VALUES (?, ?, ?, ?)`,
+      [customer_id, expire, goal, notes ?? null]
     );
 
     const [rows]: any = await db.execute(`SELECT * FROM nutrition_plans WHERE id = ?`, [result.insertId]);
@@ -84,7 +63,7 @@ router.post("/days", async (req, res) => {
 /** POST /api/nutrition/meals
  * Crea un pasto (con posizione) nel giorno.
  * Body: { day_id:number, position:number, name:string, notes?:string|null }
- * Vincolo UNIQUE (day_id, position) consigliato lato DB.
+ * Vincolo UNIQUE (day_id, position) consigliato lato DB (vedi nota in fondo).
  */
 router.post("/meals", async (req, res) => {
   try {
@@ -112,7 +91,14 @@ router.post("/meals", async (req, res) => {
 
 /** POST /api/nutrition/items/bulk
  * Inserisce in blocco le righe alimento dei pasti in TRANSAZIONE.
- * Body: { items: Array<{ meal_id, position, food_id?, description?, qty?, unit, kcal?, protein_g?, carbs_g?, fat_g? }> }
+ * Body: {
+ *   items: Array<{
+ *     meal_id:number, position:number,
+ *     food_id?:number|null, description?:string|null,
+ *     qty?:number|null, unit:'g'|'ml'|'pcs'|'cup'|'tbsp'|'tsp'|'slice',
+ *     kcal?:number|null, protein_g?:number|null, carbs_g?:number|null, fat_g?:number|null
+ *   }>
+ * }
  * Ritorna: { inserted:number }
  */
 router.post("/items/bulk", async (req, res) => {
@@ -160,6 +146,14 @@ router.post("/items/bulk", async (req, res) => {
    TARGETS GIORNALIERI (opzionale, comodo)
    ========================================== */
 
+/** POST /api/nutrition/day-targets
+ * Crea/Aggiorna (UPSERT) i target macro/acqua di un giorno.
+ * Body: {
+ *   day_id:number,
+ *   kcal_target?, protein_g_target?, carbs_g_target?, fat_g_target?, fiber_g_target?, water_ml_target?
+ * }
+ * Ritorna: il record dei target per quel day_id
+ */
 router.post("/day-targets", async (req, res) => {
   try {
     const {
@@ -212,6 +206,9 @@ router.post("/day-targets", async (req, res) => {
    READ (rivedere la scheda per intero)
    ========================================== */
 
+/** GET /api/nutrition/plans?customer_id=123
+ * Lista piani di un cliente, ordinati dal più recente.
+ */
 router.get("/plans", async (req, res) => {
   try {
     const customer_id = Number(req.query.customer_id);
@@ -230,24 +227,31 @@ router.get("/plans", async (req, res) => {
   }
 });
 
+/** GET /api/nutrition/plans/:id/full
+ * Ritorna il piano COMPLETO e NIDIFICATO:
+ *  - plan (testa)
+ *  - days (con targets)
+ *  - meals (per ogni day)
+ *  - items (per ogni meal)
+ */
 router.get("/plans/:id/full", async (req, res) => {
   try {
     const planId = Number(req.params.id);
     if (!planId) return res.status(400).json({ error: "id non valido" });
 
-    // testa
+    // 1) testa piano
     const [plans]: any = await db.execute(`SELECT * FROM nutrition_plans WHERE id = ?`, [planId]);
     if (!plans.length) return res.status(404).json({ error: "Piano non trovato" });
     const plan = plans[0];
 
-    // days
+    // 2) giorni
     const [days]: any = await db.execute(
       `SELECT * FROM nutrition_days WHERE plan_id = ? ORDER BY day ASC`,
       [planId]
     );
     const dayIds = days.map((d: any) => d.id);
 
-    // targets
+    // 3) targets per giorno
     let targets: any[] = [];
     if (dayIds.length) {
       const placeholders = dayIds.map(() => "?").join(",");
@@ -260,7 +264,7 @@ router.get("/plans/:id/full", async (req, res) => {
     const targetByDay: Record<number, any> = {};
     for (const t of targets) targetByDay[t.day_id] = t;
 
-    // meals
+    // 4) meals per tutti i giorni in un colpo
     let meals: any[] = [];
     if (dayIds.length) {
       const placeholders = dayIds.map(() => "?").join(",");
@@ -273,7 +277,7 @@ router.get("/plans/:id/full", async (req, res) => {
       meals = m;
     }
 
-    // items
+    // 5) items per tutti i meals
     const mealIds = meals.map((m) => m.id);
     let items: any[] = [];
     if (mealIds.length) {
@@ -287,6 +291,7 @@ router.get("/plans/:id/full", async (req, res) => {
       items = it;
     }
 
+    // 6) ricostruzione nidificata
     const itemsByMeal: Record<number, any[]> = {};
     for (const it of items) {
       (itemsByMeal[it.meal_id] ??= []).push(it);
@@ -315,14 +320,25 @@ router.get("/plans/:id/full", async (req, res) => {
    ========================================================= */
 
 /** POST /api/nutrition/plans/full
+ * Salva tutto (plan + days + targets + meals + items) in una sola call
+ * e in una TRANSAZIONE: o tutto o niente.
  * Body:
  * {
  *   plan: { customer_id, expire:'YYYY-MM-DD', goal, notes? },
- *   days: [...]
+ *   days: [{
+ *     day: 1..7,
+ *     targets?: { kcal_target?, protein_g_target?, carbs_g_target?, fat_g_target?, fiber_g_target?, water_ml_target? },
+ *     meals: [{
+ *       position, name, notes?,
+ *       items: [{
+ *         position, food_id?, description?, qty?, unit, kcal?, protein_g?, carbs_g?, fat_g?, fiber_g?
+ *       }]
+ *     }]
+ *   }]
  * }
- * Imposta automaticamente freelancer_id se l’utente è un professionista.
+ * Ritorna: { plan_id:number }
  */
-router.post("/plans/full", requireAuth, async (req, res) => {
+router.post("/plans/full", async (req, res) => {
   const conn = await db.getConnection();
   try {
     const { plan, days } = req.body ?? {};
@@ -333,26 +349,27 @@ router.post("/plans/full", requireAuth, async (req, res) => {
 
     await conn.beginTransaction();
 
-    const freelancer_id = await resolveFreelancerIdForUser(req.user);
-
-    // plan (con freelancer_id lato server)
+    // 1) plan
     const [planRes]: any = await conn.execute(
-      `INSERT INTO nutrition_plans (customer_id, freelancer_id, expire, goal, notes)
-       VALUES (?, ?, ?, ?, ?)`,
-      [plan.customer_id, freelancer_id, plan.expire, plan.goal, plan.notes ?? null]
+      `INSERT INTO nutrition_plans (customer_id, expire, goal, notes)
+       VALUES (?, ?, ?, ?)`,
+      [plan.customer_id, plan.expire, plan.goal, plan.notes ?? null]
     );
     const planId = planRes.insertId;
 
+    // Accumulo items per bulk
     const itemsValues: any[] = [];
 
-    // days (+ targets) + meals + items
+    // 2) days (+ targets) + meals + items
     for (const d of days) {
+      // day
       const [dayRes]: any = await conn.execute(
         `INSERT INTO nutrition_days (plan_id, day) VALUES (?, ?)`,
         [planId, d.day]
       );
       const dayId = dayRes.insertId;
 
+      // targets (opzionale)
       if (d.targets) {
         const t = d.targets;
         await conn.execute(
@@ -378,6 +395,7 @@ router.post("/plans/full", requireAuth, async (req, res) => {
         );
       }
 
+      // meals
       for (const m of d.meals ?? []) {
         const [mealRes]: any = await conn.execute(
           `INSERT INTO nutrition_meals (day_id, position, name, notes)
@@ -386,6 +404,7 @@ router.post("/plans/full", requireAuth, async (req, res) => {
         );
         const mealId = mealRes.insertId;
 
+        // items → accumula per bulk
         for (const it of m.items ?? []) {
           itemsValues.push([
             mealId,
@@ -403,6 +422,7 @@ router.post("/plans/full", requireAuth, async (req, res) => {
       }
     }
 
+    // 3) bulk items (se presenti)
     if (itemsValues.length) {
       const placeholders = itemsValues.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(",");
       await conn.execute(

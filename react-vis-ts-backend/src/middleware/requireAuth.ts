@@ -1,4 +1,3 @@
-// src/middleware/requireAuth.ts
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
@@ -8,35 +7,28 @@ export type AuthUser = {
   type: "utente" | "professionista" | "admin";
 };
 
-/**
- * 👉 Augmentation di Express.Request: dice a TS che esiste req.user
- * Questo file viene compilato, quindi l'augmentation è visibile globalmente.
- */
-declare global {
-  namespace Express {
-    interface Request {
-      user?: AuthUser;
-    }
-  }
-}
-
 export default function requireAuth(
-  req: Request,
+  req: Request & { user?: AuthUser },
   res: Response,
   next: NextFunction
 ) {
   try {
     const authHeader = req.headers.authorization || "";
-    const m = authHeader.match(/^Bearer\s+(.+)$/i);
-    const token = m ? m[1] : "";
+    // supporta "Bearer", "bearer", ecc.
+    const match = authHeader.match(/^Bearer\s+(.+)$/i);
+    const token = match ? match[1] : "";
 
     if (!token) {
       return res.status(401).json({ error: "Token mancante" });
     }
 
+    // ⚠️ usa lo stesso secret del login
     const SECRET = process.env.JWT_SECRET || "super-secret-key";
+
     const payload = jwt.verify(token, SECRET) as any;
 
+    // Il login firma con { id, username, type } (nessun 'sub');
+    // ma supportiamo anche 'sub' se in futuro lo usassi.
     const id = Number(payload?.id ?? payload?.sub);
     const username = String(payload?.username ?? "");
     const type = (payload?.type as AuthUser["type"]) ?? "utente";
@@ -45,9 +37,9 @@ export default function requireAuth(
       return res.status(401).json({ error: "Token non valido" });
     }
 
-    req.user = { id, username, type }; // ✅ ora TS sa che esiste
-    next();
-  } catch {
+    req.user = { id, username, type };
+    return next();
+  } catch (err) {
     return res.status(401).json({ error: "Token non valido" });
   }
 }
