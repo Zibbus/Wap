@@ -332,60 +332,10 @@ function ExerciseSelect({
    Pagina
    ========================= */
 export default function WorkoutPage() {
-  // === Auth snapshot locale + hydration da /api/me ===
+  // === Snapshot iniziale + state ===
   const snap = readAuthSnapshot();
-  const [token] = useState<string | null>(snap.token);
+  const token = snap.token;
   const [user, setUser] = useState<AuthUser>(snap.user);
-
-  // Se i dati sono incompleti (tipo mancano peso/altezza o manca il type), prova ad arricchirli da /api/me
-  useEffect(() => {
-  let cancelled = false;
-  (async () => {
-    try {
-      if (!token) return;
-
-      const needHydrate =
-        !user?.customer ||
-        (user.customer && (user.customer.weight == null || user.customer.height == null)) ||
-        !user?.type ||
-        // 👉 se manca qualunque traccia del profilo professionista, id o display_name
-        !getIsProfessional(user);
-
-      if (!needHydrate) return;
-
-      const res = await fetch("http://localhost:4000/api/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-
-      // normalizza profilo professionista da /api/me in qualunque forma arrivi
-      const profNorm = normalizeProfessionalFromMePayload(data);
-
-      const enriched: Partial<AuthUser> = {
-        first_name: data?.user?.first_name ?? user.first_name,
-        last_name:  data?.user?.last_name  ?? user.last_name,
-        sex:        data?.user?.sex        ?? user.sex,
-        dob:        data?.user?.dob        ?? user.dob,
-        type:       (data?.user?.type ?? user.type) as any,
-        customer:   data?.customer ?? data?.user?.customer ?? user.customer ?? null,
-
-        // ✅ riempiamo in modo robusto
-        professional: profNorm.professional ?? user.professional ?? null,
-        freelancer:   profNorm.freelancer   ?? user.freelancer   ?? null,
-        prof:         user.prof ?? null, // lasciato per retro compatibilità, non forziamo da payload
-        freelancer_id: profNorm.freelancer_id ?? user.freelancer_id ?? null,
-      };
-
-      if (!cancelled) setUser((prev) => ({ ...prev, ...enriched }));
-    } catch {
-      // silenzioso
-    }
-  })();
-  return () => { cancelled = true; };
-  // includo user.* usati dal needHydrate, così se cambiano si ritenta
-}, [token, user?.customer, user?.type, user?.professional, user?.freelancer, user?.freelancer_id]);
-
 
   const isProfessional = getIsProfessional(user);
 
@@ -405,7 +355,6 @@ export default function WorkoutPage() {
   const exportRef = useRef<HTMLElement | null>(null);
 
   // --- ADD: intestatario + consenso ---
-  const { user, token } = readAuthSnapshot();
   const [consentAccepted, setConsentAccepted] = useState(false);
 
   const [ownerMode, setOwnerMode] = useState<OwnerMode>("self");
@@ -420,6 +369,21 @@ export default function WorkoutPage() {
     height: user?.customer?.height ?? null,
   });
 
+  // === Stati aggiunti per gestione clienti esterni ===
+  const [otherOwnerMode, setOtherOwnerMode] = useState<"manual" | "existing">(
+    isProfessional ? "existing" : "manual"
+  );
+  const [customers, setCustomers] = useState<Array<{
+    customer_id: number;
+    first_name?: string | null;
+    last_name?: string | null;
+    sex?: "M" | "F" | "O" | null;
+    dob?: string | null;
+    weight?: number | null;
+    height?: number | null;
+  }>>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
+
   const [otherPerson, setOtherPerson] = useState({
     first_name: "",
     last_name: "",
@@ -429,6 +393,56 @@ export default function WorkoutPage() {
     height: "" as number | "",
   });
 
+  // Se i dati sono incompleti, prova ad arricchirli da /api/me
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!token) return;
+
+        const needHydrate =
+          !user?.customer ||
+          (user.customer && (user.customer.weight == null || user.customer.height == null)) ||
+          !user?.type ||
+          // 👉 se manca qualunque traccia del profilo professionista, id o display_name
+          !getIsProfessional(user);
+
+        if (!needHydrate) return;
+
+        const res = await fetch("http://localhost:4000/api/me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // normalizza profilo professionista da /api/me in qualunque forma arrivi
+        const profNorm = normalizeProfessionalFromMePayload(data);
+
+        const enriched: Partial<AuthUser> = {
+          first_name: data?.user?.first_name ?? user.first_name,
+          last_name:  data?.user?.last_name  ?? user.last_name,
+          sex:        data?.user?.sex        ?? user.sex,
+          dob:        data?.user?.dob        ?? user.dob,
+          type:       (data?.user?.type ?? user.type) as any,
+          customer:   data?.customer ?? data?.user?.customer ?? user.customer ?? null,
+
+          // ✅ riempiamo in modo robusto
+          professional: profNorm.professional ?? user.professional ?? null,
+          freelancer:   profNorm.freelancer   ?? user.freelancer   ?? null,
+          prof:         user.prof ?? null, // lasciato per retro compatibilità, non forziamo da payload
+          freelancer_id: profNorm.freelancer_id ?? user.freelancer_id ?? null,
+        };
+
+        if (!cancelled) setUser((prev) => ({ ...prev, ...enriched }));
+      } catch {
+        // silenzioso
+      }
+    })();
+    return () => { cancelled = true; };
+    // includo user.* usati dal needHydrate, così se cambiano si ritenta
+  }, [token, user?.customer, user?.type, user?.professional, user?.freelancer, user?.freelancer_id]);
+
+  // Carica profilo self (dettagli mostrati)
   useEffect(() => {
     if (ownerMode !== "self" || !token) return;
 
@@ -459,19 +473,19 @@ export default function WorkoutPage() {
 
   // autocompila i dettagli quando selezioni un cliente
   useEffect(() => {
-  if (ownerMode !== "other" || otherOwnerMode !== "existing" || !selectedCustomerId) return;
-  const c = customers.find((x) => x.customer_id === selectedCustomerId);
-  if (!c) return;
-  const age = ageFromDOB(c.dob ?? undefined);
-  setOtherPerson({
-    first_name: c.first_name || "",
-    last_name:  c.last_name  || "",
-    sex: (c.sex ?? "O") as any,
-    age: (typeof age === "number" ? age : "") as any,
-    weight: (c.weight ?? "") as any,
-    height: (c.height ?? "") as any,
-  });
-}, [ownerMode, otherOwnerMode, selectedCustomerId, customers]);
+    if (ownerMode !== "other" || otherOwnerMode !== "existing" || !selectedCustomerId) return;
+    const c = customers.find((x) => x.customer_id === Number(selectedCustomerId));
+    if (!c) return;
+    const age = ageFromDOB(c.dob ?? undefined);
+    setOtherPerson({
+      first_name: c.first_name || "",
+      last_name:  c.last_name  || "",
+      sex: (c.sex ?? "O") as any,
+      age: (typeof age === "number" ? age : "") as any,
+      weight: (c.weight ?? "") as any,
+      height: (c.height ?? "") as any,
+    });
+  }, [ownerMode, otherOwnerMode, selectedCustomerId, customers]);
 
   // Inizializza i giorni quando l’utente sceglie il numero
   useEffect(() => {
@@ -647,7 +661,7 @@ export default function WorkoutPage() {
             exerciseId: opt.id,
             nome: opt.name,
           };
-          if (!opt.weightRequired) nextEx.peso = "";
+            if (!opt.weightRequired) nextEx.peso = "";
           return nextEx;
         });
         return { ...g, esercizi: next };
@@ -708,7 +722,7 @@ export default function WorkoutPage() {
   const isExerciseComplete = (dayNum: number, ex: Esercizio): boolean => {
     if (!ex.exerciseId) return false;
     const hasSerie = ex.serie !== "";
-    const hasRip = ex.ripetizioni !== "";
+       const hasRip = ex.ripetizioni !== "";
     const hasRec = ex.recupero !== "";
     const list = availableByDay[dayNum] ?? [];
     const opt = list.find((o) => o.id === ex.exerciseId);
@@ -784,17 +798,12 @@ export default function WorkoutPage() {
         }
       }
 
-      const tokenLS = token;
-      const payload: any = {
-        customer_id,
-        expire: expireDate,
-        goal,
-      };
+      // scegli il token da usare
+      const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+      const tokenLS: string | null = token || auth?.token || null;
 
       // 1) Crea la schedule
       const schedulePayload = { expire: expireDate, goal };
-      const auth = JSON.parse(localStorage.getItem("authData") || "{}");
-      const tokenLS = auth?.token;
 
       const res = await fetch("http://localhost:4000/api/schedules", {
         method: "POST",
@@ -1229,7 +1238,7 @@ export default function WorkoutPage() {
                       onChange={() => { 
                         setOwnerMode("other");
                         setSelectedCustomerId("");
-                    }}
+                      }}
                     />
                     <span>Un’altra persona</span>
                   </label>
@@ -1395,7 +1404,7 @@ export default function WorkoutPage() {
             <div className="mb-2">
               <div className="flex items-start justify-between">
                 <div className="leading-tight">
-                  <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100 m-0">
+                  <h3 className="text/base font-semibold text-gray-800 dark:text-gray-100 m-0">
                     Scheda Allenamento{intestatarioLabel ? ` di: ${intestatarioLabel}` : ""}
                   </h3>
                   {getProfessionalName() && (
