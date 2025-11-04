@@ -81,6 +81,7 @@ La home mostra logo, login/logout e schede introduttive. Dopo il login puoi coll
 - react-router-dom (per routing futuro)
 - framer-motion
 - html2canvas
+- react-select
 
 ---
 
