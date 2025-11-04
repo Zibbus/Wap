@@ -1,6 +1,6 @@
 # MyFit
 
-Applicazione full-stack con **React + Vite + Tailwind (frontend)** e **Node.js + TypeScript + MySQL (backend)**.  
+Web app full-stack con **React + Vite + Tailwind (frontend)** e **Node.js + TypeScript + MySQL (backend)**.  
 Supporta chat realtime via WebSocket, autenticazione con username/JWT e gestione conversazioni persistite su MySQL.
 
 ---

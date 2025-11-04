@@ -31,7 +31,7 @@ export type MeResponse = {
 };
 
 export async function getMyProfile(): Promise<MeResponse> {
-  return api.get<MeResponse>("/api/profile");
+  return api.get<MeResponse>("/profile");
 }
 
 // Aggiorna profilo utente + (se pro) profilo professionista
@@ -49,7 +49,7 @@ export async function updateMyProfile(body: {
   languages?: string;           // CSV o JSON string
   bio?: string;
 }) {
-  return api.put<{ ok: true }>("/api/profile", body);
+  return api.put<{ ok: true }>("/profile", body);
 }
 
 /**
@@ -71,7 +71,7 @@ export async function uploadAvatar(file: File): Promise<{ ok: true; avatarUrl: s
     /* ignore */
   }
 
-  const res = await fetch(`/api/profile/avatar`, {
+  const res = await fetch(`/profile/avatar`, {
     method: "PATCH",               // <-- usa PATCH come prima; se il route è POST, cambia in "POST"
     body: form,                    // <-- niente JSON.stringify
     credentials: "include",

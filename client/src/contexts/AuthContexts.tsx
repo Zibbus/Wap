@@ -27,7 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         // Se il tuo backend espone /api/auth/me:
-        const me = await api.get<User>("/api/auth/me");
+        const me = await api.get<User>("/auth/me");
         setUser(me);
       } catch {
         // se non c'è /me, non è un problema

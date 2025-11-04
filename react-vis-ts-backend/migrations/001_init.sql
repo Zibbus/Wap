@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS schedule_exercise (
   id INT AUTO_INCREMENT PRIMARY KEY,
   day_id INT NOT NULL,
   exercise_id INT NOT NULL,
-  position INT DEFAULT 1,           -- ordine nel giorno
+  position INT DEFAULT 1,
   sets TINYINT,
   reps TINYINT,
   rest_seconds SMALLINT,
@@ -106,7 +106,7 @@ CREATE TABLE IF NOT EXISTS foods (
 CREATE TABLE IF NOT EXISTS nutrition_plans (
   id INT AUTO_INCREMENT PRIMARY KEY,
   customer_id INT NOT NULL,
-  freelancer_id INT NULL, -- chi l'ha creato (se presente)
+  freelancer_id INT NULL,
   expire DATE NOT NULL,
   goal ENUM('aumento_peso','perdita_peso','mantenimento','definizione','massa','altro') NOT NULL DEFAULT 'mantenimento',
   notes TEXT NULL,
