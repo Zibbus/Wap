@@ -7,6 +7,7 @@ import authRoutes from "./routes/auth";
 import chatRoutes from "./routes/chat";
 import exercisesRoutes from "./routes/exercises";
 import schedulesRoutes from "./routes/schedules";
+import nutritionPlansRouter from "./routes/nutritionPlans.js";
 
 import meRoutes from "./routes/me";
 import foodsRoutes from "./routes/foods";
@@ -30,6 +31,7 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/exercises", exercisesRoutes);
 app.use("/api/schedules", schedulesRoutes);
+app.use("/api/nutrition/plans", nutritionPlansRouter);
 
 app.use("/api/me", meRoutes);
 app.use("/api/foods", foodsRoutes);

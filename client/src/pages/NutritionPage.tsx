@@ -496,7 +496,7 @@ export default function NutritionPage() {
             <button
               type="button"
               className="underline underline-offset-2 text-emerald-700 hover:no-underline"
-              onClick={() => navigate("/nutrition/plans")}
+              onClick={() => navigate("/schedules")}
             >
               Clicca qui per visualizzare l&apos;elenco dei tuoi piani nutrizionali
             </button>
@@ -506,7 +506,7 @@ export default function NutritionPage() {
             <button
               type="button"
               className="px-5 py-2.5 rounded-xl border border-emerald-600 text-emerald-700 hover:bg-emerald-50"
-              onClick={() => navigate("/nutrition/plans")}
+              onClick={() => navigate("/schedules")}
             >
               Vai ai miei piani
             </button>
@@ -844,7 +844,7 @@ export default function NutritionPage() {
             getTarget={() => exportRef.current}
             filename="piano-nutrizionale.png"
             scale={2}
-            label="Esporta PNG (compatibile)"
+            label="Esporta PNG"
           />
 
           <button

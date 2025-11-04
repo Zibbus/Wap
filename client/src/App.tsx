@@ -16,9 +16,9 @@ import Professionisti from "./pages/Professionisti";
 import ProfessionistaDettaglio from "./pages/ProfessionistaDettaglio";
 import ChatPage from "./pages/ChatPage";
 
-// 🔹 nuove import
 import PlanChooser from "./pages/PlanChooser";
 import NutritionPage from "./pages/NutritionPage";
+import NutritionPlanDetailPage from "./pages/NutritionPlanDetailPage.tsx";
 
 // (opzionale) protezione rotta
 import { useAuth } from "./hooks/useAuth";
@@ -53,6 +53,7 @@ export default function App() {
 
           <Route path="/schedules" element={<ScheduleListPage />} />
           <Route path="/schedules/:id" element={<ScheduleDetailPage />} />
+          <Route path="/nutrition/plans/:id" element={<NutritionPlanDetailPage />} />
 
           <Route path="/professionisti" element={<Professionisti />} />
           <Route path="/professionisti/:id" element={<ProfessionistaDettaglio />} />

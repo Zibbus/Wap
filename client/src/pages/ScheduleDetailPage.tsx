@@ -18,8 +18,8 @@ type Day = {
 
 type ScheduleDetail = {
   id: number;
-  goal: string;
-  expire: string;
+  goal: "peso_costante" | "aumento_peso" | "perdita_peso" | "altro";
+  expire: string | null;
   creator: string;
   days: Day[];
 };
@@ -27,14 +27,43 @@ type ScheduleDetail = {
 export default function ScheduleDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [schedule, setSchedule] = useState<ScheduleDetail | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetch(`http://localhost:4000/api/schedules/${id}`)
-      .then((res) => res.json())
-      .then(setSchedule)
-      .catch((err) => console.error("Errore caricamento dettagli:", err));
+    (async () => {
+      try {
+        const auth = JSON.parse(localStorage.getItem("authData") || "{}");
+        const res = await fetch(`/api/schedules/${id}`, {
+          headers: {
+            "Content-Type": "application/json",
+            ...(auth?.token ? { Authorization: `Bearer ${auth.token}` } : {}),
+          },
+        });
+        if (!res.ok) {
+          const t = await res.text();
+          throw new Error(t || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        setSchedule(data);
+      } catch (e: any) {
+        setError(e?.message || "Errore caricamento dettagli");
+      }
+    })();
   }, [id]);
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-white px-8 py-10">
+        <div className="max-w-5xl mx-auto">
+          <button onClick={() => navigate(-1)} className="mb-6 text-indigo-600 hover:underline">
+            ← Torna indietro
+          </button>
+          <div className="text-red-600">{error}</div>
+        </div>
+      </div>
+    );
+  }
 
   if (!schedule)
     return <p className="text-center mt-20 text-gray-600">Caricamento...</p>;
@@ -53,9 +82,8 @@ export default function ScheduleDetailPage() {
           Scheda #{schedule.id} – {schedule.goal.replace("_", " ")}
         </h1>
         <p className="text-gray-600 mb-6">
-          Scadenza:{" "}
-          <strong>{new Date(schedule.expire).toLocaleDateString()}</strong> ·
-          Creatore: <strong>{schedule.creator}</strong>
+          Scadenza: <strong>{schedule.expire ? new Date(schedule.expire).toLocaleDateString() : "—"}</strong> ·
+          {" "}Creatore: <strong>{schedule.creator || "—"}</strong>
         </p>
 
         <div className="grid md:grid-cols-2 gap-6">
@@ -73,7 +101,7 @@ export default function ScheduleDetailPage() {
                     <span className="font-medium">{ex.name}</span> · Serie:{" "}
                     {ex.sets ?? "-"} · Rip: {ex.reps ?? "-"} · Rec:{" "}
                     {ex.rest_seconds ?? "-"}s{" "}
-                    {ex.weight_value && <>· Peso: {ex.weight_value}kg</>}
+                    {ex.weight_value != null && <>· Peso: {ex.weight_value}kg</>}
                     {ex.notes && (
                       <p className="text-xs text-gray-600 italic mt-1">
                         💬 {ex.notes}

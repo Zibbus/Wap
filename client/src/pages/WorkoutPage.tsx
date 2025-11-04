@@ -1,7 +1,7 @@
-// src/pages/WorkoutPage.tsx
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, PlusCircle, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import logoUrl from "../assets/IconaMyFitnobackground.png";
 
@@ -130,6 +130,25 @@ function ageFromDOB(dob?: string | null): number | undefined {
   return age;
 }
 
+function getProfessionalDisplay(): string | undefined {
+  try {
+    const raw = JSON.parse(localStorage.getItem("authData") || "{}");
+    const u = raw?.user || {};
+    if (u?.type !== "professionista") return undefined;
+
+    const first = (u.first_name || u.firstName || "").trim();
+    const last  = (u.last_name  || u.lastName  || "").trim();
+    const nick  = (u.username || "").trim();
+
+    const full = [first, last].filter(Boolean).join(" ").trim();
+
+    if (full && nick) return `${full} (${nick})`;
+    if (full) return full;
+    if (nick) return nick;
+  } catch {}
+  return undefined;
+}
+
 function pickFirst<T = any>(...vals: any[]): T | null {
   for (const v of vals) if (v != null) return v as T;
   return null;
@@ -172,25 +191,25 @@ function normalizeProfessionalFromMePayload(me: any) {
   };
 }
 
-/** NEW: costruisce “Nome Cognome (nickname)” dallo state, solo se l’utente è professionista */
-function getProfessionalDisplayFromState(u: AuthUser | null | undefined): string | undefined {
-  if (!u) return undefined;
-  if (!getIsProfessional(u)) return undefined;
-
-  const first = (u.first_name || "").trim();
-  const last  = (u.last_name  || "").trim();
-  const nick  = (u.username   || "").trim();
-  let full    = [first, last].filter(Boolean).join(" ").trim();
-
-  if (!full) {
-    const prof = (u.professional || u.prof || u.freelancer) as any || {};
-    const dn   = (prof?.display_name || prof?.name || "").trim();
-    if (dn) full = dn;
+/** Ritorna il customer_id risolto in base allo stato corrente */
+function getResolvedCustomerId(
+  user: AuthUser | null | undefined,
+  ownerMode: OwnerMode,
+  isProfessional: boolean,
+  otherOwnerMode: "existing" | "manual",
+  selectedCustomerId: string
+): number | null {
+  if (ownerMode === "self") {
+    const cid = Number(user?.customer?.id ?? NaN);
+    return Number.isFinite(cid) ? cid : null;
   }
-
-  if (full && nick && !full.includes(nick)) return `${full} (${nick})`;
-  if (full) return full;
-  return nick || undefined;
+  // ownerMode === "other"
+  if (isProfessional && otherOwnerMode === "existing") {
+    const cid = Number(selectedCustomerId);
+    return Number.isFinite(cid) ? cid : null;
+  }
+  // inserimento manuale o non pro: non abbiamo un customer DB
+  return null;
 }
 
 /* =========================
@@ -368,6 +387,8 @@ function ExerciseSelect({
    Pagina
    ========================= */
 export default function WorkoutPage() {
+  const navigate = useNavigate();
+  
   // === Snapshot iniziale + state ===
   const snap = readAuthSnapshot();
   const token = snap.token;
@@ -401,6 +422,9 @@ export default function WorkoutPage() {
     weight: (user as any)?.latest_weight ?? user?.customer?.weight ?? null,
     height: (user as any)?.height ?? user?.customer?.height ?? null,
   });
+
+  // ✅ Stato per banner “salvato”
+  const [saveSuccess, setSaveSuccess] = useState<{ id: number } | null>(null);
 
   // === Stati per gestione clienti esterni ===
   const [otherOwnerMode, setOtherOwnerMode] = useState<"existing" | "manual">(
@@ -743,7 +767,7 @@ export default function WorkoutPage() {
           if (ex.note === undefined) {
             return { ...ex, note: "" };
           } else {
-            const { note, ...rest } = (ex as any);
+            const { note, ...rest } = ex as any;
             return rest as Esercizio;
           }
         });
@@ -755,21 +779,6 @@ export default function WorkoutPage() {
   /* Anteprima / Download / Salvataggio */
   // Helpers numerici
   const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
-
-  const toIntOrNull = (val: string | undefined | null, max: number): number | null => {
-    if (val === undefined || val === null || val === "") return null;
-    const n = Math.floor(Number(val));
-    if (!Number.isFinite(n)) return null;
-    return clamp(n, 0, max);
-  };
-
-  const toWeightOrNull = (val: string | undefined | null): number | null => {
-    if (val === undefined || val === null || val === "") return null;
-    const n = Number(val);
-    if (!Number.isFinite(n)) return null;
-    const clamped = clamp(n, 0, 9999.99);
-    return Math.round(clamped * 100) / 100;
-  };
 
   // --- VALIDAZIONE: almeno un esercizio completo per ogni giorno confermato ---
   const isExerciseComplete = (dayNum: number, ex: Esercizio): boolean => {
@@ -829,42 +838,52 @@ export default function WorkoutPage() {
     }
 
     setShowPreview(true);
+    setSaveSuccess(null); // reset eventuale banner
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleSaveToDb = async () => {
+  const handleSaveToDb = async (customerIdOverride?: number | null) => {
     try {
       if (!expireDate || !goal || !giorniAllenamento.length) {
         alert("Compila tutti i campi della scheda prima di salvare.");
         return;
       }
 
-      // Determina customer_id secondo schema
-      let customer_id: number | null = null;
+      // 1) Normalizza goal per l'API
+      const goalMap: Record<string, string> = {
+        peso_costante: "peso_costante",
+        perdita_peso: "perdita_peso",
+        aumento_peso: "aumento_peso",
+        altro: "altro",
+      };
+      const goalForApi = goalMap[goal as string] ?? "peso_costante";
 
-      if (ownerMode === "self") {
-        customer_id = Number(user?.customer?.id ?? NaN);
-        if (!Number.isFinite(customer_id)) {
-          alert("Non trovo l'ID customer dell'utente corrente. Assicurati che il profilo abbia un record in 'customers'.");
-          return;
-        }
-      } else {
-        if (isProfessional && otherOwnerMode === "existing") {
-          if (!selectedCustomerId) { alert("Seleziona un cliente esistente."); return; }
-          customer_id = Number(selectedCustomerId);
-        } else {
-          alert("Per salvare nel DB serve un cliente esistente. Seleziona 'Cliente esistente' oppure crea il cliente prima.");
-          return;
-        }
+      // 2) Risolvi customer_id
+      const resolvedCustomerId =
+        typeof customerIdOverride === "number"
+          ? customerIdOverride
+          : getResolvedCustomerId(user, ownerMode, isProfessional, otherOwnerMode, selectedCustomerId);
+
+      if (!resolvedCustomerId) {
+        alert("Seleziona un cliente esistente (o assicurati che l’utente abbia un record in 'customers').");
+        return;
       }
 
-      // scegli il token da usare
+      // 3) Token
       const auth = JSON.parse(localStorage.getItem("authData") || "{}");
-      const tokenLS: string | null = token || auth?.token || null;
+      const tokenLS: string | null = snap.token || auth?.token || null;
 
-      // 1) Crea la schedule (NB: includo customer_id)
-      const schedulePayload = { customer_id, expire: expireDate, goal };
+      // 4) Prepara payload schedule
+      const schedulePayload: any = {
+        customer_id: resolvedCustomerId,
+        expire: expireDate,   // 'YYYY-MM-DD'
+        goal: goalForApi,     // enum del DB
+      };
+      // Se il backend supporta freelancer_id lato server (dalla sessione) non serve passarlo.
 
+      console.log("[POST] /api/schedules payload:", schedulePayload);
+
+      // 5) Crea la schedule
       const res = await fetch(`/api/schedules`, {
         method: "POST",
         headers: {
@@ -874,11 +893,21 @@ export default function WorkoutPage() {
         body: JSON.stringify(schedulePayload),
       });
 
-      if (!res.ok) throw new Error("Errore creazione schedule");
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        console.error("Errore /api/schedules:", res.status, text);
+        alert(`❌ Creazione scheda rifiutata (${res.status}).\n${text || "Controlla i campi inviati."}`);
+        throw new Error("Errore creazione schedule");
+      }
+
       const schedule = await res.json();
       const scheduleId: number = schedule.id;
+      if (!Number.isFinite(scheduleId)) {
+        alert("❌ Risposta inattesa dal server (manca l'ID scheda).");
+        return;
+      }
 
-      // 2) Crea i giorni e costruisci la mappa day -> day_id
+      // 6) Crea i giorni
       const dayMap: Record<number, number> = {};
       for (const g of giorniAllenamento) {
         const dayRes = await fetch(`/api/schedules/day`, {
@@ -889,36 +918,48 @@ export default function WorkoutPage() {
           },
           body: JSON.stringify({ schedule_id: scheduleId, day: g.giorno }),
         });
-        if (!dayRes.ok) throw new Error("Errore creazione giorno");
+        if (!dayRes.ok) {
+          const text = await dayRes.text().catch(() => "");
+          console.error("Errore /api/schedules/day:", dayRes.status, text);
+          alert(`❌ Creazione giorno ${g.giorno} rifiutata (${dayRes.status}).\n${text || "Controlla i campi."}`);
+          throw new Error("Errore creazione giorno");
+        }
         const day = await dayRes.json();
-        dayMap[g.giorno] = day.id as number;
+        dayMap[g.giorno] = Number(day.id);
       }
 
-      // 3) Prepara gli esercizi con i cap coerenti con il DB
+      // 7) Prepara esercizi
+      const toIntOrNull = (val: string | undefined | null, max: number): number | null => {
+        if (val == null || val === "") return null;
+        const n = Math.floor(Number(val));
+        if (!Number.isFinite(n)) return null;
+        return Math.min(max, Math.max(0, n));
+      };
+      const toWeightOrNull = (val: string | undefined | null): number | null => {
+        if (val == null || val === "") return null;
+        const n = Number(val);
+        if (!Number.isFinite(n)) return null;
+        const clamped = Math.min(9999.99, Math.max(0, n));
+        return Math.round(clamped * 100) / 100;
+      };
+
       const allExercises = giorniAllenamento.flatMap((g) =>
         g.esercizi
           .filter((ex) => ex.exerciseId)
-          .map((ex, idx) => {
-            const sets = toIntOrNull(ex.serie, 255);
-            const reps = toIntOrNull(ex.ripetizioni, 255);
-            const rest_seconds = toIntOrNull(ex.recupero, 65535);
-            const weight_value = toWeightOrNull(ex.peso);
-
-            return {
-              day_id: dayMap[g.giorno],
-              exercise_id: ex.exerciseId as number,
-              position: idx + 1,
-              sets,
-              reps,
-              rest_seconds,
-              weight_value,
-              notes: ex.note ?? null,
-            };
-          })
+          .map((ex, idx) => ({
+            day_id: dayMap[g.giorno],
+            exercise_id: ex.exerciseId as number,
+            position: idx + 1,
+            sets: toIntOrNull(ex.serie, 255),
+            reps: toIntOrNull(ex.ripetizioni, 255),
+            rest_seconds: toIntOrNull(ex.recupero, 65535),
+            weight_value: toWeightOrNull(ex.peso),
+            notes: ex.note ?? null,
+          }))
       );
 
-      // 4) Salva gli esercizi (se presenti)
       if (allExercises.length) {
+        console.log("[POST] /api/schedules/exercises items:", allExercises.length);
         const exRes = await fetch(`/api/schedules/exercises`, {
           method: "POST",
           headers: {
@@ -928,13 +969,20 @@ export default function WorkoutPage() {
           body: JSON.stringify({ scheduleId, items: allExercises }),
         });
 
-        if (!exRes.ok) throw new Error("Errore salvataggio esercizi");
+        if (!exRes.ok) {
+          const text = await exRes.text().catch(() => "");
+          console.error("Errore /api/schedules/exercises:", exRes.status, text);
+          alert(`❌ Salvataggio esercizi rifiutato (${exRes.status}).\n${text || "Controlla i valori di serie/rip/rec/kg."}`);
+          throw new Error("Errore salvataggio esercizi");
+        }
       }
 
-      alert("✅ Scheda salvata con successo!");
-    } catch (err: any) {
+      // ✅ Mostra banner di successo (come su Nutrition)
+      setSaveSuccess({ id: scheduleId });
+
+    } catch (err) {
       console.error(err);
-      alert("❌ Errore durante il salvataggio della scheda.");
+      // alert già gestiti sopra
     }
   };
 
@@ -970,8 +1018,14 @@ export default function WorkoutPage() {
           })()
         : `${otherPerson.first_name} ${otherPerson.last_name}`.trim() || "Intestatario esterno";
 
-  // NEW: calcolo una sola volta la dicitura professionista
-  const professionalDisplay = getProfessionalDisplayFromState(user);
+  // customer_id risolto per il bottone di salvataggio nell’anteprima
+  const resolvedCustomerIdForPreview = getResolvedCustomerId(
+    user,
+    ownerMode,
+    isProfessional,
+    otherOwnerMode,
+    selectedCustomerId
+  );
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-indigo-50 dark:bg-gray-950 px-8 py-12 text-gray-800 dark:text-gray-100">
@@ -1292,32 +1346,53 @@ export default function WorkoutPage() {
                     </div>
 
                     {otherOwnerMode === "existing" && (
-                      <div className="flex items-end gap-3 flex-wrap">
-                        <div className="grow min-w-[280px]">
-                          <label className="block text-sm text-indigo-700 dark:text-indigo-300 mb-1">Seleziona cliente</label>
-                          <select
-                            className="min-w-[260px] p-2 border rounded w-full dark:bg-gray-900 dark:border-gray-700"
-                            value={selectedCustomerId}
-                            onChange={(e) => setSelectedCustomerId(e.target.value)}
+                      <>
+                        <div className="flex items-end gap-3 flex-wrap">
+                          <div className="grow min-w-[280px]">
+                            <label className="block text-sm text-indigo-700 dark:text-indigo-300 mb-1">Seleziona cliente</label>
+                            <select
+                              className="min-w-[260px] p-2 border rounded w-full dark:bg-gray-900 dark:border-gray-700"
+                              value={selectedCustomerId}
+                              onChange={(e) => setSelectedCustomerId(e.target.value)}
+                            >
+                              <option value="" disabled>— Scegli un cliente —</option>
+                              {customers.map((c) => (
+                                <option key={c.customer_id} value={c.customer_id}>
+                                  {formatCustomerLabel(c)}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="px-3 py-2 rounded-lg border border-indigo-200 dark:border-gray-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-gray-800 text-sm"
+                            onClick={() => setSelectedCustomerId("")}
+                            title="Pulisci selezione"
                           >
-                            <option value="" disabled>— Scegli un cliente —</option>
-                            {customers.map((c) => (
-                              <option key={c.customer_id} value={c.customer_id}>
-                                {formatCustomerLabel(c)}
-                              </option>
-                            ))}
-                          </select>
+                            Pulisci
+                          </button>
                         </div>
 
-                        <button
-                          type="button"
-                          className="px-3 py-2 rounded-lg border border-indigo-200 dark:border-gray-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-gray-800 text-sm"
-                          onClick={() => setSelectedCustomerId("")}
-                          title="Pulisci selezione"
-                        >
-                          Pulisci
-                        </button>
-                      </div>
+                        {/* Dati riassuntivi cliente selezionato */}
+                        {selectedCustomerId && (() => {
+                          const c = customers.find(x => x.customer_id === Number(selectedCustomerId));
+                          if (!c) return null;
+                          const age = ageFromDOB(c.dob ?? null);
+                          return (
+                            <div className="mt-3 text-sm text-gray-700 dark:text-gray-200 bg-white/60 dark:bg-gray-900/40 border border-indigo-100 dark:border-gray-700 rounded-md p-3">
+                              <div className="font-semibold mb-1">Dettagli cliente</div>
+                              <div className="flex flex-wrap gap-6">
+                                <div>Nome: <strong>{c.first_name ?? "-"}</strong></div>
+                                <div>Cognome: <strong>{c.last_name ?? "-"}</strong></div>
+                                <div>Età: <strong>{typeof age === "number" ? age : "-"}</strong></div>
+                                <div>Altezza: <strong>{c.height ?? "-"} cm</strong></div>
+                                <div>Peso: <strong>{c.latest_weight ?? "-"} kg</strong></div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </>
                     )}
                   </div>
                 )}
@@ -1454,6 +1529,25 @@ export default function WorkoutPage() {
             Anteprima scheda allenamento
           </h2>
 
+          {/* ✅ Banner successo dopo salvataggio */}
+          {saveSuccess && (
+            <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-800 p-4 text-emerald-800 dark:text-emerald-200">
+              <div className="font-semibold">
+                Scheda salvata con successo (ID {saveSuccess.id}).
+              </div>
+              <div className="mt-2 flex gap-8 items-center flex-wrap">
+                <span className="text-sm">Puoi visualizzarla nella lista delle schede.</span>
+                <button
+                  type="button"
+                  onClick={() => navigate("/schedules")}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"
+                >
+                  Vai ai miei piani
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* VISTA OFF-SCREEN per export: non occupa spazio */}
           <div
             aria-hidden="true"
@@ -1461,19 +1555,20 @@ export default function WorkoutPage() {
               position: "fixed",
               left: 0,
               top: 0,
-              opacity: 0,
+              opacity: 0,            // invisibile ma layouttato correttamente
               pointerEvents: "none",
               zIndex: -1,
             }}
           >
             <ExportWorkoutPreview
               ref={exportRef}
+              /* NON passare offscreen qui */
               meta={{
                 expire: expireDate || "—",
                 goal: goalForExport,
                 logoPath: logoUrl,
                 ownerName: intestatarioLabel,
-                professionalName: professionalDisplay, // <-- PASSA QUI
+                professionalName: isProfessional ? getProfessionalDisplay() : undefined,
               }}
               days={exportDays}
             />
@@ -1488,9 +1583,14 @@ export default function WorkoutPage() {
                   <h3 className="text/base font-semibold text-gray-800 dark:text-gray-100 m-0">
                     Scheda Allenamento{intestatarioLabel ? ` di: ${intestatarioLabel}` : ""}
                   </h3>
-                  {professionalDisplay && (
+                  {isProfessional && getProfessionalDisplay() && (
                     <div className="text-sm text-gray-500 dark:text-gray-400 -mt-0.5">
-                      <em>curata da: {professionalDisplay}</em>
+                      <em>curata da: {getProfessionalDisplay()}</em>
+                    </div>
+                  )}
+                  {isProfessional && resolvedCustomerIdForPreview && (
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                      Salvataggio: <strong>professionista</strong> → cliente ID <strong>{resolvedCustomerIdForPreview}</strong>
                     </div>
                   )}
                 </div>
@@ -1512,7 +1612,7 @@ export default function WorkoutPage() {
                   goalForExport === "aumento_peso" ? "Aumento peso" : "—"
                 }</span>
               </div>
-            </div>
+            </div> 
 
             {/* scheda */}
             <div className="grid md:grid-cols-2 gap-4">
@@ -1561,8 +1661,15 @@ export default function WorkoutPage() {
               label="Scarica PNG"
             />
             <button
-              onClick={handleSaveToDb}
-              className="px-5 py-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
+              onClick={() => handleSaveToDb(resolvedCustomerIdForPreview)}
+              className="px-5 py-3 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!resolvedCustomerIdForPreview}
+              data-customer-id={resolvedCustomerIdForPreview ?? ""}
+              title={
+                resolvedCustomerIdForPreview
+                  ? "Salva scheda"
+                  : "Seleziona un cliente esistente (o assicurati che l’utente abbia un customer)"
+              }
             >
               Salva scheda
             </button>

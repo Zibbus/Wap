@@ -222,13 +222,13 @@ export default function Header() {
                       </div>
                       <div
                         onClick={() => {
-                          navigate("/allenamenti");
+                          navigate("/schedules");
                           closeDropdown();
                         }}
                         className={dropdownItemClass}
                         role="menuitem"
                       >
-                        I miei allenamenti
+                        Le mie schede
                       </div>
                       <div
                         onClick={() => {
