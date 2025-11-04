@@ -9,12 +9,13 @@ export type AuthData = {
   userId: number;
   username: string;
   role?: "utente" | "professionista" | "admin";
-  avatarUrl?: string;
+  avatarUrl?: string | null;
 };
 
 type AuthContextType = {
   authData: AuthData | null;
   isLoading: boolean;
+  updateAvatarUrl: (url: string) => void;
   /** Login con credenziali: preferito */
   login: (username: string, password?: string) => Promise<void>;
   /** Compatibilità: setta direttamente i dati (vecchio comportamento) */
@@ -58,8 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token,
         userId: user.id ?? user.userId ?? 0,
         username: user.username ?? username,
-        role: user.role,
-        avatarUrl: user.avatarUrl,
+        role: (user.type as AuthData["role"]) ?? (user.role as AuthData["role"]),
+        avatarUrl: user.avatarUrl ?? user.avatar_url ?? null,
       };
 
       setAuthToken(token);
@@ -95,8 +96,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (u) login(u).then(fn);
   };
 
+  // ✅ nuovo: aggiorna solo l'avatar (usato dopo upload in ProfilePage)
+  const updateAvatarUrl = (url: string) => {
+    setAuthData(prev => {
+      if (!prev) return prev;
+      const next: AuthData = { ...prev, avatarUrl: url || null };
+      localStorage.setItem("authData", JSON.stringify(next));
+      return next;
+    });
+  };
+
   return (
-    <AuthContext.Provider value={{ authData, isLoading, login, loginWithData, logout, requireLogin }}>
+    <AuthContext.Provider
+      value={{
+        authData,
+        isLoading,
+        updateAvatarUrl,
+        login,
+        loginWithData,
+        logout,
+        requireLogin,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

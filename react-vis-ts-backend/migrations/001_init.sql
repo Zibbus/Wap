@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS users (
   sex ENUM('M','F','O') NULL,
   type ENUM('utente','professionista') DEFAULT 'utente',
   email VARCHAR(150) NULL,
+  avatar_url VARCHAR(500) NULL,
   height FLOAT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

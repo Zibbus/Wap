@@ -248,25 +248,23 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
 /* --------------------------- LOGIN --------------------------- */
 /**
  * POST /api/auth/login
- * Body: { usernameOrEmail?, username?, email?, password }
- * Ritorna: { token, user: {...} }
+ * Body: { usernameOrEmail, password }
+ * Restituisce: token + user{...} (incluso avatarUrl)
  */
 router.post("/login", async (req, res) => {
-  // accetta usernameOrEmail oppure username/email (compat con il tuo frontend)
-  const rawUserKey = (req.body?.usernameOrEmail ?? req.body?.username ?? req.body?.email ?? "").trim();
-  const password = (req.body?.password ?? "").trim();
-
-  if (!rawUserKey || !password) {
+  const { usernameOrEmail, password } = req.body || {};
+  if (!isNonEmpty(usernameOrEmail) || !isNonEmpty(password)) {
     return res.status(400).json({ error: "Dati mancanti" });
   }
 
   try {
+    // 👇 Aggiungo avatar_url alla SELECT
     const [rows] = await db.query(
-      `SELECT id, username, email, password, first_name, last_name, sex, dob, type
+      `SELECT id, username, email, password, first_name, last_name, sex, dob, type, avatar_url
          FROM users
         WHERE username = ? OR email = ?
         LIMIT 1`,
-      [rawUserKey, rawUserKey]
+      [usernameOrEmail.trim(), usernameOrEmail.trim()]
     );
     const user = (rows as any[])[0];
     if (!user) return res.status(401).json({ error: "Credenziali errate" });
@@ -274,18 +272,21 @@ router.post("/login", async (req, res) => {
     const ok = await bcryptjs.compare(password, user.password);
     if (!ok) return res.status(401).json({ error: "Credenziali errate" });
 
-    // opzionali: info collegate, senza toccare colonne assenti
     let customer: any = null;
     let freelancer: any = null;
 
     if (user.type === "utente") {
-      const [cRows] = await db.query(`SELECT id FROM customers WHERE user_id = ? LIMIT 1`, [user.id]);
-      const c = (cRows as any[])[0] || null;
-      customer = c ? { id: c.id } : null;
+      const [cRows] = await db.query(
+        `SELECT id FROM customers WHERE user_id = ? LIMIT 1`,
+        [user.id]
+      );
+      customer = (cRows as any[])[0] || null;
     } else if (user.type === "professionista") {
-      const [fRows] = await db.query(`SELECT id FROM freelancers WHERE user_id = ? LIMIT 1`, [user.id]);
-      const f = (fRows as any[])[0] || null;
-      freelancer = f ? { id: f.id } : null;
+      const [fRows] = await db.query(
+        `SELECT id FROM freelancers WHERE user_id = ? LIMIT 1`,
+        [user.id]
+      );
+      freelancer = (fRows as any[])[0] || null;
     }
 
     const token = jwt.sign(
@@ -294,25 +295,26 @@ router.post("/login", async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    return res.json({
+    // 👇 Rimando avatarUrl così il frontend può mostrarlo subito (header “Ciao, …”)
+    res.json({
       token,
       user: {
         id: user.id,
         username: user.username,
         email: user.email,
-        firstName: user.first_name,   // ✅ FIX: niente user_last_name
-        lastName: user.last_name,     // ✅ FIX: questo è il campo corretto
+        firstName: user.first_name,
+        lastName: user.last_name,
         type: user.type,
         sex: user.sex,
         dob: user.dob,
-        customer,     // { id } o null
-        freelancer,   // { id } o null
+        avatarUrl: user.avatar_url ?? null,  // <= aggiunto
+        customer: customer ? { id: customer.id } : null,
+        freelancer: freelancer ? { id: freelancer.id } : null,
       },
     });
   } catch (err) {
     console.error("[login][err]", err);
-    return res.status(500).json({ error: "Errore server" });
+    res.status(500).json({ error: "Errore server" });
   }
 });
-
 export default router;

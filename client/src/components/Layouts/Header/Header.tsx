@@ -1,10 +1,20 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { ChevronDown, User, Shield } from "lucide-react";
+import { ChevronDown, Shield } from "lucide-react";
 import { useLoginModal } from "../../../hooks/useLoginModal";
 import { useAuth } from "../../../hooks/useAuth";
 import logo from "../../../assets/IconaMyFitNoBG.png";
 import ThemeToggle from "../Header/drop-down_menu/ThemeToggle";
+
+function getInitials(username?: string | null) {
+  if (!username) return "U";
+  const clean = username.trim();
+  if (!clean) return "U";
+  // Se contiene separatori (nome cognome), prendi le prime 2 iniziali
+  const parts = clean.split(/[\s._-]+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return clean.slice(0, 2).toUpperCase();
+}
 
 export default function Header() {
   const navigate = useNavigate();
@@ -18,6 +28,8 @@ export default function Header() {
   const isLoggedIn = !!authData;
   const username = authData?.username;
   const userType = authData?.role ?? "utente";
+
+  // 👇 avatar letto da authData (viene aggiornato da updateAvatarUrl nel profilo)
   const avatarUrl = authData?.avatarUrl ?? null;
 
   // Chiudi il menu quando clicchi fuori
@@ -75,7 +87,7 @@ export default function Header() {
               : "text-indigo-600 hover:text-indigo-700"
           }`}
         >
-        Fit
+          Fit
         </h1>
       </button>
 
@@ -139,14 +151,22 @@ export default function Header() {
               className="flex items-center gap-2 font-bold text-lg px-3 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
               aria-haspopup="menu"
               aria-expanded={dropdownOpen}
+              title={username ? `Account di ${username}` : "Account"}
             >
               <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden flex items-center justify-center">
                 {avatarUrl ? (
-                  <img src={avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+                  <img
+                    src={avatarUrl}
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
                 ) : userType === "admin" ? (
                   <Shield className="w-6 h-6 text-red-500" />
                 ) : (
-                  <User className="w-6 h-6 text-gray-500 dark:text-gray-300" />
+                  <span className="text-sm font-semibold text-gray-600 dark:text-gray-200 select-none">
+                    {getInitials(username)}
+                  </span>
                 )}
               </div>
               <span className="whitespace-nowrap text-gray-800 dark:text-gray-100 text-lg font-extrabold">

@@ -63,7 +63,7 @@ function Chip({ children }: { children: React.ReactNode }) {
 /* ================================================================== */
 
 export default function ProfilePage() {
-  const { authData, isLoading } = useAuth();
+  const { authData, isLoading, updateAvatarUrl } = useAuth();
   const navigate = useNavigate();
 
   const [me, setMe] = useState<MeResponse | null>(null);
@@ -88,8 +88,15 @@ export default function ProfilePage() {
   const [languages, setLanguages] = useState("");
   const [bio, setBio] = useState("");
 
-  // avatar
-  const currentAvatar = useMemo(() => me?.professional?.avatar_url || null, [me]);
+  // ✅ avatar: ora considera SEMPRE sia user.avatar_url sia professional.avatar_url (fallback ad authData.avatarUrl)
+  const currentAvatar = useMemo(
+    () =>
+      ((me as any)?.user?.avatar_url as string | undefined) ||
+      me?.professional?.avatar_url ||
+      authData?.avatarUrl ||
+      null,
+    [me, authData]
+  );
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
@@ -205,16 +212,21 @@ export default function ProfilePage() {
     setOkMsg(null);
     try {
       const res = await uploadAvatar(avatarFile);
+      // ✅ aggiorna sia user.avatar_url che (se presente) professional.avatar_url
       setMe((old) =>
         old
           ? {
               ...old,
+              user: { ...(old.user as any), avatar_url: res.avatarUrl } as any,
               professional: old.professional
                 ? { ...old.professional, avatar_url: res.avatarUrl }
                 : old.professional,
             }
           : old
       );
+      // ✅ sincronizza anche l’header
+      updateAvatarUrl(res.avatarUrl);
+
       setAvatarFile(null);
       if (avatarPreview) URL.revokeObjectURL(avatarPreview);
       setAvatarPreview(null);
@@ -246,8 +258,6 @@ export default function ProfilePage() {
           <div className="w-20 h-20 rounded-full bg-white/10 ring-1 ring-white/20 overflow-hidden grid place-items-center shrink-0">
             {avatarSrc && avatarSrc !== DEFAULT_AVATAR ? (
               <img src={avatarSrc} alt="Avatar" className="w-full h-full object-cover" />
-            ) : currentAvatar ? (
-              <img src={currentAvatar} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
               <span className="text-xl font-semibold text-white/90 leading-none select-none">{initials}</span>
             )}
@@ -288,8 +298,8 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* Upload avatar in edit mode (solo pro) */}
-        {isPro && editMode && (
+        {/* ✅ Upload avatar in edit mode (NON solo pro) */}
+        {editMode && (
           <div className="mt-4 flex items-center gap-3">
             <label className="inline-flex items-center gap-2 cursor-pointer">
               <span className="px-3 py-1.5 rounded-lg bg-white text-indigo-700 text-sm shadow-sm hover:bg-white/90">
