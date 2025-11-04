@@ -6,6 +6,7 @@ import Html2CanvasExportButton from "../components/Html2CanvasExportButton";
 import ExportNutritionPreview, { type ExportDay } from "../export/ExportNutritionPreview";
 
 import type { FoodApi as FoodApiType } from "../components/FoodAsyncSelect";
+import { api } from "../services/api";
 
 /* ===== Tipi ===== */
 type Goal =
@@ -86,12 +87,27 @@ type PlanState = {
 type MeResponse = {
   id: number;
   username: string;
-  email: string;
+  email: string | null;
   type: "utente" | "professionista";
   first_name?: string | null;
   last_name?: string | null;
   sex?: "M" | "F" | "O" | null;
   dob?: string | null;
+
+  height?: number | null;        // cm (users.height)
+  latest_weight?: number | null; // kg (weight_history ultimo)
+
+  user?: {
+    height?: number | null;
+    weight?: number | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    sex?: "M" | "F" | "O" | null;
+    dob?: string | null;
+    type?: "utente" | "professionista";
+    customer?: { id: number; weight: number | null; height: number | null } | null;
+  } | null;
+
   customer?: { id: number; weight: number | null; height: number | null } | null;
   freelancer?: { id: number; vat: string } | null;
 };
@@ -104,6 +120,35 @@ const activityFactor: Record<PlanState["activity"], number> = {
   intenso: 1.725,
   atleta: 1.9,
 };
+
+type CustomerDetail = {
+  customer_id: number;
+  user_id: number;
+  username: string | null;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  sex: "M" | "F" | "O" | null;
+  dob: string | null;
+  height: number | null;
+  latest_weight: number | null;
+};
+
+/** Etichetta "Nome Cognome (nickname)" con fallback eleganti */
+function formatCustomerLabel(c: CustomerDetail): string {
+  const first = (c.first_name ?? "").trim();
+  const last  = (c.last_name ?? "").trim();
+  const nick  = (c.username ?? "").trim();
+
+  const namePart =
+    (first || last)
+      ? [first, last].filter(Boolean).join(" ")
+      : (nick || c.email || `ID ${c.customer_id}`);
+
+  return nick && namePart !== nick
+    ? `${namePart} (${nick})`
+    : namePart;
+}
 
 const MAX_CHEATS = 3;
 
@@ -162,7 +207,7 @@ function readAuthSnapshot() {
   };
 }
 
-function ageFromDOB(dob?: string): number | undefined {
+function ageFromDOB(dob?: string | null): number | undefined {
   if (!dob) return undefined;
   const d = new Date(dob);
   if (Number.isNaN(d.getTime())) return undefined;
@@ -282,6 +327,8 @@ export default function NutritionPage() {
   const previewRef = useRef<HTMLDivElement>(null);
   const exportRef = useRef<HTMLElement>(null);
 
+  const [proCustomers, setProCustomers] = useState<CustomerDetail[]>([]);
+
   // destinazioni per la "tendina" di aggiunta alimento per ogni pasto
   const [addTarget, setAddTarget] = useState<Record<string, number>>({});
 
@@ -301,6 +348,7 @@ export default function NutritionPage() {
     showPreview: false,
   });
 
+  // ====== SELF ======
   useEffect(() => {
     if (state.ownerMode !== "self") return;
 
@@ -321,13 +369,25 @@ export default function NutritionPage() {
         if (!res.ok) throw new Error("Impossibile ottenere /api/me");
         const me: MeResponse = await res.json();
 
+        const resolvedWeight =
+          me.latest_weight ??
+          me.customer?.weight ??
+          me.user?.weight ?? 
+          null;
+
+        const resolvedHeight =
+          (typeof me.height === "number" ? me.height : null) ??
+          me.customer?.height ??
+          me.user?.height ?? 
+          null;
+
         setSelfData({
-          first_name: me.first_name ?? undefined,
-          last_name: me.last_name ?? undefined,
-          sex: (me.sex ?? undefined) as any,
-          dob: me.dob ?? undefined,
-          weight: me.customer?.weight ?? null,
-          height: me.customer?.height ?? null,
+          first_name: me.first_name ?? me.user?.first_name ?? undefined,
+          last_name:  me.last_name  ?? me.user?.last_name  ?? undefined,
+          sex:        (me.sex ?? me.user?.sex ?? undefined) as any,
+          dob:        me.dob ?? me.user?.dob ?? undefined,
+          weight:     resolvedWeight,
+          height:     resolvedHeight,
         });
 
         setState((s) => ({ ...s, selfCustomerId: me.customer?.id ?? null }));
@@ -341,6 +401,41 @@ export default function NutritionPage() {
     })();
   }, [state.ownerMode, user?.type, token]);
 
+  // ====== LISTA CLIENTI (pro/admin) ======
+  useEffect(() => {
+    if (!(userType === "professionista" || userType === "admin")) return;
+    (async () => {
+      try {
+        const rows = await api.get<CustomerDetail[]>("/customers");
+        setProCustomers(rows);
+      } catch (e) {
+        console.error("Errore caricamento /customers", e);
+      }
+    })();
+  }, [userType]);
+
+  // ====== SELEZIONE CLIENTE: autopopolazione otherPerson ======
+  useEffect(() => {
+    if (!(userType === "professionista" || userType === "admin")) return;
+    if (!state.targetCustomerId) return;
+    const c = proCustomers.find(x => x.customer_id === state.targetCustomerId);
+    if (!c) return;
+
+    const age = ageFromDOB(c.dob);
+    setState(s => ({
+      ...s,
+      otherPerson: {
+        first_name: c.first_name || "",
+        last_name:  c.last_name  || "",
+        sex:        (c.sex as any) || "O",
+        age:        typeof age === "number" ? age : "",
+        weight:     typeof c.latest_weight === "number" ? c.latest_weight : "",
+        height:     typeof c.height === "number" ? c.height : "",
+      },
+    }));
+  }, [state.targetCustomerId, userType, proCustomers]);
+
+  // ====== DERIVATI ======
   const derived = useMemo(() => {
     const sex = state.ownerMode === "self" ? selfData.sex : state.otherPerson.sex;
     const weight =
@@ -807,7 +902,6 @@ export default function NutritionPage() {
           </div>
         </div>
 
-
         <div className="flex flex-wrap gap-4 items-end mt-4">
           <div className="flex items-center gap-3">
             <label className="font-semibold text-indigo-700">Intestatario:</label>
@@ -888,80 +982,225 @@ export default function NutritionPage() {
             )}
           </div>
         ) : (
-          <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-sm text-indigo-700">Nome</label>
-              <input
-                className="w-full p-2 border rounded"
-                value={state.otherPerson.first_name}
-                onChange={(e) => setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, first_name: e.target.value } }))}
-              />
-            </div>
-            <div>
-              <label className="text-sm text-indigo-700">Cognome</label>
-              <input
-                className="w-full p-2 border rounded"
-                value={state.otherPerson.last_name}
-                onChange={(e) => setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, last_name: e.target.value } }))}
-              />
-            </div>
-            <div>
-              <label className="text-sm text-indigo-700">Sesso</label>
-              <select
-                className="w-full p-2 border rounded"
-                value={state.otherPerson.sex}
-                onChange={(e) => setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, sex: e.target.value as any } }))}
-              >
-                <option value="M">Maschio</option>
-                <option value="F">Femmina</option>
-                <option value="O">Altro</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-sm text-indigo-700">Età</label>
-              <input
-                type="number"
-                className="w-full p-2 border rounded"
-                value={state.otherPerson.age}
-                onChange={(e) =>
-                  setState((s) => ({
-                    ...s,
-                    otherPerson: { ...s.otherPerson, age: e.target.value === "" ? "" : Number(e.target.value) },
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <label className="text-sm text-indigo-700">Peso (kg)</label>
-              <input
-                type="number"
-                className="w-full p-2 border rounded"
-                value={state.otherPerson.weight}
-                onChange={(e) =>
-                  setState((s) => ({
-                    ...s,
-                    otherPerson: { ...s.otherPerson, weight: e.target.value === "" ? "" : Number(e.target.value) },
-                  }))
-                }
-              />
-            </div>
-            <div>
-              <label className="text-sm text-indigo-700">Altezza (cm)</label>
-              <input
-                type="number"
-                className="w-full p-2 border rounded"
-                value={state.otherPerson.height}
-                onChange={(e) =>
-                  setState((s) => ({
-                    ...s,
-                    otherPerson: { ...s.otherPerson, height: e.target.value === "" ? "" : Number(e.target.value) },
-                  }))
-                }
-              />
-            </div>
-          </div>
-        )}
+          (userType === "professionista" || userType === "admin") ? (
+            <div className="mt-4 space-y-4">
+              {/* Scelta cliente esistente */}
+              <div className="flex items-end gap-3 flex-wrap">
+                <div className="grow min-w-[280px]">
+                  <label className="block text-sm text-indigo-700 mb-1">Cliente esistente</label>
+                  <select
+                    className="min-w-[260px] p-2 border rounded w-full"
+                    value={state.targetCustomerId ?? ""}
+                    onChange={(e) => {
+                      const cid = e.target.value ? Number(e.target.value) : null;
+                      setState((s) => ({ ...s, targetCustomerId: cid }));
+                    }}
+                  >
+                    <option value="" disabled>Seleziona cliente…</option>
+                    {proCustomers.map((c) => (
+                      <option key={c.customer_id} value={c.customer_id}>
+                        {formatCustomerLabel(c)} {/* Nome Cognome (nickname) */}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
+                <div>
+                  <button
+                    type="button"
+                    className="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sm"
+                    onClick={() => setState((s) => ({ ...s, targetCustomerId: null }))}
+                    title="Pulisci selezione"
+                  >
+                    Pulisci
+                  </button>
+                </div>
+              </div>
+
+              {/* Riepilogo cliente selezionato */}
+              {(state.targetCustomerId) && (
+                <div className="mt-3 p-3 rounded border bg-indigo-50/40 border-indigo-100 text-sm">
+                  <div className="flex flex-wrap gap-6">
+                    <div>
+                      Cliente:{" "}
+                      <strong>
+                        {formatCustomerLabel(
+                          proCustomers.find(x => x.customer_id === state.targetCustomerId)!
+                        )}
+                      </strong>
+                    </div>
+                    <div>Sesso: <strong>{state.otherPerson.sex || "-"}</strong></div>
+                    <div>Età: <strong>{state.otherPerson.age || "-"}</strong></div>
+                    <div>Peso: <strong>{state.otherPerson.weight || "-"} kg</strong></div>
+                    <div>Altezza: <strong>{state.otherPerson.height || "-"} cm</strong></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Inserimento manuale opzionale (se NON scegli un cliente) */}
+              {!state.targetCustomerId && (
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-sm text-indigo-700">Nome</label>
+                    <input
+                      className="w-full p-2 border rounded"
+                      value={state.otherPerson.first_name}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, first_name: e.target.value } }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-indigo-700">Cognome</label>
+                    <input
+                      className="w-full p-2 border rounded"
+                      value={state.otherPerson.last_name}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, last_name: e.target.value } }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-indigo-700">Sesso</label>
+                    <select
+                      className="w-full p-2 border rounded"
+                      value={state.otherPerson.sex}
+                      onChange={(e) =>
+                        setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, sex: e.target.value as any } }))
+                      }
+                    >
+                      <option value="M">Maschio</option>
+                      <option value="F">Femmina</option>
+                      <option value="O">Altro</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm text-indigo-700">Età</label>
+                    <input
+                      type="number"
+                      className="w-full p-2 border rounded"
+                      value={state.otherPerson.age}
+                      onChange={(e) =>
+                        setState((s) => ({
+                          ...s,
+                          otherPerson: { ...s.otherPerson, age: e.target.value === "" ? "" : Number(e.target.value) },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-indigo-700">Peso (kg)</label>
+                    <input
+                      type="number"
+                      className="w-full p-2 border rounded"
+                      value={state.otherPerson.weight}
+                      onChange={(e) =>
+                        setState((s) => ({
+                          ...s,
+                          otherPerson: { ...s.otherPerson, weight: e.target.value === "" ? "" : Number(e.target.value) },
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm text-indigo-700">Altezza (cm)</label>
+                    <input
+                      type="number"
+                      className="w-full p-2 border rounded"
+                      value={state.otherPerson.height}
+                      onChange={(e) =>
+                        setState((s) => ({
+                          ...s,
+                          otherPerson: { ...s.otherPerson, height: e.target.value === "" ? "" : Number(e.target.value) },
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            // Utente normale: solo inserimento manuale
+            <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-sm text-indigo-700">Nome</label>
+                <input
+                  className="w-full p-2 border rounded"
+                  value={state.otherPerson.first_name}
+                  onChange={(e) =>
+                    setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, first_name: e.target.value } }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-sm text-indigo-700">Cognome</label>
+                <input
+                  className="w-full p-2 border rounded"
+                  value={state.otherPerson.last_name}
+                  onChange={(e) =>
+                    setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, last_name: e.target.value } }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-sm text-indigo-700">Sesso</label>
+                <select
+                  className="w-full p-2 border rounded"
+                  value={state.otherPerson.sex}
+                  onChange={(e) =>
+                    setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, sex: e.target.value as any } }))
+                  }
+                >
+                  <option value="M">Maschio</option>
+                  <option value="F">Femmina</option>
+                  <option value="O">Altro</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm text-indigo-700">Età</label>
+                <input
+                  type="number"
+                  className="w-full p-2 border rounded"
+                  value={state.otherPerson.age}
+                  onChange={(e) =>
+                    setState((s) => ({
+                      ...s,
+                      otherPerson: { ...s.otherPerson, age: e.target.value === "" ? "" : Number(e.target.value) },
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-sm text-indigo-700">Peso (kg)</label>
+                <input
+                  type="number"
+                  className="w-full p-2 border rounded"
+                  value={state.otherPerson.weight}
+                  onChange={(e) =>
+                    setState((s) => ({
+                      ...s,
+                      otherPerson: { ...s.otherPerson, weight: e.target.value === "" ? "" : Number(e.target.value) },
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-sm text-indigo-700">Altezza (cm)</label>
+                <input
+                  type="number"
+                  className="w-full p-2 border rounded"
+                  value={state.otherPerson.height}
+                  onChange={(e) =>
+                    setState((s) => ({
+                      ...s,
+                      otherPerson: { ...s.otherPerson, height: e.target.value === "" ? "" : Number(e.target.value) },
+                    }))
+                  }
+                />
+              </div>
+            </div>
+          )
+        )}
         {/* riepilogo fabbisogno */}
         <div className="mt-5 p-4 bg-indigo-50/60 rounded border border-indigo-100 text-sm">
           <div className="flex flex-wrap gap-6">

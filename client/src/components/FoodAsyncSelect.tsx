@@ -1,5 +1,5 @@
 // client/src/components/FoodAsyncSelect.tsx
-import React, { useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import AsyncSelect from "react-select/async";
 import type { StylesConfig } from "react-select";
 

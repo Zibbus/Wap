@@ -1,8 +1,9 @@
+// src/pages/WorkoutPage.tsx
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, PlusCircle, Trash2 } from "lucide-react";
 
-import logoUrl from "../assets/IconaMyFitNoBG.png";
+import logoUrl from "../assets/IconaMyFitnobackground.png";
 
 import Html2CanvasExportButton from "../components/Html2CanvasExportButton";
 import ExportWorkoutPreview, { type ExportWorkoutDay } from "../export/ExportWorkoutPreview";
@@ -118,7 +119,7 @@ function getIsProfessional(user: AuthUser | undefined | null): boolean {
   return false;
 }
 
-function ageFromDOB(dob?: string): number | undefined {
+function ageFromDOB(dob?: string | null): number | undefined {
   if (!dob) return undefined;
   const d = new Date(dob);
   if (Number.isNaN(d.getTime())) return undefined;
@@ -127,21 +128,6 @@ function ageFromDOB(dob?: string): number | undefined {
   const m = today.getMonth() - d.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age--;
   return age;
-}
-
-function getProfessionalName(): string | undefined {
-  try {
-    const raw = JSON.parse(localStorage.getItem("authData") || "{}");
-    const u = raw?.user || {};
-    if (u?.type === "professionista") {
-      const prof = u.professional || u.prof || u.freelancer || null;
-      if (prof?.display_name && String(prof.display_name).trim()) return String(prof.display_name).trim();
-      const full = [u.first_name || u.firstName, u.last_name || u.lastName].filter(Boolean).join(" ").trim();
-      if (full) return full;
-      if (u.username) return String(u.username);
-    }
-  } catch {}
-  return undefined;
 }
 
 function pickFirst<T = any>(...vals: any[]): T | null {
@@ -186,6 +172,27 @@ function normalizeProfessionalFromMePayload(me: any) {
   };
 }
 
+/** NEW: costruisce “Nome Cognome (nickname)” dallo state, solo se l’utente è professionista */
+function getProfessionalDisplayFromState(u: AuthUser | null | undefined): string | undefined {
+  if (!u) return undefined;
+  if (!getIsProfessional(u)) return undefined;
+
+  const first = (u.first_name || "").trim();
+  const last  = (u.last_name  || "").trim();
+  const nick  = (u.username   || "").trim();
+  let full    = [first, last].filter(Boolean).join(" ").trim();
+
+  if (!full) {
+    const prof = (u.professional || u.prof || u.freelancer) as any || {};
+    const dn   = (prof?.display_name || prof?.name || "").trim();
+    if (dn) full = dn;
+  }
+
+  if (full && nick && !full.includes(nick)) return `${full} (${nick})`;
+  if (full) return full;
+  return nick || undefined;
+}
+
 /* =========================
    Mappe gruppi
    ========================= */
@@ -200,6 +207,35 @@ const GROUP_NAME_TO_ID: Record<string, number> = {
 const ID_TO_GROUP_NAME: Record<number, string> = Object.fromEntries(
   Object.entries(GROUP_NAME_TO_ID).map(([k, v]) => [v, k])
 ) as Record<number, string>;
+
+/* =========================
+   Clienti (per tendina professionista)
+   ========================= */
+type CustomerDetail = {
+  customer_id: number;
+  user_id?: number | null;
+  username?: string | null;
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  sex?: "M" | "F" | "O" | null;
+  dob?: string | null;
+  height?: number | null;
+  latest_weight?: number | null;
+};
+
+function formatCustomerLabel(c: CustomerDetail): string {
+  const first = (c.first_name ?? "").trim();
+  const last  = (c.last_name ?? "").trim();
+  const nick  = (c.username ?? "").trim();
+  const namePart =
+    (first || last)
+      ? [first, last].filter(Boolean).join(" ")
+      : (nick || c.email || `ID ${c.customer_id}`);
+  return nick && namePart !== nick
+    ? `${namePart} (${nick})`
+    : namePart;
+}
 
 /* =========================
    Combo Box cercabile (SOLO INPUT)
@@ -354,9 +390,6 @@ export default function WorkoutPage() {
 
   const exportRef = useRef<HTMLElement | null>(null);
 
-  // --- ADD: intestatario + consenso ---
-  const [consentAccepted, setConsentAccepted] = useState(false);
-
   const [ownerMode, setOwnerMode] = useState<OwnerMode>("self");
 
   const [loadingSelf, setLoadingSelf] = useState(false);
@@ -365,23 +398,16 @@ export default function WorkoutPage() {
     last_name: user?.last_name ?? undefined,
     sex: (user?.sex as any) ?? undefined,
     dob: user?.dob ?? undefined,
-    weight: user?.customer?.weight ?? null,
-    height: user?.customer?.height ?? null,
+    weight: (user as any)?.latest_weight ?? user?.customer?.weight ?? null,
+    height: (user as any)?.height ?? user?.customer?.height ?? null,
   });
 
-  // === Stati aggiunti per gestione clienti esterni ===
-  const [otherOwnerMode, setOtherOwnerMode] = useState<"manual" | "existing">(
+  // === Stati per gestione clienti esterni ===
+  const [otherOwnerMode, setOtherOwnerMode] = useState<"existing" | "manual">(
     isProfessional ? "existing" : "manual"
   );
-  const [customers, setCustomers] = useState<Array<{
-    customer_id: number;
-    first_name?: string | null;
-    last_name?: string | null;
-    sex?: "M" | "F" | "O" | null;
-    dob?: string | null;
-    weight?: number | null;
-    height?: number | null;
-  }>>([]);
+
+  const [customers, setCustomers] = useState<CustomerDetail[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
 
   const [otherPerson, setOtherPerson] = useState({
@@ -404,12 +430,11 @@ export default function WorkoutPage() {
           !user?.customer ||
           (user.customer && (user.customer.weight == null || user.customer.height == null)) ||
           !user?.type ||
-          // 👉 se manca qualunque traccia del profilo professionista, id o display_name
           !getIsProfessional(user);
 
         if (!needHydrate) return;
 
-        const res = await fetch("http://localhost:4000/api/me", {
+        const res = await fetch(`/api/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) return;
@@ -419,27 +444,24 @@ export default function WorkoutPage() {
         const profNorm = normalizeProfessionalFromMePayload(data);
 
         const enriched: Partial<AuthUser> = {
-          first_name: data?.user?.first_name ?? user.first_name,
-          last_name:  data?.user?.last_name  ?? user.last_name,
-          sex:        data?.user?.sex        ?? user.sex,
-          dob:        data?.user?.dob        ?? user.dob,
-          type:       (data?.user?.type ?? user.type) as any,
-          customer:   data?.customer ?? data?.user?.customer ?? user.customer ?? null,
+          first_name: (data?.user?.first_name ?? data?.first_name ?? user.first_name),
+          last_name:  (data?.user?.last_name  ?? data?.last_name  ?? user.last_name),
+          sex:        (data?.user?.sex        ?? data?.sex        ?? user.sex),
+          dob:        (data?.user?.dob        ?? data?.dob        ?? user.dob),
+          type:       ((data?.user?.type      ?? data?.type      ?? user.type) as any),
+          customer:   (data?.customer ?? data?.user?.customer ?? user.customer ?? null),
 
-          // ✅ riempiamo in modo robusto
           professional: profNorm.professional ?? user.professional ?? null,
           freelancer:   profNorm.freelancer   ?? user.freelancer   ?? null,
-          prof:         user.prof ?? null, // lasciato per retro compatibilità, non forziamo da payload
+          prof:         user.prof ?? null,
           freelancer_id: profNorm.freelancer_id ?? user.freelancer_id ?? null,
         };
-
         if (!cancelled) setUser((prev) => ({ ...prev, ...enriched }));
       } catch {
         // silenzioso
       }
     })();
     return () => { cancelled = true; };
-    // includo user.* usati dal needHydrate, così se cambiano si ritenta
   }, [token, user?.customer, user?.type, user?.professional, user?.freelancer, user?.freelancer_id]);
 
   // Carica profilo self (dettagli mostrati)
@@ -449,18 +471,20 @@ export default function WorkoutPage() {
     (async () => {
       try {
         setLoadingSelf(true);
-        const res = await fetch("http://localhost:4000/api/me", {
+        const res = await fetch(`/api/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
           const me = await res.json();
           setSelfData({
             first_name: me.first_name ?? undefined,
-            last_name: me.last_name ?? undefined,
-            sex: (me.sex ?? undefined) as any,
-            dob: me.dob ?? undefined,
-            weight: me.customer?.weight ?? null,
-            height: me.customer?.height ?? null,
+            last_name:  me.last_name ?? undefined,
+            sex:        (me.sex ?? undefined) as any,
+            dob:        me.dob ?? undefined,
+
+            // NUOVI campi (con fallback ai vecchi)
+            weight:     (me.latest_weight ?? me.weight ?? me.customer?.weight ?? null),
+            height:     (me.height ?? me.customer?.height ?? null),
           });
         }
       } catch (e) {
@@ -471,18 +495,48 @@ export default function WorkoutPage() {
     })();
   }, [ownerMode, token]);
 
+  // 🔥 Carica SEMPRE tutti i customer se l'utente è professionista (o admin)
+  useEffect(() => {
+    if (!isProfessional || !token) return;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/customers`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) return;
+        const rows = await res.json();
+        const mapped: CustomerDetail[] = rows.map((r: any) => ({
+          customer_id: Number(r.customer_id ?? r.id),
+          user_id: r.user_id ?? null,
+          username: r.username ?? null,
+          email: r.email ?? null,
+          first_name: r.first_name ?? null,
+          last_name: r.last_name ?? null,
+          sex: (r.sex as any) ?? null,
+          dob: r.dob ?? null,
+          height: (typeof r.height === "number" ? r.height : null),
+          latest_weight: (typeof r.latest_weight === "number" ? r.latest_weight : null),
+        }));
+        setCustomers(mapped);
+      } catch (e) {
+        console.error("Errore caricamento /api/customers", e);
+      }
+    })();
+  }, [isProfessional, token]);
+
   // autocompila i dettagli quando selezioni un cliente
   useEffect(() => {
     if (ownerMode !== "other" || otherOwnerMode !== "existing" || !selectedCustomerId) return;
     const c = customers.find((x) => x.customer_id === Number(selectedCustomerId));
     if (!c) return;
-    const age = ageFromDOB(c.dob ?? undefined);
+    const age = ageFromDOB(c.dob ?? null);
     setOtherPerson({
       first_name: c.first_name || "",
       last_name:  c.last_name  || "",
       sex: (c.sex ?? "O") as any,
       age: (typeof age === "number" ? age : "") as any,
-      weight: (c.weight ?? "") as any,
+      weight: (c.latest_weight ?? "") as any,
       height: (c.height ?? "") as any,
     });
   }, [ownerMode, otherOwnerMode, selectedCustomerId, customers]);
@@ -520,7 +574,7 @@ export default function WorkoutPage() {
     if (!ids.length) return [];
 
     const qs = `groupIds=${encodeURIComponent(ids.join(","))}`;
-    const res = await fetch(`http://localhost:4000/api/exercises?${qs}`);
+    const res = await fetch(`/api/exercises?${qs}`);
 
     if (!res.ok) throw new Error(`Errore fetch esercizi: ${res.status}`);
 
@@ -661,7 +715,7 @@ export default function WorkoutPage() {
             exerciseId: opt.id,
             nome: opt.name,
           };
-            if (!opt.weightRequired) nextEx.peso = "";
+          if (!opt.weightRequired) nextEx.peso = "";
           return nextEx;
         });
         return { ...g, esercizi: next };
@@ -680,7 +734,6 @@ export default function WorkoutPage() {
     );
   };
 
-  // ✅ toggle note
   const handleToggleNota = (index: number) => {
     setGiorniAllenamento((prev) =>
       prev.map((g) => {
@@ -690,7 +743,7 @@ export default function WorkoutPage() {
           if (ex.note === undefined) {
             return { ...ex, note: "" };
           } else {
-            const { note, ...rest } = ex as any;
+            const { note, ...rest } = (ex as any);
             return rest as Esercizio;
           }
         });
@@ -750,16 +803,23 @@ export default function WorkoutPage() {
       return;
     }
     if (ownerMode === "other") {
-      const okOwner =
-        otherPerson.first_name.trim() &&
-        otherPerson.last_name.trim() &&
-        otherPerson.sex &&
-        otherPerson.age !== "" &&
-        otherPerson.weight !== "" &&
-        otherPerson.height !== "";
-      if (!okOwner) {
-        alert("Compila i dati dell’intestatario.");
-        return;
+      if (isProfessional && otherOwnerMode === "existing") {
+        if (!selectedCustomerId) {
+          alert("Seleziona un cliente esistente.");
+          return;
+        }
+      } else {
+        const okOwner =
+          otherPerson.first_name.trim() &&
+          otherPerson.last_name.trim() &&
+          otherPerson.sex &&
+          otherPerson.age !== "" &&
+          otherPerson.weight !== "" &&
+          otherPerson.height !== "";
+        if (!okOwner) {
+          alert("Compila i dati dell’intestatario.");
+          return;
+        }
       }
     }
     const chk = allConfirmedDaysHaveAtLeastOneComplete();
@@ -789,7 +849,7 @@ export default function WorkoutPage() {
           return;
         }
       } else {
-        if (otherOwnerMode === "existing") {
+        if (isProfessional && otherOwnerMode === "existing") {
           if (!selectedCustomerId) { alert("Seleziona un cliente esistente."); return; }
           customer_id = Number(selectedCustomerId);
         } else {
@@ -802,10 +862,10 @@ export default function WorkoutPage() {
       const auth = JSON.parse(localStorage.getItem("authData") || "{}");
       const tokenLS: string | null = token || auth?.token || null;
 
-      // 1) Crea la schedule
-      const schedulePayload = { expire: expireDate, goal };
+      // 1) Crea la schedule (NB: includo customer_id)
+      const schedulePayload = { customer_id, expire: expireDate, goal };
 
-      const res = await fetch("http://localhost:4000/api/schedules", {
+      const res = await fetch(`/api/schedules`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -821,7 +881,7 @@ export default function WorkoutPage() {
       // 2) Crea i giorni e costruisci la mappa day -> day_id
       const dayMap: Record<number, number> = {};
       for (const g of giorniAllenamento) {
-        const dayRes = await fetch("http://localhost:4000/api/schedules/day", {
+        const dayRes = await fetch(`/api/schedules/day`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -859,7 +919,7 @@ export default function WorkoutPage() {
 
       // 4) Salva gli esercizi (se presenti)
       if (allExercises.length) {
-        const exRes = await fetch("http://localhost:4000/api/schedules/exercises", {
+        const exRes = await fetch(`/api/schedules/exercises`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -877,49 +937,6 @@ export default function WorkoutPage() {
       alert("❌ Errore durante il salvataggio della scheda.");
     }
   };
-
-  /* =========================
-     Gate di consenso (liberatoria)
-     ========================= */
-  if (!consentAccepted) {
-    return (
-      <div className="min-h-screen grid place-items-center px-6">
-        <div className="w-full max-w-3xl bg-white dark:bg-gray-900 rounded-2xl shadow p-6 border dark:border-gray-800">
-          <h2 className="text-2xl font-bold text-indigo-700 dark:text-indigo-300 mb-3">
-            Informativa & consenso per la scheda di allenamento
-          </h2>
-          <div className="text-sm text-gray-700 dark:text-gray-200 space-y-3">
-            <p>
-              Le indicazioni di allenamento fornite dall’app hanno finalità informative/educative e <strong>non sostituiscono</strong> il parere di un medico, fisioterapista o professionista qualificato.
-            </p>
-            <p>
-              Valuta il tuo stato di salute prima di intraprendere qualunque programma di esercizi. In presenza di infortuni,
-              patologie, gravidanza o terapie, consulta preventivamente il tuo medico.
-            </p>
-            <ul className="list-disc ml-5">
-              <li>Interrompi immediatamente l’attività in caso di dolore, vertigini o malessere.</li>
-              <li>Usa attrezzatura idonea e tecnica corretta per ridurre il rischio di infortuni.</li>
-              <li>Gli autori dell’app <strong>non sono responsabili</strong> per danni o conseguenze da uso improprio.</li>
-            </ul>
-          </div>
-          <div className="mt-6 flex justify-end gap-3">
-            <button
-              className="px-5 py-3 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200"
-              onClick={() => window.history.back()}
-            >
-              Annulla
-            </button>
-            <button
-              className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
-              onClick={() => setConsentAccepted(true)}
-            >
-              Accetto e procedo
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // === Dati per la vista off-screen (export one-column)
   const exportDays: ExportWorkoutDay[] = Array.from({ length: giorni ?? 0 }).map((_, i) => {
@@ -946,7 +963,15 @@ export default function WorkoutPage() {
   const intestatarioLabel =
     ownerMode === "self"
       ? `${selfData.first_name ?? ""} ${selfData.last_name ?? ""}`.trim() || (JSON.parse(localStorage.getItem("authData") || "{}")?.username || "—")
-      : `${otherPerson.first_name} ${otherPerson.last_name}`.trim() || "Intestatario esterno";
+      : otherOwnerMode === "existing"
+        ? (() => {
+            const c = customers.find(x => x.customer_id === Number(selectedCustomerId));
+            return c ? formatCustomerLabel(c) : "Intestatario esterno";
+          })()
+        : `${otherPerson.first_name} ${otherPerson.last_name}`.trim() || "Intestatario esterno";
+
+  // NEW: calcolo una sola volta la dicitura professionista
+  const professionalDisplay = getProfessionalDisplayFromState(user);
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-indigo-50 dark:bg-gray-950 px-8 py-12 text-gray-800 dark:text-gray-100">
@@ -1213,7 +1238,7 @@ export default function WorkoutPage() {
 
             {/* Form: intestatario + scadenza + obiettivo */}
             <div className="max-w-2xl mx-auto bg-indigo-50/60 dark:bg-gray-800 border border-indigo-100 dark:border-gray-700 rounded-xl p-5 mb-6">
-              <h4 className="text-base font-semibold text-indigo-800 dark:text-indigo-300 mb-4">Impostazioni scheda</h4>
+              <h4 className="text/base font-semibold text-indigo-800 dark:text-indigo-300 mb-4">Impostazioni scheda</h4>
 
               {/* Intestatario */}
               <div className="mb-4">
@@ -1235,7 +1260,7 @@ export default function WorkoutPage() {
                     <input
                       type="radio"
                       checked={ownerMode === "other"}
-                      onChange={() => { 
+                      onChange={() => {
                         setOwnerMode("other");
                         setSelectedCustomerId("");
                       }}
@@ -1244,6 +1269,60 @@ export default function WorkoutPage() {
                   </label>
                 </div>
 
+                {/* Se OTHER: professionista vede sempre la tendina con TUTTI i customer */}
+                {ownerMode === "other" && isProfessional && (
+                  <div className="mt-4 space-y-3">
+                    <div className="flex items-center gap-6">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          checked={otherOwnerMode === "existing"}
+                          onChange={() => setOtherOwnerMode("existing")}
+                        />
+                        <span>Cliente esistente</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          checked={otherOwnerMode === "manual"}
+                          onChange={() => setOtherOwnerMode("manual")}
+                        />
+                        <span>Inserimento manuale</span>
+                      </label>
+                    </div>
+
+                    {otherOwnerMode === "existing" && (
+                      <div className="flex items-end gap-3 flex-wrap">
+                        <div className="grow min-w-[280px]">
+                          <label className="block text-sm text-indigo-700 dark:text-indigo-300 mb-1">Seleziona cliente</label>
+                          <select
+                            className="min-w-[260px] p-2 border rounded w-full dark:bg-gray-900 dark:border-gray-700"
+                            value={selectedCustomerId}
+                            onChange={(e) => setSelectedCustomerId(e.target.value)}
+                          >
+                            <option value="" disabled>— Scegli un cliente —</option>
+                            {customers.map((c) => (
+                              <option key={c.customer_id} value={c.customer_id}>
+                                {formatCustomerLabel(c)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="px-3 py-2 rounded-lg border border-indigo-200 dark:border-gray-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-gray-800 text-sm"
+                          onClick={() => setSelectedCustomerId("")}
+                          title="Pulisci selezione"
+                        >
+                          Pulisci
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Dati intestatario mostrati */}
                 {ownerMode === "self" ? (
                   <div className="mt-3 text-sm text-gray-700 dark:text-gray-200">
                     {loadingSelf ? (
@@ -1253,70 +1332,73 @@ export default function WorkoutPage() {
                         <div>Nome: <strong>{selfData.first_name ?? "-"}</strong></div>
                         <div>Cognome: <strong>{selfData.last_name ?? "-"}</strong></div>
                         <div>Sesso: <strong>{selfData.sex ?? "-"}</strong></div>
-                        <div>Età: <strong>{ageFromDOB(selfData.dob) ?? "-"}</strong></div>
+                        <div>Età: <strong>{ageFromDOB(selfData.dob ?? null) ?? "-"}</strong></div>
                         <div>Peso: <strong>{selfData.weight ?? "-"} kg</strong></div>
                         <div>Altezza: <strong>{selfData.height ?? "-"} cm</strong></div>
                       </div>
                     )}
                   </div>
                 ) : (
-                  <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Nome</label>
-                      <input
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.first_name}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, first_name: e.target.value }))}
-                      />
+                  // Se non professionista o se in modalità manuale: campi manuali
+                  (!isProfessional || otherOwnerMode === "manual") && (
+                    <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="text-sm text-indigo-700 dark:text-indigo-300">Nome</label>
+                        <input
+                          className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                          value={otherPerson.first_name}
+                          onChange={(e) => setOtherPerson((s) => ({ ...s, first_name: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm text-indigo-700 dark:text-indigo-300">Cognome</label>
+                        <input
+                          className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                          value={otherPerson.last_name}
+                          onChange={(e) => setOtherPerson((s) => ({ ...s, last_name: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm text-indigo-700 dark:text-indigo-300">Sesso</label>
+                        <select
+                          className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                          value={otherPerson.sex}
+                          onChange={(e) => setOtherPerson((s) => ({ ...s, sex: e.target.value as any }))}
+                        >
+                          <option value="M">Maschio</option>
+                          <option value="F">Femmina</option>
+                          <option value="O">Altro</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-sm text-indigo-700 dark:text-indigo-300">Età</label>
+                        <input
+                          type="number"
+                          className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                          value={otherPerson.age}
+                          onChange={(e) => setOtherPerson((s) => ({ ...s, age: e.target.value === "" ? "" : Number(e.target.value) }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm text-indigo-700 dark:text-indigo-300">Peso (kg)</label>
+                        <input
+                          type="number"
+                          className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                          value={otherPerson.weight}
+                          onChange={(e) => setOtherPerson((s) => ({ ...s, weight: e.target.value === "" ? "" : Number(e.target.value) }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm text-indigo-700 dark:text-indigo-300">Altezza (cm)</label>
+                        <input
+                          type="number"
+                          className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
+                          value={otherPerson.height}
+                          onChange={(e) => setOtherPerson((s) => ({ ...s, height: e.target.value === "" ? "" : Number(e.target.value) }))}
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Cognome</label>
-                      <input
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.last_name}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, last_name: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Sesso</label>
-                      <select
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.sex}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, sex: e.target.value as any }))}
-                      >
-                        <option value="M">Maschio</option>
-                        <option value="F">Femmina</option>
-                        <option value="O">Altro</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Età</label>
-                      <input
-                        type="number"
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.age}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, age: e.target.value === "" ? "" : Number(e.target.value) }))}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Peso (kg)</label>
-                      <input
-                        type="number"
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.weight}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, weight: e.target.value === "" ? "" : Number(e.target.value) }))}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-sm text-indigo-700 dark:text-indigo-300">Altezza (cm)</label>
-                      <input
-                        type="number"
-                        className="w-full p-2 border rounded dark:bg-gray-900 dark:border-gray-700"
-                        value={otherPerson.height}
-                        onChange={(e) => setOtherPerson((s) => ({ ...s, height: e.target.value === "" ? "" : Number(e.target.value) }))}
-                      />
-                    </div>
-                  </div>
+                  )
                 )}
               </div>
 
@@ -1379,20 +1461,19 @@ export default function WorkoutPage() {
               position: "fixed",
               left: 0,
               top: 0,
-              opacity: 0,            // invisibile ma layouttato correttamente
+              opacity: 0,
               pointerEvents: "none",
               zIndex: -1,
             }}
           >
             <ExportWorkoutPreview
               ref={exportRef}
-              /* NON passare offscreen qui */
               meta={{
                 expire: expireDate || "—",
                 goal: goalForExport,
                 logoPath: logoUrl,
                 ownerName: intestatarioLabel,
-                professionalName: getProfessionalName(),
+                professionalName: professionalDisplay, // <-- PASSA QUI
               }}
               days={exportDays}
             />
@@ -1407,9 +1488,9 @@ export default function WorkoutPage() {
                   <h3 className="text/base font-semibold text-gray-800 dark:text-gray-100 m-0">
                     Scheda Allenamento{intestatarioLabel ? ` di: ${intestatarioLabel}` : ""}
                   </h3>
-                  {getProfessionalName() && (
+                  {professionalDisplay && (
                     <div className="text-sm text-gray-500 dark:text-gray-400 -mt-0.5">
-                      <em>curata da: {getProfessionalName()}</em>
+                      <em>curata da: {professionalDisplay}</em>
                     </div>
                   )}
                 </div>
@@ -1431,7 +1512,7 @@ export default function WorkoutPage() {
                   goalForExport === "aumento_peso" ? "Aumento peso" : "—"
                 }</span>
               </div>
-            </div> 
+            </div>
 
             {/* scheda */}
             <div className="grid md:grid-cols-2 gap-4">

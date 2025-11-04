@@ -135,14 +135,16 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
 
     try {
       if (hasGetConnection) await conn.beginTransaction();
+      const heightValue =
+        typeof height === "number" ? height :
+        (isNonEmpty(height) ? Number(height) : null);
 
-      // 2a) Inserimento utente
       const [result] = await conn.query(
         `
         INSERT INTO users
-          (username, password, first_name, last_name, dob, sex, type, email)
+          (username, password, first_name, last_name, dob, sex, type, email, height)
         VALUES
-          (?, ?, ?, ?, ?, ?, ?, ?)
+          (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
           username.trim(),
@@ -153,20 +155,30 @@ router.post("/register", upload.single("avatar"), async (req, res) => {
           finalSex,
           finalType,
           email.trim(),
+          heightValue,
         ]
       );
       const userId = (result as any).insertId;
-
       // 2b) Profili
       if (finalType === "utente") {
+
         await conn.query(
-          `INSERT INTO customers (user_id, weight, height) VALUES (?, ?, ?)`,
-          [
-            userId,
-            typeof weight === "number" ? weight : (isNonEmpty(weight) ? Number(weight) : null),
-            typeof height === "number" ? height : (isNonEmpty(height) ? Number(height) : null),
-          ]
+          `INSERT INTO customers (user_id) VALUES (?)`,
+          [userId]
         );
+
+        // opzionale: salva il peso iniziale nello storico (se fornito)
+        const initialWeight =
+          typeof weight === "number" ? weight :
+          (isNonEmpty(weight) ? Number(weight) : null);
+
+        if (initialWeight != null && Number.isFinite(initialWeight)) {
+          await conn.query(
+            `INSERT INTO weight_history (user_id, weight, measured_at)
+            VALUES (?, ?, NOW())`,
+            [userId, initialWeight]
+          );
+        }
       } else {
         // professionista
         if (!isNonEmpty(vat)) {

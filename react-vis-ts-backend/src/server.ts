@@ -11,6 +11,8 @@ import schedulesRoutes from "./routes/schedules";
 import meRoutes from "./routes/me";
 import foodsRoutes from "./routes/foods";
 import professionalsRoutes from "./routes/professionals";
+import customersRouter from "./routes/customers.js";
+
 import profileRoutes from "./routes/profile";
 import settingsRoutes from "./routes/settings";
 import nutritionRouter from "./routes/nutrition.db";
@@ -32,6 +34,8 @@ app.use("/api/schedules", schedulesRoutes);
 app.use("/api/me", meRoutes);
 app.use("/api/foods", foodsRoutes);
 app.use("/api/professionals", professionalsRoutes);
+app.use("/api/customers", customersRouter);
+
 app.use("/api/profile", profileRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));

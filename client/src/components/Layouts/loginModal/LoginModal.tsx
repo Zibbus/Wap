@@ -152,7 +152,7 @@ export default function LoginModal() {
         throw new Error("Le password non coincidono.");
       }
 
-      // Prepara payload base
+      // payload base (usato solo se non c'è file)
       const payload: any = {
         username,
         password,
@@ -171,36 +171,54 @@ export default function LoginModal() {
         payload.vat = vat || null;
       }
 
-      // 1) registra utente
-      const res = await fetch(`${AUTH_BASE}/api/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error(t || `Errore registrazione (HTTP ${res.status})`);
-      }
-
-      // 2) se hai anche avatar, caricalo dopo (endpoint opzionale)
+      // 1) registra utente — UNA SOLA CHIAMATA
       if (avatarFile) {
+        // invio TUTTO come multipart (il backend /api/auth/register accetta "avatar")
         const fd = new FormData();
-        fd.append("avatar", avatarFile);
-        const up = await fetch(`${AUTH_BASE}/api/profile/avatar`, {
+        fd.append("username", username);
+        fd.append("password", password);
+        fd.append("email", email);
+        if (firstName) fd.append("firstName", firstName);
+        if (lastName)  fd.append("lastName", lastName);
+        if (dob)       fd.append("dob", dob);
+        if (sex)       fd.append("sex", sex);
+        fd.append("type", userType); // "utente" | "professionista"
+
+        if (userType === "utente") {
+          if (weight !== "") fd.append("weight", String(weight)); // numeri come stringhe
+          if (height !== "") fd.append("height", String(height));
+        } else {
+          if (vat) fd.append("vat", vat);
+        }
+
+        fd.append("avatar", avatarFile); // campo atteso dal backend
+
+        const res = await fetch(`${AUTH_BASE}/api/auth/register`, {
           method: "POST",
           credentials: "include",
-          body: fd,
+          body: fd, // NON settare Content-Type manualmente
         });
-        // Non bloccare la registrazione se fallisce l'avatar
-        if (!up.ok) {
-          console.warn("Upload avatar fallito");
+        if (!res.ok) {
+          const t = await res.text().catch(() => "");
+          throw new Error(t || `Errore registrazione (HTTP ${res.status})`);
+        }
+      } else {
+        // nessun file: invio JSON
+        const res = await fetch(`${AUTH_BASE}/api/auth/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const t = await res.text().catch(() => "");
+          throw new Error(t || `Errore registrazione (HTTP ${res.status})`);
         }
       }
 
       setSuccessMsg("Registrazione completata! Eseguo l'accesso…");
 
-      // 3) login automatico
+      // 2) login automatico
       await login(username, password);
       closeLoginModal();
     } catch (err: any) {
