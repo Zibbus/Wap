@@ -247,7 +247,7 @@ export default function Header() {
                     <>
                       <div
                         onClick={() => {
-                          navigate("/clienti");
+                          navigate("/chat");
                           closeDropdown();
                         }}
                         className={dropdownItemClass}
