@@ -39,7 +39,7 @@ export async function listProfessionals(params?: {
   if (params?.maxPrice !== undefined && params.maxPrice !== "")
     qs.set("maxPrice", String(params.maxPrice));
 
-  const url = `/api/professionals${qs.toString() ? `?${qs.toString()}` : ""}`;
+  const url = `/professionals${qs.toString() ? `?${qs.toString()}` : ""}`;
 
   try {
     const data = await api.get<any[]>(url);
@@ -53,7 +53,7 @@ export async function listProfessionals(params?: {
 
 export async function getProfessional(id: number): Promise<Professional | null> {
   try {
-    const data = await api.get<any>(`/api/professionals/${id}`);
+    const data = await api.get<any>(`/professionals/${id}`);
     return mapRowFromApi(data);
   } catch (err: any) {
     if (String(err?.message || "").includes("404")) return null;

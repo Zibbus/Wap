@@ -16,7 +16,6 @@ import Professionisti from "./pages/Professionisti";
 import ProfessionistaDettaglio from "./pages/ProfessionistaDettaglio";
 import ChatPage from "./pages/ChatPage";
 
-import PlanChooser from "./pages/PlanChooser";
 import NutritionPage from "./pages/NutritionPage";
 import NutritionPlanDetailPage from "./pages/NutritionPlanDetailPage.tsx";
 
@@ -37,9 +36,6 @@ export default function App() {
         <Route element={<Layout />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/shop" element={<ShopPage />} />
-
-          {/* 🔹 nuova pagina di scelta */}
-          <Route path="/planner" element={<PlanChooser />} />
 
           {/* 🔹 pagine principali */}
           <Route path="/workout" element={<WorkoutPage />} />
