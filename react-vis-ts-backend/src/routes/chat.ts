@@ -7,7 +7,7 @@ const router = Router();
 
 /** Utility: ordina due ID per chiave unica */
 function orderedPair(a: number, b: number) {
-  return a < b ? [a, b] as const : [b, a] as const;
+  return a < b ? ([a, b] as const) : ([b, a] as const);
 }
 
 /**
@@ -30,7 +30,7 @@ router.post("/start", requireAuth, async (req: any, res) => {
     "SELECT thread_id FROM chat_links WHERE user_a=? AND user_b=? LIMIT 1",
     [a, b]
   );
-  let threadId = linkRows[0]?.thread_id as number | undefined;
+  let threadId = (linkRows[0]?.thread_id as number) | 0 || undefined;
 
   if (!threadId) {
     // crea thread
@@ -39,7 +39,10 @@ router.post("/start", requireAuth, async (req: any, res) => {
 
     // partecipanti
     await db.query("INSERT INTO chat_participants (thread_id, user_id) VALUES (?, ?), (?, ?)", [
-      threadId, a, threadId, b
+      threadId,
+      a,
+      threadId,
+      b,
     ]);
 
     // link
@@ -66,24 +69,32 @@ router.get("/threads", requireAuth, async (req: any, res) => {
 
   const [rows] = await db.query<RowDataPacket[]>(
     `
-    SELECT t.id AS threadId,
-           u.id AS otherUserId,
-           u.username AS otherUsername,
-           u.email    AS otherEmail,
-           pm.body    AS lastBody,
-           pm.created_at AS lastAt
+    SELECT
+      t.id                  AS threadId,
+      u.id                  AS otherUserId,
+      u.username            AS otherUsername,
+      u.email               AS otherEmail,
+      pm.body               AS lastBody,
+      pm.created_at         AS lastAt
     FROM chat_threads t
-    JOIN chat_participants cpMe ON cpMe.thread_id = t.id AND cpMe.user_id = ?
-    JOIN chat_participants cpOt ON cpOt.thread_id = t.id AND cpOt.user_id <> ?
-    JOIN users u ON u.id = cpOt.user_id
-    LEFT JOIN LATERAL (
-      SELECT m.body, m.created_at
-      FROM chat_messages m
-      WHERE m.thread_id = t.id
-      ORDER BY m.id DESC
-      LIMIT 1
-    ) pm ON TRUE
-    ORDER BY pm.created_at DESC NULLS LAST, t.id DESC
+    JOIN chat_participants cpMe
+      ON cpMe.thread_id = t.id AND cpMe.user_id = ?
+    JOIN chat_participants cpOt
+      ON cpOt.thread_id = t.id AND cpOt.user_id <> ?
+    JOIN users u
+      ON u.id = cpOt.user_id
+    /* ---- ultimo messaggio per thread (MySQL) ---- */
+    LEFT JOIN (
+      SELECT m1.thread_id, m1.body, m1.created_at
+      FROM chat_messages m1
+      JOIN (
+        SELECT thread_id, MAX(id) AS max_id
+        FROM chat_messages
+        GROUP BY thread_id
+      ) last ON last.thread_id = m1.thread_id AND last.max_id = m1.id
+    ) pm ON pm.thread_id = t.id
+    /* ---- emula NULLS LAST ---- */
+    ORDER BY (pm.created_at IS NULL) ASC, pm.created_at DESC, t.id DESC
     `,
     [me, me]
   );
