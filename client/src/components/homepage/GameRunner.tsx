@@ -21,7 +21,7 @@ export default function GameRunner() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // 🔹 Carichiamo le immagini
+    // 🔹 Sprite
     const runSprite = new Image();
     const jumpSprite = new Image();
     const hurdleSprite = new Image();
@@ -56,9 +56,7 @@ export default function GameRunner() {
     let speed = 7;
     let obstacles: { x: number; type: "low" | "high" }[] = [];
 
-    /** 🟩 Avvia il gioco */
     const startGame = () => {
-      console.log("▶️ Gioco avviato!");
       setIsGameOver(false);
       setIsStarted(true);
       startedRef.current = true;
@@ -78,14 +76,12 @@ export default function GameRunner() {
       reqIdRef.current = requestAnimationFrame(update);
     };
 
-    /** 🟥 Fine del gioco */
     const endGame = () => {
       runningRef.current = false;
       gameOverRef.current = true;
       setIsGameOver(true);
     };
 
-    /** 🟦 Salto */
     const jump = () => {
       if (!runningRef.current || gameOverRef.current) return;
       if (!jumpingRef.current) {
@@ -95,7 +91,6 @@ export default function GameRunner() {
       }
     };
 
-    /** 🧍‍♂️ Disegna atleta */
     const drawAthlete = () => {
       const sprite = jumpingRef.current ? jumpSprite : runSprite;
       const f = !jumpingRef.current ? runFrames[currentFrame] : { x: 0, y: 0 };
@@ -116,7 +111,6 @@ export default function GameRunner() {
       }
     };
 
-    /** 🧱 Disegna ostacolo */
     const drawObstacle = (x: number, type: "low" | "high") => {
       const sx = 0;
       const sy = type === "low" ? 0 : 128;
@@ -130,7 +124,6 @@ export default function GameRunner() {
       };
     };
 
-    /** 🔁 Ciclo principale */
     const update = () => {
       if (!runningRef.current) return;
       frame++;
@@ -189,17 +182,52 @@ export default function GameRunner() {
       reqIdRef.current = requestAnimationFrame(update);
     };
 
-    /** 🎮 Gestione tasti */
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.code !== "Space") return;
-      e.preventDefault();
-      if (!startedRef.current || gameOverRef.current) startGame();
-      else jump();
+    // ✅ Rileva in modo robusto se l'utente sta scrivendo
+    const isTypingNow = (): boolean => {
+      const ae = (document.activeElement as HTMLElement | null);
+      if (!ae) return false;
+
+      // 1) contenteditable o discendenti contenteditable
+      if (ae.isContentEditable || ae.closest?.('[contenteditable=""],[contenteditable="true"]')) {
+        return true;
+      }
+
+      // 2) elementi con ruolo "textbox" (editor custom)
+      if (ae.getAttribute?.("role") === "textbox" || ae.closest?.('[role="textbox"]')) {
+        return true;
+      }
+
+      // 3) input/textarea con tipi testuali
+      const tag = ae.tagName?.toLowerCase();
+      if (tag === "textarea") return true;
+      if (tag === "input") {
+        const type = (ae as HTMLInputElement).type?.toLowerCase();
+        const textTypes = new Set([
+          "text", "search", "email", "url", "tel", "password", "number"
+        ]);
+        if (textTypes.has(type || "text")) return true;
+      }
+
+      return false;
     };
 
-    window.addEventListener("keydown", handleKey);
+    const handleKey = (e: KeyboardEvent) => {
+      // Ignora IME/composizione
+      // @ts-ignore - alcune runtime espongono isComposing
+      if ((e as any).isComposing) return;
 
-    /** 🎨 Disegno iniziale */
+      if (e.code === "Space" || e.key === " ") {
+        // ⛔ se l'utente sta scrivendo, NON toccare la spacebar
+        if (isTypingNow()) return;
+
+        e.preventDefault(); // serve passive:false
+        if (!startedRef.current || gameOverRef.current) startGame();
+        else jump();
+      }
+    };
+
+    window.addEventListener("keydown", handleKey, { passive: false });
+
     const drawIdle = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#eef2ff";
@@ -208,7 +236,7 @@ export default function GameRunner() {
       ctx.fillRect(0, GROUND_TOP, canvas.width, GROUND_HEIGHT);
     };
 
-    runSprite.onload = drawIdle; // Attendi il caricamento sprite
+    runSprite.onload = drawIdle;
 
     return () => {
       window.removeEventListener("keydown", handleKey);
@@ -234,7 +262,6 @@ export default function GameRunner() {
           className="border-2 border-indigo-300 rounded-xl bg-white shadow-md"
         ></canvas>
 
-        {/* Overlay iniziale */}
         {!isStarted && !isGameOver && (
           <div className="absolute inset-0 bg-gray-800/70 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl text-white text-center">
             <p className="text-lg mb-3 opacity-90">Prova ora!</p>
@@ -250,7 +277,6 @@ export default function GameRunner() {
           </div>
         )}
 
-        {/* Game Over */}
         {isGameOver && (
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center rounded-xl text-white">
             <h3 className="text-2xl font-semibold mb-3">Game Over</h3>

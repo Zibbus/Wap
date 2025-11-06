@@ -5,6 +5,8 @@ import cors from "cors";
 import http from "http";
 import path from "path";
 
+import assistantRouter from "./routes/assistant";
+
 import authRoutes from "./routes/auth";
 import chatRoutes from "./routes/chat";
 import exercisesRoutes from "./routes/exercises";
@@ -27,6 +29,8 @@ const app = express();
 // Middleware base
 app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 app.use(express.json());
+
+app.use("/api/assistant", assistantRouter);
 
 // API
 app.use("/api/auth", authRoutes);

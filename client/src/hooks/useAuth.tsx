@@ -16,44 +16,77 @@ type AuthContextType = {
   authData: AuthData | null;
   isLoading: boolean;
   updateAvatarUrl: (url: string) => void;
-  /** Login con credenziali: preferito */
+  /** Login con credenziali */
   login: (username: string, password?: string) => Promise<void>;
-  /** Compatibilità: setta direttamente i dati (vecchio comportamento) */
+  /** Compat: setta direttamente i dati */
   loginWithData: (data: AuthData) => void;
   logout: () => Promise<void>;
-  /** Esegue fn solo se loggato, altrimenti puoi agganciare qui l'apertura del modal */
+  /** Esegue fn solo se loggato (puoi aprire qui il modal) */
   requireLogin: (fn: () => void) => void;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const LS_KEY = "authData";
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [authData, setAuthData] = useState<AuthData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // ✅ bootstrap da localStorage + imposta Authorization sul client HTTP
+  // Bootstrap: rehydrate da localStorage + set Authorization
   useEffect(() => {
-    const saved = localStorage.getItem("authData");
-    if (saved) {
-      try {
+    try {
+      const saved = localStorage.getItem(LS_KEY);
+      if (saved) {
         const parsed: AuthData = JSON.parse(saved);
         setAuthData(parsed);
         if (parsed?.token) setAuthToken(parsed.token);
-      } catch {
-        localStorage.removeItem("authData");
+        else setAuthToken(null);
+      } else {
+        setAuthToken(null);
       }
+    } catch {
+      localStorage.removeItem(LS_KEY);
+      setAuthToken(null);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }, []);
 
-  // ✅ nuovo: login con credenziali → chiama API, salva token e dati
+  // Sync tra tab: se un’altra tab fa login/logout, aggiorna anche qui
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== LS_KEY) return;
+      try {
+        if (e.newValue) {
+          const parsed: AuthData = JSON.parse(e.newValue);
+          setAuthData(parsed);
+          setAuthToken(parsed?.token || null);
+        } else {
+          setAuthData(null);
+          setAuthToken(null);
+        }
+      } catch {
+        setAuthData(null);
+        setAuthToken(null);
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  // Login con credenziali → salva token + set Authorization
   const login = async (username: string, password?: string) => {
     setIsLoading(true);
     try {
       const res = await apiLogin(username, password);
-      // adatta qui in base a cosa restituisce il tuo backend di login
-      const token = (res as any)?.token || "";
-      const user = (res as any)?.user || {};
+      // Adatta a ciò che ritorna la tua API
+      const token = (res as any)?.token ?? "";
+      const user = (res as any)?.user ?? {};
+
+      if (!token) {
+        throw new Error("Token non presente nella risposta di login");
+      }
 
       const data: AuthData = {
         token,
@@ -63,45 +96,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         avatarUrl: user.avatarUrl ?? user.avatar_url ?? null,
       };
 
-      setAuthToken(token);
+      setAuthToken(token); // 👉 fondamentale per evitare “Token mancante”
       setAuthData(data);
-      localStorage.setItem("authData", JSON.stringify(data));
+      localStorage.setItem(LS_KEY, JSON.stringify(data));
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ✅ compat: se in qualche punto chiami ancora login(data: AuthData)
+  // Compat: set diretto dei dati (assicurati di passare token valido)
   const loginWithData = (data: AuthData) => {
     setAuthData(data);
-    localStorage.setItem("authData", JSON.stringify(data));
-    if (data?.token) setAuthToken(data.token);
+    localStorage.setItem(LS_KEY, JSON.stringify(data));
+    setAuthToken(data?.token || null);
   };
 
   const logout = async () => {
     try {
-      await apiLogout(); // se non usi endpoint di logout, resta così
+      await apiLogout().catch(() => {});
     } finally {
       setAuthToken(null);
       setAuthData(null);
-      localStorage.removeItem("authData");
+      localStorage.removeItem(LS_KEY);
     }
   };
 
   const requireLogin = (fn: () => void) => {
-    if (authData) return fn();
-    // Qui puoi aprire il tuo LoginModal (se ce l’hai).
-    // Placeholder semplice: prompt
+    if (authData?.token) return fn();
+    // Qui potresti aprire il tuo modal di login.
     const u = window.prompt("Per continuare, accedi. Username:");
-    if (u) login(u).then(fn);
+    if (u) login(u).then(fn).catch(() => {});
   };
 
-  // ✅ nuovo: aggiorna solo l'avatar (usato dopo upload in ProfilePage)
   const updateAvatarUrl = (url: string) => {
     setAuthData(prev => {
       if (!prev) return prev;
       const next: AuthData = { ...prev, avatarUrl: url || null };
-      localStorage.setItem("authData", JSON.stringify(next));
+      localStorage.setItem(LS_KEY, JSON.stringify(next));
       return next;
     });
   };
@@ -124,7 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth deve essere usato dentro un AuthProvider");
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth deve essere usato dentro un AuthProvider");
+  return ctx;
 }

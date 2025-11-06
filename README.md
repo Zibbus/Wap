@@ -73,6 +73,7 @@ La home mostra logo, login/logout e schede introduttive. Dopo il login puoi coll
 - bcryptjs
 - multer
 - -D @types/multer
+- express-rate-limit
 
 ### Frontend
 - react, react-dom

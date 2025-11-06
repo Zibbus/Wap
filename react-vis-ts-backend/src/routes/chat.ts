@@ -326,8 +326,8 @@ router.post("/read", requireAuth, async (req: any, res) => {
 
   await db.query<ResultSetHeader>(
     `UPDATE chat_participants
-        SET last_read_message_id = ?
-      WHERE user_id = ? AND thread_id = ?`,
+     SET last_read_message_id = GREATEST(IFNULL(last_read_message_id,0), ?)
+     WHERE thread_id = ? AND user_id = ?`,
     [maxId, me, tid]
   );
 
