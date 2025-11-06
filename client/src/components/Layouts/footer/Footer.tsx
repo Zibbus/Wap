@@ -4,7 +4,7 @@ export default function Footer() {
   return (
     <footer
       id="footer"
-      className="bg-indigo-700 text-white text-center py-16 mt-20 relative overflow-hidden"
+      className="bg-indigo-700 text-white text-center py-8 md:py-10 relative overflow-hidden"
     >
       <div className="max-w-6xl mx-auto px-6 space-y-12">
         {/* 🔹 Sezione "Chi siamo" */}
@@ -75,7 +75,7 @@ export default function Footer() {
       </div>
 
       {/* 🔹 Effetto gradiente decorativo */}
-      <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-indigo-400 via-purple-500 to-indigo-400"></div>
+      <div className="absolute top-0 left-0 right-0 h-2 from-indigo-400 via-purple-500 to-indigo-400"></div>
     </footer>
   );
 }

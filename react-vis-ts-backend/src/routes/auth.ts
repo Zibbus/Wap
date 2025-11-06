@@ -260,10 +260,15 @@ router.post("/login", async (req, res) => {
   try {
     // 👇 Aggiungo avatar_url alla SELECT
     const [rows] = await db.query(
-      `SELECT id, username, email, password, first_name, last_name, sex, dob, type, avatar_url
-         FROM users
-        WHERE username = ? OR email = ?
-        LIMIT 1`,
+      `SELECT 
+          u.id, u.username, u.email, u.password, u.first_name, u.last_name, 
+          u.sex, u.dob, u.type,
+          COALESCE(u.avatar_url, pp.avatar_url) AS avatar_url
+      FROM users u
+      LEFT JOIN freelancers f ON f.user_id = u.id
+      LEFT JOIN professional_profiles pp ON pp.freelancer_id = f.id
+      WHERE u.username = ? OR u.email = ?
+      LIMIT 1`,
       [usernameOrEmail.trim(), usernameOrEmail.trim()]
     );
     const user = (rows as any[])[0];

@@ -5,6 +5,7 @@ import { useLoginModal } from "../../../hooks/useLoginModal";
 import { useAuth } from "../../../hooks/useAuth";
 import logo from "../../../assets/IconaMyFitNoBG.png";
 import ThemeToggle from "../Header/drop-down_menu/ThemeToggle";
+import { api } from "../../../services/api"; // 👈 aggiunto per il fallback avatar
 
 function getInitials(username?: string | null) {
   if (!username) return "U";
@@ -16,6 +17,14 @@ function getInitials(username?: string | null) {
   return clean.slice(0, 2).toUpperCase();
 }
 
+// 👇 helper locale per supportare URL relativi (/uploads/...)
+function toAbsoluteUrl(url?: string | null) {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  const base = window.location.origin;
+  return `${base}${url.startsWith("/") ? "" : "/"}${url}`;
+}
+
 export default function Header() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -23,7 +32,9 @@ export default function Header() {
   const [animateClose, setAnimateClose] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { openLoginModal } = useLoginModal();
-  const { authData, logout } = useAuth();
+
+  // 👇 prende anche updateAvatarUrl per sincronizzare l'header
+  const { authData, logout, updateAvatarUrl } = useAuth();
 
   const isLoggedIn = !!authData;
   const username = authData?.username;
@@ -48,6 +59,33 @@ export default function Header() {
   useEffect(() => {
     if (dropdownOpen) closeDropdown();
   }, [location.pathname]);
+
+  // 👇 Fallback avatar: se loggato ma avatar mancante, prova a leggerlo dal profilo
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchAvatarIfMissing() {
+      if (!isLoggedIn || avatarUrl) return;
+      try {
+        const me = await api.get<any>("/api/profile");
+        const fromProfile: string | null =
+          me?.professional?.avatar_url ??
+          me?.avatar_url ??
+          null;
+
+        if (!cancelled && fromProfile) {
+          updateAvatarUrl(fromProfile);
+        }
+      } catch {
+        // silenzioso: non bloccare l'header per un fallback non essenziale
+      }
+    }
+
+    fetchAvatarIfMissing();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, avatarUrl, updateAvatarUrl]);
 
   const closeDropdown = () => {
     setAnimateClose(true);
@@ -127,7 +165,7 @@ export default function Header() {
             </span>
             <span
               className="
-                absolute inset-0 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg
+                absolute inset-0 from-indigo-500 to-purple-500 rounded-lg
                 opacity-0 group-hover:opacity-100 scale-0 group-hover:scale-100
                 transition-all duration-400 ease-out origin-center blur-[0.3px]
               "
@@ -156,7 +194,7 @@ export default function Header() {
               <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden flex items-center justify-center">
                 {avatarUrl ? (
                   <img
-                    src={avatarUrl}
+                    src={toAbsoluteUrl(avatarUrl)}
                     alt="Avatar"
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"

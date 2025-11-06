@@ -1,7 +1,6 @@
 // client/src/services/chat.ts
 import { api } from "./api";
 
-/** Tipi utili da riusare in ChatPage ecc. */
 export type ConversationListItem = {
   threadId: number;
   otherUserId: number;
@@ -16,9 +15,13 @@ export type ChatMessage = {
   senderId: number;
   body: string;
   createdAt: string;
+  attachmentUrl?: string | null;
+  attachmentMime?: string | null;
+  attachmentName?: string | null;
+  attachmentSize?: number | null;
 };
 
-// Apri/riusa via USERNAME (può anche inviare il primo messaggio)
+// ✅ username + opzionale primo messaggio
 export async function openOrCreateConversationByUsername(
   toUsername: string,
   text?: string
@@ -31,7 +34,7 @@ export async function openOrCreateConversationByUsername(
   return { conversationId: res.threadId };
 }
 
-// Apri/riusa via userId (fallback)
+// fallback by userId
 export async function openOrCreateConversation(
   toUserId: number
 ): Promise<{ conversationId: number }> {
@@ -42,7 +45,6 @@ export async function openOrCreateConversation(
   return { conversationId: res.threadId };
 }
 
-// Invia messaggio (con trimming + guardia locale)
 export async function sendMessage(
   conversationId: number,
   body: string
@@ -55,14 +57,47 @@ export async function sendMessage(
   );
 }
 
-// Lista conversazioni (tipizzata)
-export async function listConversations(): Promise<ConversationListItem[]> {
-  return api.get<ConversationListItem[]>("/chat/threads");
+export async function uploadAttachment(
+  conversationId: number,
+  file: File,
+  text?: string
+): Promise<{ ok: true; message: ChatMessage }> {
+  const form = new FormData();
+  form.append("file", file);
+  if (text && text.trim()) form.append("text", text.trim());
+
+  // ✅ recupero token come fa useAuth/localStorage
+  let token: string | null = null;
+  try {
+    const saved = localStorage.getItem("authData");
+    if (saved) token = JSON.parse(saved)?.token ?? null;
+  } catch {}
+
+  const base = (import.meta as any).env?.VITE_API_BASE ?? "/api";
+  const res = await fetch(`${base}/chat/${conversationId}/attachments`, {
+    method: "POST",
+    // ✅ se usi cookie di sessione, resta include; se usi solo JWT va bene lo stesso
+    credentials: "include",
+    // ✅ aggiungi Authorization se presente
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: form,
+  });
+
+  if (!res.ok) {
+    const txt = await res.text().catch(() => "");
+    // Rilancia un errore con il messaggio reale del backend
+    throw new Error(txt || `HTTP ${res.status} ${res.statusText}`);
+  }
+
+  return res.json();
 }
 
-// Messaggi della conversazione (tipizzati)
+export async function listConversations(): Promise<ConversationListItem[]> {
+  return api.get("/chat/threads");
+}
+
 export async function getMessages(
   conversationId: number
 ): Promise<ChatMessage[]> {
-  return api.get<ChatMessage[]>(`/chat/${conversationId}/messages`);
+  return api.get(`/chat/${conversationId}/messages`);
 }

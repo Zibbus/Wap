@@ -18,7 +18,7 @@ export default function Layout() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-50 to-white text-gray-800 dark:from-gray-950 dark:to-gray-900 dark:text-gray-100 pt-20">
+    <div className="min-h-screen flex flex-col from-indigo-50 to-white text-gray-800 dark:from-gray-950 dark:to-gray-900 dark:text-gray-100 pt-20">
       <Header />
       <main className="flex-1">
         <Outlet />

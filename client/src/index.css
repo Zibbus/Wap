@@ -25,3 +25,10 @@
   .pill { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium bg-gray-100 text-gray-700; }
   .dark .pill { @apply bg-gray-800 text-gray-200; }
 }
+
+/* Scrollbar più discreta */
+.no-scrollbar {
+  -ms-overflow-style: none;     /* IE e Edge */
+  scrollbar-width: none;        /* Firefox  */
+}
+.no-scrollbar::-webkit-scrollbar { display: none; } /* Chrome/Safari */
