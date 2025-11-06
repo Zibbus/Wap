@@ -20,12 +20,17 @@ import {
   Search,
 } from "lucide-react";
 
+/* 👇 uso diretto dell’API client per unread + mark-as-read */
+import { api } from "../services/api";
+const badgeClass = "inline-block min-w-5 h-5 px-1 rounded-full bg-indigo-600 text-[10px] leading-5 text-white text-center";
+
 /* ---------- Tipi locali ---------- */
 type ConversationSummary = {
   conversationId: number;
   peer: { userId: number; name: string; avatarUrl?: string };
   lastBody: string | null;
   lastAt: string | null;
+  unread: number;
 };
 
 type UploadItem = {
@@ -55,34 +60,24 @@ function colorFromString(name?: string) {
   return `hsl(${hue} 70% 45%)`;
 }
 
-/* ---------- URL assoluto per path relativi (robusto, con fallback) ---------- */
+/* ---------- URL assoluto per path relativi ---------- */
 function toAbsoluteUrl(path?: string): string | undefined {
   if (!path) return undefined;
-  if (/^https?:\/\//i.test(path)) return path; // già assoluto
-
+  if (/^https?:\/\//i.test(path)) return path;
   const viteBase = (import.meta as any).env?.VITE_API_BASE as string | undefined;
-
-  // Se VITE_API_BASE esiste, ricava l'origin da lì (es: http://localhost:4000)
   let origin = window.location.origin;
   if (viteBase) {
     try {
       origin = new URL(viteBase, window.location.origin).origin;
-    } catch {
-      // fallback: origin rimane quello del browser
-    }
+    } catch {}
   }
-
-  // Normalizza: se path inizia con '/', concatena, altrimenti aggiungi lo slash
   return path.startsWith("/") ? `${origin}${path}` : `${origin}/${path}`;
 }
-
-
 
 export default function ChatPage() {
   const { authData } = useAuth();
   const myId = authData?.userId ?? null;
 
-  // Redirect se sloggato
   if (!authData) return <Navigate to="/" replace />;
 
   const location = useLocation() as {
@@ -97,7 +92,14 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
-  /* Drag & Drop / Upload multipli (in coda) */
+  /* 🔔 unread globali */
+  const [unreadByThread, setUnreadByThread] = useState<Record<number, number>>({});
+  const unreadTotal = useMemo(
+    () => Object.values(unreadByThread).reduce((a, b) => a + (Number(b) || 0), 0),
+    [unreadByThread]
+  );
+
+  /* Drag & Drop / Upload multipli */
   const [isDragging, setIsDragging] = useState(false);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -128,9 +130,27 @@ export default function ChatPage() {
       },
       lastBody: c.lastBody,
       lastAt: c.lastAt,
+      unread: Number(c.unread || 0),
     }));
     setConvs(list);
+
+    // sync anche la mappa locale unread
+    const map: Record<number, number> = {};
+    for (const it of list) map[it.conversationId] = Number(it.unread || 0);
+    setUnreadByThread(map);
+
     return list;
+  }
+
+  /* 🔔 lettura unread (on load + polling) */
+  async function refreshUnread() {
+    try {
+      // ✅ niente doppio /api: il client api ha già il base URL
+      const data = await api.get<{ total: number; byThread: Record<number, number> }>("/chat/unread");
+      setUnreadByThread(data.byThread || {});
+    } catch {
+      // ignora errori di polling
+    }
   }
 
   useEffect(() => {
@@ -138,13 +158,16 @@ export default function ChatPage() {
       setLoading(true);
       try {
         const list = await reloadConversations();
+
+        // ✅ Apri automaticamente SOLO se arrivi con uno state.conversationId valido
         if (requestedId && list.some((c) => c.conversationId === requestedId)) {
           setActiveId(requestedId);
-        } else if (list[0]) {
-          setActiveId(list[0].conversationId);
         } else {
+          // Altrimenti non selezionare nulla: l'utente deve cliccare dalla lista
           setActiveId(null);
         }
+
+        await refreshUnread();
       } finally {
         setLoading(false);
       }
@@ -152,11 +175,36 @@ export default function ChatPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedId]);
 
+  /* 🔁 polling unread ogni 10s */
+  useEffect(() => {
+    let t: number | undefined;
+    const tick = async () => {
+      await refreshUnread();
+      t = window.setTimeout(tick, 10000);
+    };
+    tick();
+    return () => {
+      if (t) clearTimeout(t);
+    };
+  }, []);
+
+  /* caricamento messaggi + mark as read */
   useEffect(() => {
     if (!activeId) return;
     (async () => {
       const msgs = await getMessages(activeId);
       setMessages(msgs);
+
+      // segna come letto sul backend
+      try {
+        // ✅ endpoint normalizzato
+        await api.post("/chat/read", { threadId: activeId });
+        // 🔔 aggiorna subito badge in header
+        window.dispatchEvent(new CustomEvent("myfit:unread:refresh"));
+      } catch {}
+
+      // ricarica le conversazioni per aggiornare i badge locali
+      await reloadConversations();
     })();
   }, [activeId]);
 
@@ -177,6 +225,7 @@ export default function ChatPage() {
         const msgs = await getMessages(activeId);
         setMessages(msgs);
         await reloadConversations();
+        await refreshUnread();
         return;
       }
 
@@ -184,6 +233,7 @@ export default function ChatPage() {
       setUploads((prev) => prev.filter((u) => u.status !== "done"));
       if (text) setDraft("");
       await reloadConversations();
+      await refreshUnread();
     } finally {
       setSending(false);
     }
@@ -394,56 +444,72 @@ export default function ChatPage() {
           </div>
         </div>
 
-        <h2 className="mb-2 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300">Conversazioni</h2>
-
+        <h2 className="mb-2 px-2 text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+          Conversazioni
+          {unreadTotal > 0 && (
+          <span className={badgeClass}>
+            {unreadTotal > 99 ? "99+" : unreadTotal}
+          </span>
+          )}
+        </h2>
         <div className="h-[calc(100%-76px)] overflow-y-auto no-scrollbar pr-1">
           <ul className="space-y-1">
-            {filteredConvs.map((c) => (
-              <li key={c.conversationId}>
-                <button
-                  type="button"
-                  onClick={() => setActiveId(c.conversationId)}
-                  className={`w-full rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-800 ${
-                    activeId === c.conversationId
-                      ? "bg-slate-50 ring-1 ring-indigo-200/60 dark:bg-slate-800 dark:ring-indigo-800/40"
-                      : "ring-1 ring-transparent"
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    {c.peer.avatarUrl ? (
-                      <img
-                        src={c.peer.avatarUrl}
-                        alt={c.peer.name}
-                        className="h-8 w-8 rounded-full object-cover ring-1 ring-white/60 dark:ring-gray-900/60"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <span
-                        className="grid h-8 w-8 place-items-center rounded-full text-white text-xs font-semibold ring-2 ring-white/70 dark:ring-gray-900/70"
-                        style={{ background: colorFromString(c.peer.name) }}
-                        aria-hidden
-                      >
-                        {initialsOf(c.peer.name)}
-                      </span>
-                    )}
+            {filteredConvs.map((c) => {
+              const unread = (unreadByThread[c.conversationId] ?? c.unread ?? 0);
+              return (
+                <li key={c.conversationId}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveId(c.conversationId)}
+                    className={`w-full rounded-xl px-3 py-2 text-left text-sm transition-colors hover:bg-slate-50 dark:hover:bg-slate-800 ${
+                      activeId === c.conversationId
+                        ? "bg-slate-50 ring-1 ring-indigo-200/60 dark:bg-slate-800 dark:ring-indigo-800/40"
+                        : "ring-1 ring-transparent"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {c.peer.avatarUrl ? (
+                        <img
+                          src={c.peer.avatarUrl}
+                          alt={c.peer.name}
+                          className="h-8 w-8 rounded-full object-cover ring-1 ring-white/60 dark:ring-gray-900/60"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span
+                          className="grid h-8 w-8 place-items-center rounded-full text-white text-xs font-semibold ring-2 ring-white/70 dark:ring-gray-900/70"
+                          style={{ background: colorFromString(c.peer.name) }}
+                          aria-hidden
+                        >
+                          {initialsOf(c.peer.name)}
+                        </span>
+                      )}
 
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between">
-                        <span className="truncate font-medium text-gray-900 dark:text-gray-100">{c.peer.name}</span>
-                        {c.lastAt && (
-                          <time className="ml-3 shrink-0 text-xs text-gray-500 dark:text-gray-400">
-                            {new Date(c.lastAt).toLocaleString("it-IT")}
-                          </time>
-                        )}
-                      </div>
-                      <div className="truncate text-xs text-gray-600 dark:text-gray-300">
-                        {c.lastBody ?? "—"}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="truncate font-medium text-gray-900 dark:text-gray-100">{c.peer.name}</span>
+                          <div className="ml-3 flex items-center gap-2">
+                            {unread > 0 && (
+                              <span className={badgeClass} aria-label={`${unread} messaggi non letti`}>
+                                {unread > 99 ? "99+" : unread}
+                              </span>
+                            )}
+                            {c.lastAt && (
+                              <time className="shrink-0 text-xs text-gray-500 dark:text-gray-400">
+                                {new Date(c.lastAt).toLocaleString("it-IT")}
+                              </time>
+                            )}
+                          </div>
+                        </div>
+                        <div className="truncate text-xs text-gray-600 dark:text-gray-300">
+                          {c.lastBody ?? "—"}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </button>
-              </li>
-            ))}
+                  </button>
+                </li>
+              );
+            })}
 
             {filteredConvs.length === 0 && (
               <li className="px-3 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
@@ -712,7 +778,7 @@ export default function ChatPage() {
               </button>
             </footer>
 
-            {/* MODAL ALLEGATI (92vh) */}
+            {/* MODAL ALLEGATI */}
             {showAttachments && (
               <div className="fixed inset-0 z-50 flex items-center justify-center p-6" role="dialog" aria-modal="true">
                 <div className="absolute inset-0 bg-black/50" onClick={() => setShowAttachments(false)} />
@@ -843,7 +909,7 @@ export default function ChatPage() {
             )}
           </>
         ) : (
-          <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Nessuna conversazione.</div>
+          <div className="p-6 text-sm text-gray-500 dark:text-gray-400">Seleziona una conversazione.</div>
         )}
       </section>
     </div>

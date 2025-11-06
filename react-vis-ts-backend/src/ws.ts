@@ -1,104 +1,104 @@
+// src/ws.ts
 import type { Server as HttpServer, IncomingMessage } from "http";
 import { WebSocketServer, WebSocket, RawData } from "ws";
 import jwt from "jsonwebtoken";
-import pool from "./db.js";
+import db from "./db";
+import type { RowDataPacket } from "mysql2/promise";
 
 type AuthedWs = WebSocket & { userId?: number };
 
-/** Mappa connessioni attive: userId -> set di socket */
+/** userId -> set di socket */
 const clients = new Map<number, Set<AuthedWs>>();
 
+/** ===== Helpers usati dal router ===== */
+
+/** Invia a tutti i socket di un utente */
+export function pushToUser<T = any>(userId: number, type: string, payload: T) {
+  const set = clients.get(userId);
+  if (!set) return;
+  const msg = JSON.stringify({ type, payload });
+  for (const s of set) {
+    if (s.readyState === WebSocket.OPEN) s.send(msg);
+  }
+}
+
+/** Invia a tutti i partecipanti di un thread */
+export async function pushToThread<T = any>(
+  threadId: number,
+  type: string,
+  payload: T
+) {
+  const [rows] = await db.query<(RowDataPacket & { user_id: number })[]>(
+    "SELECT user_id FROM chat_participants WHERE thread_id = ?",
+    [threadId]
+  );
+  for (const r of rows || []) pushToUser(Number(r.user_id), type, payload);
+}
+
+/** Calcola unread (totale + per thread) e invia all’utente */
+export async function pushUnreadToUser(userId: number) {
+  const unread = await getUnreadForUser(userId);
+  pushToUser(userId, "chat:unread:update", unread);
+}
+
+/** Calcolo unread riusato da pushUnreadToUser */
+async function getUnreadForUser(userId: number): Promise<{ total: number; byThread: Record<number, number> }> {
+  const [rows] = await db.query<(RowDataPacket & { threadId: number; unread: number })[]>(
+    `
+    SELECT
+      t.id AS threadId,
+      COUNT(m.id) AS unread
+    FROM chat_threads t
+    JOIN chat_participants cp
+      ON cp.thread_id = t.id AND cp.user_id = ?
+    LEFT JOIN chat_messages m
+      ON m.thread_id = t.id
+     AND m.id > COALESCE(cp.last_read_message_id, 0)
+     AND m.sender_id <> ?
+    GROUP BY t.id
+    `,
+    [userId, userId]
+  );
+
+  const byThread: Record<number, number> = {};
+  let total = 0;
+  for (const r of rows || []) {
+    const n = Number(r.unread || 0);
+    byThread[Number(r.threadId)] = n;
+    total += n;
+  }
+  return { total, byThread };
+}
+
+/** Monta il WebSocket server */
 export function attachWs(server: HttpServer) {
   const wss = new WebSocketServer({ server, path: "/ws" });
 
   wss.on("connection", (socket: AuthedWs, req: IncomingMessage) => {
-    // Estrae token dalla query string: ws://host/ws?token=...
+    // token nella query: ws://host/ws?token=...
     const url = new URL(req.url || "", "http://localhost");
     const token = url.searchParams.get("token") || "";
 
     try {
-      // Il tuo auth.ts firma così: { id, username, type }
-      const payload = jwt.verify(
-        token,
-        process.env.JWT_SECRET || "dev-secret"
-      ) as jwt.JwtPayload & { id?: number; username?: string; type?: string };
-
-      if (!payload || typeof payload.id !== "number") {
-        throw new Error("jwt payload missing id");
-      }
-
+      const payload = jwt.verify(token, process.env.JWT_SECRET || "dev-secret") as
+        jwt.JwtPayload & { id?: number };
+      if (!payload || typeof payload.id !== "number") throw new Error("bad jwt");
       socket.userId = payload.id;
     } catch {
       socket.close(4001, "unauthorized");
       return;
     }
 
-    // Registra la connessione nella mappa
     if (!clients.has(socket.userId!)) clients.set(socket.userId!, new Set());
     clients.get(socket.userId!)!.add(socket);
 
-    socket.on("message", async (data: RawData) => {
+    socket.on("message", (data: RawData) => {
       try {
         const msg = JSON.parse(data.toString());
-
-        // Schema atteso: { type: 'send', conversationId: number, body: string }
-        if (msg?.type === "send") {
-          const { conversationId, body } = msg;
-          if (
-            typeof conversationId !== "number" ||
-            typeof body !== "string" ||
-            !body.trim()
-          ) {
-            return;
-          }
-
-          // Salva messaggio
-          const [result] = await pool.query(
-            "INSERT INTO messages (conversation_id, sender_id, body) VALUES (?, ?, ?)",
-            [conversationId, socket.userId, body]
-          );
-          const messageId = (result as any).insertId;
-
-          // Recupera partecipanti della conversazione
-          const [rows] = await pool.query(
-            "SELECT sender_id, user_id FROM conversation_participants WHERE conversation_id = ?",
-            [conversationId]
-          );
-
-          const participants: number[] = Array.isArray(rows)
-            ? rows
-                .map((r: any) =>
-                  r.sender_id != null ? Number(r.sender_id) : Number(r.user_id)
-                )
-                .filter((n: number) => Number.isFinite(n))
-            : [];
-
-          // Payload verso i client
-          const outgoing = JSON.stringify({
-            type: "message",
-            item: {
-              id: messageId,
-              conversation_id: conversationId,
-              sender_id: socket.userId,
-              body,
-              created_at: new Date().toISOString(),
-            },
-          });
-
-          // Broadcast ai partecipanti connessi
-          for (const uid of participants) {
-            const set = clients.get(uid);
-            if (!set) continue;
-            for (const s of set) {
-              if (s.readyState === WebSocket.OPEN) {
-                s.send(outgoing);
-              }
-            }
-          }
+        if (msg?.type === "ping") {
+          socket.send(JSON.stringify({ type: "pong", payload: Date.now() }));
         }
-      } catch (e) {
-        console.error("[ws][message] error:", e);
-      }
+      } catch { /* ignore parse errors */ }
     });
 
     socket.on("close", () => {

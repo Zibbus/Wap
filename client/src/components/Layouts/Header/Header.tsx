@@ -5,19 +5,21 @@ import { useLoginModal } from "../../../hooks/useLoginModal";
 import { useAuth } from "../../../hooks/useAuth";
 import logo from "../../../assets/IconaMyFitNoBG.png";
 import ThemeToggle from "../Header/drop-down_menu/ThemeToggle";
-import { api } from "../../../services/api"; // 👈 aggiunto per il fallback avatar
+import { api } from "../../../services/api";
+
+// In questo header NON servono funzioni di chat aggiuntive:
+// import { listConversations } from "../../../services/chat";
 
 function getInitials(username?: string | null) {
   if (!username) return "U";
   const clean = username.trim();
   if (!clean) return "U";
-  // Se contiene separatori (nome cognome), prendi le prime 2 iniziali
   const parts = clean.split(/[\s._-]+/).filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return clean.slice(0, 2).toUpperCase();
 }
 
-// 👇 helper locale per supportare URL relativi (/uploads/...)
+// 👇 helper per URL relativi (/uploads/...)
 function toAbsoluteUrl(url?: string | null) {
   if (!url) return "";
   if (/^https?:\/\//i.test(url)) return url;
@@ -33,15 +35,14 @@ export default function Header() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { openLoginModal } = useLoginModal();
 
-  // 👇 prende anche updateAvatarUrl per sincronizzare l'header
   const { authData, logout, updateAvatarUrl } = useAuth();
-
   const isLoggedIn = !!authData;
   const username = authData?.username;
-  const userType = authData?.role ?? "utente";
-
-  // 👇 avatar letto da authData (viene aggiornato da updateAvatarUrl nel profilo)
+  const userType = (authData?.role as "utente" | "professionista" | "admin") ?? "utente";
   const avatarUrl = authData?.avatarUrl ?? null;
+
+  /* 🔔 Totale messaggi non letti (mostrato accanto a "Le mie chat") */
+  const [unreadTotal, setUnreadTotal] = useState<number>(0);
 
   // Chiudi il menu quando clicchi fuori
   useEffect(() => {
@@ -60,32 +61,69 @@ export default function Header() {
     if (dropdownOpen) closeDropdown();
   }, [location.pathname]);
 
-  // 👇 Fallback avatar: se loggato ma avatar mancante, prova a leggerlo dal profilo
+  // Fallback avatar: se loggato ma avatar mancante, prova a leggerlo dal profilo
   useEffect(() => {
     let cancelled = false;
-
     async function fetchAvatarIfMissing() {
       if (!isLoggedIn || avatarUrl) return;
       try {
-        const me = await api.get<any>("/api/profile");
+        const me = await api.get<any>("/profile");
         const fromProfile: string | null =
           me?.professional?.avatar_url ??
           me?.avatar_url ??
           null;
-
-        if (!cancelled && fromProfile) {
-          updateAvatarUrl(fromProfile);
-        }
-      } catch {
-        // silenzioso: non bloccare l'header per un fallback non essenziale
-      }
+        if (!cancelled && fromProfile) updateAvatarUrl(fromProfile);
+      } catch {}
     }
-
     fetchAvatarIfMissing();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [isLoggedIn, avatarUrl, updateAvatarUrl]);
+
+  /* 🔔 Fetch non letti + refresh su visibilità + polling leggero */
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    let timeoutId: number | undefined;
+
+    const pull = async () => {
+      try {
+        // NB: endpoint già esistente lato backend
+        const data = await api.get<{ total: number; byThread: Record<number, number> }>("/chat/unread");
+        setUnreadTotal(Number(data?.total || 0));
+      } catch {
+        // ignora errori silenziosamente
+      }
+    };
+
+    // Primo fetch immediato
+    pull();
+
+    // Polling (15s) come fallback
+    const loop = async () => {
+      await pull();
+      timeoutId = window.setTimeout(loop, 15000);
+    };
+    timeoutId = window.setTimeout(loop, 15000);
+
+    // Aggiorna quando la tab torna visibile
+    const onVisibility = () => { if (document.visibilityState === "visible") pull(); };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    // Aggiorna subito se la ChatPage emette questo evento dopo aver marcato come letto
+    const onSync = () => pull();
+    window.addEventListener("chat:unread:sync", onSync as any);
+
+    // (Compatibilità) se altrove avevi usato "myfit:unread:refresh", lo ascoltiamo lo stesso
+    const onCompat = () => pull();
+    window.addEventListener("myfit:unread:refresh", onCompat as any);
+
+    return () => {
+      timeoutId && clearTimeout(timeoutId);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("chat:unread:sync", onSync as any);
+      window.removeEventListener("myfit:unread:refresh", onCompat as any);
+    };
+  }, [isLoggedIn]);
 
   const closeDropdown = () => {
     setAnimateClose(true);
@@ -186,27 +224,31 @@ export default function Header() {
                 e.stopPropagation();
                 setDropdownOpen((v) => !v);
               }}
-              className="flex items-center gap-2 font-bold text-lg px-3 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+              className="relative flex items-center gap-2 font-bold text-lg px-3 py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
               aria-haspopup="menu"
               aria-expanded={dropdownOpen}
               title={username ? `Account di ${username}` : "Account"}
             >
-              <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden flex items-center justify-center">
-                {avatarUrl ? (
-                  <img
-                    src={toAbsoluteUrl(avatarUrl)}
-                    alt="Avatar"
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : userType === "admin" ? (
-                  <Shield className="w-6 h-6 text-red-500" />
-                ) : (
-                  <span className="text-sm font-semibold text-gray-600 dark:text-gray-200 select-none">
-                    {getInitials(username)}
-                  </span>
-                )}
+              {/* Avatar + (niente badge qui) */}
+              <div className="relative w-10 h-10">
+                <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden flex items-center justify-center">
+                  {avatarUrl ? (
+                    <img
+                      src={toAbsoluteUrl(avatarUrl)}
+                      alt="Avatar"
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : userType === "admin" ? (
+                    <Shield className="w-6 h-6 text-red-500" />
+                  ) : (
+                    <span className="text-sm font-semibold text-gray-600 dark:text-gray-200 select-none">
+                      {getInitials(username)}
+                    </span>
+                  )}
+                </div>
               </div>
+
               <span className="whitespace-nowrap text-gray-800 dark:text-gray-100 text-lg font-extrabold">
                 Ciao, {username}
               </span>
@@ -247,6 +289,7 @@ export default function Header() {
                     Impostazioni
                   </div>
 
+                  {/* Utente standard */}
                   {userType === "utente" && (
                     <>
                       <div
@@ -254,9 +297,15 @@ export default function Header() {
                           navigate("/chat");
                           closeDropdown();
                         }}
-                        className={dropdownItemClass}
+                        className={`${dropdownItemClass} flex items-center justify-between`}
+                        role="menuitem"
                       >
-                        Le mie chat
+                        <span>Le mie chat</span>
+                        {unreadTotal > 0 && (
+                          <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                            {unreadTotal > 99 ? "99+" : unreadTotal}
+                          </span>
+                        )}
                       </div>
                       <div
                         onClick={() => {
@@ -281,6 +330,7 @@ export default function Header() {
                     </>
                   )}
 
+                  {/* Professionista */}
                   {userType === "professionista" && (
                     <>
                       <div
@@ -288,10 +338,15 @@ export default function Header() {
                           navigate("/chat");
                           closeDropdown();
                         }}
-                        className={dropdownItemClass}
+                        className={`${dropdownItemClass} flex items-center justify-between`}
                         role="menuitem"
                       >
-                        I miei clienti
+                        <span>Le mie chat</span>
+                        {unreadTotal > 0 && (
+                          <span className="rounded-full bg-indigo-600 px-2 py-0.5 text-[11px] font-semibold text-white">
+                            {unreadTotal > 99 ? "99+" : unreadTotal}
+                          </span>
+                        )}
                       </div>
                       <div
                         onClick={() => {
@@ -306,6 +361,7 @@ export default function Header() {
                     </>
                   )}
 
+                  {/* Admin */}
                   {userType === "admin" && (
                     <>
                       <div

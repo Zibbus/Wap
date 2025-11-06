@@ -1,7 +1,9 @@
 CREATE DATABASE IF NOT EXISTS myfit;
+USE myfit;
 
-use myfit;
-
+-- =========================
+-- SCHEMA BASE (TUO)
+-- =========================
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(32) NOT NULL UNIQUE,
@@ -51,11 +53,10 @@ CREATE TABLE IF NOT EXISTS exercises (
   FOREIGN KEY (musclegroups_id) REFERENCES muscle_groups(id)  
 );
 
-/* Scheda creata dal cliente o dal professionista */
 CREATE TABLE IF NOT EXISTS schedules (
   id INT AUTO_INCREMENT PRIMARY KEY,
   customer_id INT NOT NULL,
-  freelancer_id INT NULL, -- se NULL vuol dire che il cliente si è creato la scheda da solo
+  freelancer_id INT NULL,
   expire DATE NULL,
   goal ENUM('peso_costante','aumento_peso','perdita_peso','altro'),
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE,
@@ -71,7 +72,6 @@ CREATE TABLE IF NOT EXISTS days (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-/* tabella ponte tra scheda e esercizi */
 CREATE TABLE IF NOT EXISTS schedule_exercise (
   id INT AUTO_INCREMENT PRIMARY KEY,
   day_id INT NOT NULL,
@@ -86,10 +86,9 @@ CREATE TABLE IF NOT EXISTS schedule_exercise (
   FOREIGN KEY (exercise_id) REFERENCES exercises(id)
 );
 
-/* PARTE NUTRIZIONALE */
--- ------------------------------------------------------
--- Master alimenti (facoltativo ma utile per riuso/ricerca)
--- ------------------------------------------------------
+-- =========================
+-- NUTRIZIONE (TUO)
+-- =========================
 CREATE TABLE IF NOT EXISTS foods (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(150) NOT NULL,
@@ -101,9 +100,6 @@ CREATE TABLE IF NOT EXISTS foods (
   UNIQUE KEY uq_foods_name (name)
 );
 
--- ------------------------------------------------------
--- PIANO NUTRIZIONALE (testa) — simile a schedules
--- ------------------------------------------------------
 CREATE TABLE IF NOT EXISTS nutrition_plans (
   id INT AUTO_INCREMENT PRIMARY KEY,
   customer_id INT NOT NULL,
@@ -117,9 +113,6 @@ CREATE TABLE IF NOT EXISTS nutrition_plans (
   FOREIGN KEY (freelancer_id) REFERENCES freelancers(id) ON DELETE SET NULL
 );
 
--- ------------------------------------------------------
--- GIORNI DEL PIANO — simile a days (con CHECK 1..7)
--- ------------------------------------------------------
 CREATE TABLE IF NOT EXISTS nutrition_days (
   id INT AUTO_INCREMENT PRIMARY KEY,
   plan_id INT NOT NULL,
@@ -129,32 +122,25 @@ CREATE TABLE IF NOT EXISTS nutrition_days (
   FOREIGN KEY (plan_id) REFERENCES nutrition_plans(id) ON DELETE CASCADE
 );
 
--- ------------------------------------------------------
--- PASTI DEL GIORNO (ordine con position)
--- ------------------------------------------------------
 CREATE TABLE IF NOT EXISTS nutrition_meals (
   id INT AUTO_INCREMENT PRIMARY KEY,
   day_id INT NOT NULL,
-  position TINYINT NOT NULL DEFAULT 1, -- ordine nel giorno
-  name VARCHAR(80) NOT NULL,           -- es: Colazione / Spuntino / Pranzo / Cena
+  position TINYINT NOT NULL DEFAULT 1,
+  name VARCHAR(80) NOT NULL,
   notes TEXT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_day_position (day_id, position),
   FOREIGN KEY (day_id) REFERENCES nutrition_days(id) ON DELETE CASCADE
 );
 
--- ------------------------------------------------------
--- RIGHE ALIMENTI/ITEMS PER PASTO (ordine con position)
--- ------------------------------------------------------
 CREATE TABLE IF NOT EXISTS nutrition_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   meal_id INT NOT NULL,
-  position TINYINT NOT NULL DEFAULT 1,   -- ordine nel pasto
-  food_id INT NULL,                      -- opzionale: link a foods
-  description VARCHAR(200) DEFAULT NULL, -- opzionale: testo libero
-  qty DECIMAL(8,2) DEFAULT NULL,         -- quantità
+  position TINYINT NOT NULL DEFAULT 1,
+  food_id INT NULL,
+  description VARCHAR(200) DEFAULT NULL,
+  qty DECIMAL(8,2) DEFAULT NULL,
   unit ENUM('g','ml','pcs','cup','tbsp','tsp','slice') DEFAULT 'g',
-  -- Valori nutrizionali per questa riga (scelti o calcolati lato backend)
   kcal INT UNSIGNED DEFAULT NULL,
   protein_g DECIMAL(6,2) DEFAULT NULL,
   carbs_g DECIMAL(6,2) DEFAULT NULL,
@@ -165,9 +151,6 @@ CREATE TABLE IF NOT EXISTS nutrition_items (
   FOREIGN KEY (food_id)  REFERENCES foods(id)          ON DELETE SET NULL
 );
 
--- ------------------------------------------------------
--- (Opzionale) Target macro giornalieri
--- ------------------------------------------------------
 CREATE TABLE IF NOT EXISTS nutrition_day_targets (
   id INT AUTO_INCREMENT PRIMARY KEY,
   day_id INT NOT NULL,
@@ -181,83 +164,71 @@ CREATE TABLE IF NOT EXISTS nutrition_day_targets (
   FOREIGN KEY (day_id) REFERENCES nutrition_days(id) ON DELETE CASCADE
 );
 
-/* =========================================================
-   PROFILO PUBBLICO PROFESSIONISTI
-   ========================================================= */
+-- =========================
+-- PROFILO PROFESSIONISTI (TUO)
+-- =========================
 CREATE TABLE IF NOT EXISTS professional_profiles (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  freelancer_id INT NOT NULL UNIQUE,             -- 1 profilo per freelancer
-  display_name VARCHAR(150) NOT NULL,            -- es. "Ruben Moretti"
+  freelancer_id INT NOT NULL UNIQUE,
+  display_name VARCHAR(150) NOT NULL,
   role ENUM('personal_trainer','nutrizionista') NOT NULL DEFAULT 'personal_trainer',
   city VARCHAR(120) NULL,
   price_per_hour DECIMAL(8,2) DEFAULT 0.00,
-  specialties JSON DEFAULT (JSON_ARRAY()),       -- es. ["ipertrofia","dimagrimento"]
-  languages JSON DEFAULT (JSON_ARRAY()),         -- es. ["IT","EN"]
+  specialties JSON DEFAULT (JSON_ARRAY()),
+  languages JSON DEFAULT (JSON_ARRAY()),
   bio TEXT NULL,
-  avatar_url VARCHAR(500) NULL,                  -- URL assoluto o /uploads/...
+  avatar_url VARCHAR(500) NULL,
   verified TINYINT(1) NOT NULL DEFAULT 0,
   online TINYINT(1) NOT NULL DEFAULT 0,
-  rating DECIMAL(3,2) NOT NULL DEFAULT 0.00,     -- 0..5
+  rating DECIMAL(3,2) NOT NULL DEFAULT 0.00,
   reviews_count INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_professional_profiles_freelancer
     FOREIGN KEY (freelancer_id) REFERENCES freelancers(id) ON DELETE CASCADE
 );
 
-/* =========================================================
-   IMPOSTAZIONI UTENTE (preferenze personali)
-   ========================================================= */
+-- =========================
+-- USER SETTINGS (TUO)
+-- =========================
 CREATE TABLE IF NOT EXISTS user_settings (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL UNIQUE,
-
-  -- Copie "comode" per query/filtri
   theme         ENUM('light','dark','system') NOT NULL DEFAULT 'system',
   locale        VARCHAR(10)                   NOT NULL DEFAULT 'it-IT',
   weight_unit   ENUM('kg','lb')               NOT NULL DEFAULT 'kg',
   height_unit   ENUM('cm','in')               NOT NULL DEFAULT 'cm',
   distance_unit ENUM('km','mi')               NOT NULL DEFAULT 'km',
-
-  -- Facoltativi: se vuoi riflettere altre chiavi a livello colonna
   time_format   ENUM('24h','12h')             NOT NULL DEFAULT '24h',
   currency      ENUM('EUR','USD','GBP')       NOT NULL DEFAULT 'EUR',
   energy_unit   ENUM('kcal','kJ')             NOT NULL DEFAULT 'kcal',
-
-  -- Preferenze strutturate (comode ma opzionali)
   notifications JSON DEFAULT (JSON_OBJECT('email', true, 'push', false, 'chat', true)),
   privacy       JSON DEFAULT (JSON_OBJECT('profileVisibility','public','showOnline', true)),
   accessibility JSON DEFAULT (JSON_OBJECT('reducedMotion', false, 'highContrast', false, 'fontScale', 100)),
   professional  JSON DEFAULT (JSON_OBJECT('isAvailableOnline', false, 'autoAcceptChat', false)),
-
-  -- Fonte di verità completa
   settings      JSON NULL,
-
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-
   CONSTRAINT fk_user_settings_user
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
-/* ===========================
-   CHAT / MESSAGGI
-   =========================== */
--- Conversazioni (thread)
+
+-- =========================
+-- CHAT / MESSAGGI (TUO + UNREAD)
+-- =========================
 CREATE TABLE IF NOT EXISTS chat_threads (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Partecipanti (2 nel tuo caso, ma aperta a N)
 CREATE TABLE IF NOT EXISTS chat_participants (
   thread_id BIGINT UNSIGNED NOT NULL,
   user_id   INT NOT NULL,
-  last_read_message_id BIGINT UNSIGNED NULL,
+  last_read_message_id BIGINT UNSIGNED NULL DEFAULT 0,
   PRIMARY KEY (thread_id, user_id),
   FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE,
   FOREIGN KEY (user_id)   REFERENCES users(id)        ON DELETE CASCADE
 );
 
--- Messaggi
 CREATE TABLE IF NOT EXISTS chat_messages (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   thread_id BIGINT UNSIGNED NOT NULL,
@@ -268,11 +239,9 @@ CREATE TABLE IF NOT EXISTS chat_messages (
   FOREIGN KEY (sender_id) REFERENCES users(id)        ON DELETE CASCADE
 );
 
--- Per legare "utente X" e "professionista Y" ad un singolo thread
--- (evita duplicati quando clicchi 'Contatta' più volte)
 CREATE TABLE IF NOT EXISTS chat_links (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  user_a INT NOT NULL,  -- ordiniamo min/max per unicità
+  user_a INT NOT NULL,
   user_b INT NOT NULL,
   thread_id BIGINT UNSIGNED NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -282,7 +251,6 @@ CREATE TABLE IF NOT EXISTS chat_links (
   FOREIGN KEY (thread_id) REFERENCES chat_threads(id) ON DELETE CASCADE
 );
 
-/* ============ CHAT: ALLEGATI ============ */
 CREATE TABLE IF NOT EXISTS chat_attachments (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   message_id BIGINT UNSIGNED NOT NULL,
@@ -293,3 +261,101 @@ CREATE TABLE IF NOT EXISTS chat_attachments (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE
 );
+
+-- =========================
+-- INDICI PERFORMANCE & UNREAD (IDEMPOTENTI, COMPATIBILI)
+-- =========================
+DROP PROCEDURE IF EXISTS add_index_if_not_exists;
+CREATE PROCEDURE add_index_if_not_exists(
+  IN p_table VARCHAR(64),
+  IN p_index VARCHAR(64),
+  IN p_stmt  TEXT
+)
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name   = p_table
+      AND index_name   = p_index
+  ) THEN
+    SET @sql = p_stmt;
+    PREPARE s FROM @sql;
+    EXECUTE s;
+    DEALLOCATE PREPARE s;
+  END IF;
+END;
+
+-- users
+CALL add_index_if_not_exists('users','idx_users_email',
+  'ALTER TABLE `users` ADD INDEX `idx_users_email` (`email`)');
+CALL add_index_if_not_exists('users','idx_users_username',
+  'ALTER TABLE `users` ADD INDEX `idx_users_username` (`username`)');
+
+-- chat_participants
+CALL add_index_if_not_exists('chat_participants','idx_cp_user_thread',
+  'ALTER TABLE `chat_participants` ADD INDEX `idx_cp_user_thread` (`user_id`,`thread_id`)');
+CALL add_index_if_not_exists('chat_participants','idx_cp_thread_user',
+  'ALTER TABLE `chat_participants` ADD INDEX `idx_cp_thread_user` (`thread_id`,`user_id`)');
+CALL add_index_if_not_exists('chat_participants','idx_cp_last_read',
+  'ALTER TABLE `chat_participants` ADD INDEX `idx_cp_last_read` (`last_read_message_id`)');
+
+-- chat_messages
+CALL add_index_if_not_exists('chat_messages','idx_cm_thread_id',
+  'ALTER TABLE `chat_messages` ADD INDEX `idx_cm_thread_id` (`thread_id`)');
+CALL add_index_if_not_exists('chat_messages','idx_cm_thread_id_id',
+  'ALTER TABLE `chat_messages` ADD INDEX `idx_cm_thread_id_id` (`thread_id`,`id`)');
+CALL add_index_if_not_exists('chat_messages','idx_cm_sender_id',
+  'ALTER TABLE `chat_messages` ADD INDEX `idx_cm_sender_id` (`sender_id`)');
+
+-- chat_attachments
+CALL add_index_if_not_exists('chat_attachments','idx_ca_message_id',
+  'ALTER TABLE `chat_attachments` ADD INDEX `idx_ca_message_id` (`message_id`)');
+
+-- opzionale: pulizia
+DROP PROCEDURE IF EXISTS add_index_if_not_exists;
+
+-- =========================
+-- VIEW DI SUPPORTO
+-- =========================
+CREATE OR REPLACE VIEW v_chat_last_message AS
+SELECT m.thread_id,
+       MAX(m.id) AS last_message_id
+FROM chat_messages m
+GROUP BY m.thread_id;
+
+CREATE OR REPLACE VIEW v_chat_unread_per_user_thread AS
+SELECT
+  cp.user_id,
+  t.id AS thread_id,
+  COUNT(m.id) AS unread
+FROM chat_threads t
+JOIN chat_participants cp
+  ON cp.thread_id = t.id
+LEFT JOIN chat_messages m
+  ON m.thread_id = t.id
+ AND m.id > COALESCE(cp.last_read_message_id, 0)
+ AND m.sender_id <> cp.user_id
+GROUP BY cp.user_id, t.id;
+
+-- =========================
+-- BACKFILL (Scegli UNA delle due opzioni)
+-- =========================
+-- Opzione A: segna tutto come LETTO allo stato attuale
+UPDATE chat_participants cp
+LEFT JOIN (
+  SELECT thread_id, MAX(id) AS max_id
+  FROM chat_messages
+  GROUP BY thread_id
+) lm ON lm.thread_id = cp.thread_id
+SET cp.last_read_message_id = COALESCE(lm.max_id, 0)
+WHERE COALESCE(cp.last_read_message_id, 0) = 0;
+
+-- Opzione B (alternativa): considera tutto NON LETTO
+-- UPDATE chat_participants SET last_read_message_id = 0;
+
+-- =========================
+-- CHECK RAPIDO (facoltativo)
+-- =========================
+-- SELECT * FROM v_chat_unread_per_user_thread WHERE user_id = 1;
+-- SELECT * FROM v_chat_last_message;

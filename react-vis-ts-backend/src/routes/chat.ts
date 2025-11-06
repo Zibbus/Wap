@@ -2,6 +2,7 @@ import { Router } from "express";
 import db from "../db";
 import requireAuth from "../middleware/requireAuth";
 import type { RowDataPacket, ResultSetHeader } from "mysql2/promise";
+import { pushToThread, pushUnreadToUser } from "../ws";
 
 /* 🔽 NEW: upload allegati */
 import multer from "multer";
@@ -74,10 +75,8 @@ router.post("/start", requireAuth, async (req: any, res) => {
 
     // partecipanti
     await db.query("INSERT INTO chat_participants (thread_id, user_id) VALUES (?, ?), (?, ?)", [
-      threadId,
-      a,
-      threadId,
-      b,
+      threadId, a,
+      threadId, b,
     ]);
 
     // link
@@ -85,11 +84,27 @@ router.post("/start", requireAuth, async (req: any, res) => {
   }
 
   // messaggio iniziale opzionale
-  if (text && String(text).trim()) {
-    await db.query<ResultSetHeader>(
+  const trimmed = String(text || "").trim();
+  if (trimmed) {
+    const [ins] = await db.query<ResultSetHeader>(
       "INSERT INTO chat_messages (thread_id, sender_id, body) VALUES (?, ?, ?)",
-      [threadId, me, String(text).trim()]
+      [threadId, me, trimmed]
     );
+
+    // 🔔 WS: notifica nel thread
+    await pushToThread(threadId, "chat:message:new", {
+      threadId,
+      message: { id: ins.insertId, senderId: me, body: trimmed, createdAt: new Date().toISOString() },
+    });
+
+    // 🔔 aggiorna badge dell’altro
+    const [others] = await db.query<RowDataPacket[]>(
+      "SELECT user_id FROM chat_participants WHERE thread_id=? AND user_id<>?",
+      [threadId, me]
+    );
+    for (const row of others) {
+      await pushUnreadToUser(Number(row.user_id));
+    }
   }
 
   res.json({ ok: true, threadId });
@@ -137,9 +152,7 @@ router.post("/start-by-username", requireAuth, async (req: any, res) => {
           : undefined;
 
       if (!threadId) {
-        const [thrIns] = await conn.query<ResultSetHeader>(
-          "INSERT INTO chat_threads () VALUES ()"
-        );
+        const [thrIns] = await conn.query<ResultSetHeader>("INSERT INTO chat_threads () VALUES ()");
         threadId = thrIns.insertId;
 
         await conn.query(
@@ -154,14 +167,33 @@ router.post("/start-by-username", requireAuth, async (req: any, res) => {
       }
 
       const firstText = String(text ?? "").trim();
+      let insertedId: number | null = null;
       if (firstText) {
-        await conn.query<ResultSetHeader>(
+        const [ins] = await conn.query<ResultSetHeader>(
           "INSERT INTO chat_messages (thread_id, sender_id, body) VALUES (?, ?, ?)",
           [threadId, me, firstText]
         );
+        insertedId = ins.insertId;
       }
 
       await conn.commit();
+
+      // 🔔 WS (se c'è messaggio iniziale)
+      if (firstText && insertedId) {
+        await pushToThread(threadId, "chat:message:new", {
+          threadId,
+          message: { id: insertedId, senderId: me, body: firstText, createdAt: new Date().toISOString() },
+        });
+
+        const [others] = await db.query<RowDataPacket[]>(
+          "SELECT user_id FROM chat_participants WHERE thread_id=? AND user_id<>?",
+          [threadId, me]
+        );
+        for (const row of others) {
+          await pushUnreadToUser(Number(row.user_id));
+        }
+      }
+
       return res.json({ ok: true, threadId });
     } catch (e) {
       await conn.rollback();
@@ -178,6 +210,7 @@ router.post("/start-by-username", requireAuth, async (req: any, res) => {
 /**
  * GET /api/chat/threads
  * - Lista dei thread dell'utente, con info dell’altro partecipante e ultimo messaggio
+ * - Include anche il conteggio dei messaggi NON letti (unread)
  */
 router.get("/threads", requireAuth, async (req: any, res) => {
   const me = req.user.id as number;
@@ -189,9 +222,10 @@ router.get("/threads", requireAuth, async (req: any, res) => {
       u.id          AS otherUserId,
       u.username    AS otherUsername,
       u.email       AS otherEmail,
-      COALESCE(u.avatar_url, pp.avatar_url) AS otherAvatarUrl,  -- 👈 fallback
+      COALESCE(u.avatar_url, pp.avatar_url) AS otherAvatarUrl,
       pm.body       AS lastBody,
-      pm.created_at AS lastAt
+      pm.created_at AS lastAt,
+      COUNT(m.id)   AS unread
     FROM chat_threads t
     JOIN chat_participants cpMe
       ON cpMe.thread_id = t.id AND cpMe.user_id = ?
@@ -212,12 +246,102 @@ router.get("/threads", requireAuth, async (req: any, res) => {
         GROUP BY thread_id
       ) last ON last.thread_id = m1.thread_id AND last.max_id = m1.id
     ) pm ON pm.thread_id = t.id
+    /* 🔴 messaggi non letti: id > last_read_message_id e non miei */
+    LEFT JOIN chat_messages m
+      ON m.thread_id = t.id
+     AND m.id > COALESCE(cpMe.last_read_message_id, 0)
+     AND m.sender_id <> ?
+    GROUP BY
+      t.id,
+      u.id, u.username, u.email,
+      COALESCE(u.avatar_url, pp.avatar_url),
+      pm.body, pm.created_at
     ORDER BY (pm.created_at IS NULL) ASC, pm.created_at DESC, t.id DESC
+    `,
+    [me, me, me]
+  );
+
+  res.json(rows);
+});
+
+/**
+ * GET /api/chat/unread
+ * - Ritorna totale e mappa per thread dei messaggi non letti
+ */
+router.get("/unread", requireAuth, async (req: any, res) => {
+  const me = req.user.id as number;
+
+  const [rows] = await db.query<RowDataPacket[]>(
+    `
+    SELECT
+      t.id AS threadId,
+      COUNT(m.id) AS unread
+    FROM chat_threads t
+    JOIN chat_participants cp
+      ON cp.thread_id = t.id AND cp.user_id = ?
+    LEFT JOIN chat_messages m
+      ON m.thread_id = t.id
+     AND m.id > COALESCE(cp.last_read_message_id, 0)
+     AND m.sender_id <> ?
+    GROUP BY t.id
     `,
     [me, me]
   );
 
-  res.json(rows);
+  const byThread: Record<number, number> = {};
+  let total = 0;
+  for (const r of rows) {
+    const threadId = Number(r.threadId);
+    const n = Number(r.unread || 0);
+    byThread[threadId] = n;
+    total += n;
+  }
+  res.json({ total, byThread });
+});
+
+/**
+ * POST /api/chat/read
+ * body: { threadId: number }
+ * - Aggiorna last_read_message_id al massimo id del thread
+ */
+router.post("/read", requireAuth, async (req: any, res) => {
+  const me = req.user.id as number;
+  const { threadId } = req.body || {};
+  const tid = Number(threadId);
+  if (!tid) return res.status(400).json({ error: "threadId mancante o non valido" });
+
+  // Verifica partecipazione
+  const [own] = await db.query<RowDataPacket[]>(
+    "SELECT 1 FROM chat_participants WHERE thread_id=? AND user_id=?",
+    [tid, me]
+  );
+  if (!own[0]) return res.status(403).json({ error: "Non partecipi a questo thread" });
+
+  // prendi ultimo messaggio
+  const [last] = await db.query<RowDataPacket[]>(
+    `SELECT MAX(id) AS max_id FROM chat_messages WHERE thread_id = ?`,
+    [tid]
+  );
+  const maxId = Number(last?.[0]?.max_id || 0);
+
+  await db.query<ResultSetHeader>(
+    `UPDATE chat_participants
+        SET last_read_message_id = ?
+      WHERE user_id = ? AND thread_id = ?`,
+    [maxId, me, tid]
+  );
+
+  res.json({ ok: true, last_read_message_id: maxId });
+
+  // 🔔 WS: aggiorna i miei badge globali
+  await pushUnreadToUser(me);
+
+  // 🔔 opzionale: avvisa gli altri partecipanti che ho letto
+  await pushToThread(tid, "chat:thread:read", {
+    threadId: tid,
+    readerId: me,
+    lastReadMessageId: maxId,
+  });
 });
 
 /**
@@ -276,11 +400,27 @@ router.post("/:threadId/messages", requireAuth, async (req: any, res) => {
   );
   if (!own[0]) return res.status(403).json({ error: "Non partecipi a questo thread" });
 
+  const clean = String(body).trim();
   const [ins] = await db.query<ResultSetHeader>(
     "INSERT INTO chat_messages (thread_id, sender_id, body) VALUES (?, ?, ?)",
-    [threadId, me, String(body).trim()]
+    [threadId, me, clean]
   );
+
   res.json({ ok: true, id: ins.insertId });
+
+  // 🔔 WS: evento + unread dell’altro
+  await pushToThread(threadId, "chat:message:new", {
+    threadId,
+    message: { id: ins.insertId, senderId: me, body: clean, createdAt: new Date().toISOString() },
+  });
+
+  const [others] = await db.query<RowDataPacket[]>(
+    "SELECT user_id FROM chat_participants WHERE thread_id=? AND user_id<>?",
+    [threadId, me]
+  );
+  for (const row of others) {
+    await pushUnreadToUser(Number(row.user_id));
+  }
 });
 
 /**
@@ -337,6 +477,29 @@ router.post("/:threadId/attachments", requireAuth, upload.single("file"), async 
       attachmentSize: size,
     },
   });
+
+  // 🔔 WS: evento + unread dell’altro
+  await pushToThread(threadId, "chat:message:new", {
+    threadId,
+    message: {
+      id: messageId,
+      senderId: me,
+      body: text,
+      createdAt: new Date().toISOString(),
+      attachmentUrl: url,
+      attachmentMime: mime,
+      attachmentName: filename,
+      attachmentSize: size,
+    },
+  });
+
+  const [others] = await db.query<RowDataPacket[]>(
+    "SELECT user_id FROM chat_participants WHERE thread_id=? AND user_id<>?",
+    [threadId, me]
+  );
+  for (const row of others) {
+    await pushUnreadToUser(Number(row.user_id));
+  }
 });
 
 export default router;
