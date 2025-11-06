@@ -1,35 +1,26 @@
-// client/src/pages/ChatPage.tsx
 import { useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
-import {
-  listConversations, // dal tuo services/chat.ts
-  getMessages,
-  sendMessage,
-} from "../services/chat";
+import { useLocation, useParams } from "react-router-dom";
+import { listConversations, getMessages, sendMessage } from "../services/chat";
 import { useAuth } from "../hooks/useAuth";
 
-// Tipi locali, allineati al payload di services/chat.ts
 type ConversationSummary = {
   conversationId: number;
   peer: { userId: number; name: string };
   lastBody: string | null;
   lastAt: string | null;
 };
-
-type Message = {
-  id: number;
-  senderId: number;
-  body: string;
-  createdAt: string;
-};
+type Message = { id: number; senderId: number; body: string; createdAt: string };
 
 export default function ChatPage() {
   const { authData } = useAuth();
   const myId = authData?.userId ?? null;
 
-  // supporta navigate('/chat', { state: { conversationId } })
-  const location = useLocation() as { state?: { conversationId?: number } };
-  const requestedId = location.state?.conversationId ?? null;
+  const location = useLocation() as { state?: { conversationId?: number; peer?: { userId: number; name: string } } };
+  const params = useParams();
+
+  const requestedFromState = location.state?.conversationId ?? null;
+  const requestedFromParam = params?.threadId && !Number.isNaN(Number(params.threadId)) ? Number(params.threadId) : null;
+  const requestedId = requestedFromState ?? requestedFromParam;
 
   const [convs, setConvs] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -38,43 +29,46 @@ export default function ChatPage() {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
 
-  // Carica e mappa le conversazioni
+  // helper: ricarica conversazioni
+  async function reloadConversations() {
+    const raw = await listConversations();
+    const list: ConversationSummary[] = raw.map((c: any) => ({
+      conversationId: c.threadId,
+      peer: { userId: c.otherUserId, name: c.otherUsername },
+      lastBody: c.lastBody,
+      lastAt: c.lastAt,
+    }));
+    setConvs(list);
+    return list;
+  }
+
+  // bootstrap: carica conversazioni e seleziona quella richiesta (se c’è)
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const raw = await listConversations();
-        // raw: { threadId, otherUserId, otherUsername, otherEmail, lastBody, lastAt }
-        const list: ConversationSummary[] = raw.map((c: {
-          threadId: number;
-          otherUserId: number;
-          otherUsername: string;
-          otherEmail: string | null;
-          lastBody: string | null;
-          lastAt: string | null;
-        }) => ({
-          conversationId: c.threadId,
-          peer: { userId: c.otherUserId, name: c.otherUsername },
-          lastBody: c.lastBody,
-          lastAt: c.lastAt,
-        }));
+        const list = await reloadConversations();
 
-        setConvs(list);
-
-        if (requestedId && list.some((c) => c.conversationId === requestedId)) {
-          setActiveId(requestedId);
-        } else if (list[0]) {
-          setActiveId(list[0].conversationId);
-        } else {
-          setActiveId(null);
+        // Se arrivo da "Contatta" e il thread NON è ancora in lista,
+        // inserisco un placeholder per far comparire il contatto subito.
+        if (requestedId && !list.some(c => c.conversationId === requestedId) && location.state?.peer) {
+          setConvs(prev => [
+            { conversationId: requestedId, peer: location.state!.peer!, lastBody: null, lastAt: null },
+            ...prev,
+          ]);
         }
+
+        if (requestedId) setActiveId(requestedId);
+        else if (list[0]) setActiveId(list[0].conversationId);
+        else setActiveId(null);
       } finally {
         setLoading(false);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedId]);
 
-  // Carica messaggi della conversazione attiva
+  // Carica messaggi quando cambia la conversazione attiva
   useEffect(() => {
     if (!activeId) return;
     (async () => {
@@ -92,6 +86,10 @@ export default function ChatPage() {
       await sendMessage(activeId, text);
       const msgs = await getMessages(activeId);
       setMessages(msgs as Message[]);
+      // aggiorna preview/ordine nella lista
+      const list = await reloadConversations();
+      // se la ricarica ha rimesso ordine, mantieni selezionato l'attuale
+      if (!list.some(c => c.conversationId === activeId)) setActiveId(list[0]?.conversationId ?? null);
     } finally {
       setSending(false);
     }

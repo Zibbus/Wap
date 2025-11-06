@@ -1,7 +1,24 @@
 // client/src/services/chat.ts
 import { api } from "./api";
 
-// ✅ NUOVO: apri/riusa chat passando l'USERNAME (univoco) e opzionale primo messaggio
+/** Tipi utili da riusare in ChatPage ecc. */
+export type ConversationListItem = {
+  threadId: number;
+  otherUserId: number;
+  otherUsername: string;
+  otherEmail: string | null;
+  lastBody: string | null;
+  lastAt: string | null;
+};
+
+export type ChatMessage = {
+  id: number;
+  senderId: number;
+  body: string;
+  createdAt: string;
+};
+
+// Apri/riusa via USERNAME (può anche inviare il primo messaggio)
 export async function openOrCreateConversationByUsername(
   toUsername: string,
   text?: string
@@ -14,11 +31,10 @@ export async function openOrCreateConversationByUsername(
   return { conversationId: res.threadId };
 }
 
-// alias storico: openOrCreateConversation -> /api/chat/start (by userId)
+// Apri/riusa via userId (fallback)
 export async function openOrCreateConversation(
   toUserId: number
 ): Promise<{ conversationId: number }> {
-  // la nostra start crea/riutilizza il thread e ritorna { threadId }
   const res = await api.post<{ ok: true; threadId: number }>(
     "/chat/start",
     { toUserId }
@@ -26,36 +42,27 @@ export async function openOrCreateConversation(
   return { conversationId: res.threadId };
 }
 
-// alias: sendMessage -> POST /api/chat/:id/messages
+// Invia messaggio (con trimming + guardia locale)
 export async function sendMessage(
   conversationId: number,
   body: string
 ): Promise<{ ok: true; id: number }> {
+  const text = body.trim();
+  if (!text) throw new Error("Messaggio vuoto");
   return api.post<{ ok: true; id: number }>(
     `/chat/${conversationId}/messages`,
-    { body }
+    { body: text }
   );
 }
 
-// (lista e messaggi)
-export async function listConversations(): Promise<Array<{
-  threadId: number;
-  otherUserId: number;
-  otherUsername: string;
-  otherEmail: string | null;
-  lastBody: string | null;
-  lastAt: string | null;
-}>> {
-  return api.get("/chat/threads");
+// Lista conversazioni (tipizzata)
+export async function listConversations(): Promise<ConversationListItem[]> {
+  return api.get<ConversationListItem[]>("/chat/threads");
 }
 
+// Messaggi della conversazione (tipizzati)
 export async function getMessages(
   conversationId: number
-): Promise<Array<{
-  id: number;
-  senderId: number;
-  body: string;
-  createdAt: string;
-}>> {
-  return api.get(`/chat/${conversationId}/messages`);
+): Promise<ChatMessage[]> {
+  return api.get<ChatMessage[]>(`/chat/${conversationId}/messages`);
 }

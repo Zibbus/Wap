@@ -6,15 +6,21 @@ import {
   MessageSquare,
   Circle,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import type { Professional } from "../../types/professional";
 import { ROLE_LABEL } from "../../types/professional";
 import { useMemo } from "react";
+import { useAuth } from "../../hooks/useAuth";
+import {
+  openOrCreateConversationByUsername,
+  openOrCreateConversation,
+} from "../../services/chat";
 
 type Props = {
   p: Professional;
-  onMessage: () => void;
-  onCall: () => void;
-  onVideo: () => void;
+  onMessage?: () => void;
+  onCall?: () => void;
+  onVideo?: () => void;
 };
 
 const fmtEUR = new Intl.NumberFormat("it-IT", {
@@ -24,15 +30,52 @@ const fmtEUR = new Intl.NumberFormat("it-IT", {
 });
 
 export default function ProfileHeader({ p, onMessage }: Props) {
-  // SAFE: price con guardia
+  const navigate = useNavigate();
+  const { requireLogin } = useAuth();
+
   const price = useMemo(() => {
-    const value = Number.isFinite(p.pricePerHour as number) ? (p.pricePerHour as number) : 0;
+    const value = Number.isFinite(p.pricePerHour as number)
+      ? (p.pricePerHour as number)
+      : 0;
     return fmtEUR.format(value);
   }, [p.pricePerHour]);
 
-  // SAFE: rating & reviews con fallback
-  const rating = typeof p.rating === "number" && Number.isFinite(p.rating) ? p.rating : 0;
-  const reviewsCount = typeof p.reviewsCount === "number" ? p.reviewsCount : 0;
+  const rating =
+    typeof p.rating === "number" && Number.isFinite(p.rating) ? p.rating : 0;
+  const reviewsCount =
+    typeof p.reviewsCount === "number" ? p.reviewsCount : 0;
+
+  async function handleContact() {
+    const start = async () => {
+      // prova ad usare lo username (migliore), altrimenti fallback su userId
+      const firstText =
+        window.prompt("Scrivi il primo messaggio:", "Ciao! 🙂")?.trim() || undefined;
+
+      try {
+        if (p.username) {
+          const { conversationId } = await openOrCreateConversationByUsername(
+            p.username,
+            firstText
+          );
+          navigate("/chat", { state: { conversationId } });
+          return;
+        }
+        if (p.userId) {
+          const { conversationId } = await openOrCreateConversation(p.userId);
+          navigate("/chat", { state: { conversationId } });
+          return;
+        }
+        // se proprio mancano entrambi, apri la pagina chat “generica”
+        navigate("/chat");
+      } catch (err) {
+        console.error("Errore avvio chat:", err);
+        navigate("/chat");
+      }
+    };
+
+    // obbliga il login, poi esegue start()
+    requireLogin(start);
+  }
 
   return (
     <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
@@ -48,16 +91,23 @@ export default function ProfileHeader({ p, onMessage }: Props) {
             e.currentTarget.src = "/images/avatar-fallback.png";
           }}
         />
-        {/* Stato online/offline */}
         <span
           className="absolute -bottom-1 -right-1 inline-flex items-center gap-1 rounded-full border bg-white px-2 py-0.5 text-[10px] font-medium shadow-sm dark:bg-gray-900 dark:border-gray-700"
           title={p.online ? "Online" : "Offline"}
         >
           <Circle
-            className={`h-2.5 w-2.5 ${p.online ? "text-emerald-500" : "text-gray-400"}`}
+            className={`h-2.5 w-2.5 ${
+              p.online ? "text-emerald-500" : "text-gray-400"
+            }`}
             fill="currentColor"
           />
-          <span className={p.online ? "text-emerald-600 dark:text-emerald-400" : "text-gray-500 dark:text-gray-400"}>
+          <span
+            className={
+              p.online
+                ? "text-emerald-600 dark:text-emerald-400"
+                : "text-gray-500 dark:text-gray-400"
+            }
+          >
             {p.online ? "Online" : "Offline"}
           </span>
         </span>
@@ -92,7 +142,6 @@ export default function ProfileHeader({ p, onMessage }: Props) {
         <div className="mt-1 flex flex-wrap items-center gap-3 text-sm">
           <span className="inline-flex items-center gap-1 text-gray-800 dark:text-gray-100">
             <Star className="h-4 w-4 text-amber-500" aria-hidden />
-            {/* CHANGED: rating & reviews sicuri */}
             <span className="font-semibold">{rating.toFixed(1)}</span>
             <span className="text-gray-500 dark:text-gray-400">
               ({reviewsCount} recensioni)
@@ -109,8 +158,8 @@ export default function ProfileHeader({ p, onMessage }: Props) {
       {/* Azioni */}
       <div className="flex w-full justify-stretch gap-2 sm:w-auto sm:justify-end">
         <button
-          type="button" // CHANGED
-          onClick={onMessage}
+          type="button"
+          onClick={onMessage ?? handleContact}
           className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50 dark:bg-indigo-500 dark:hover:bg-indigo-400 sm:flex-none"
           aria-label={`Invia un messaggio a ${p.name}`}
         >

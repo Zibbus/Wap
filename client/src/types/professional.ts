@@ -17,7 +17,11 @@ export type Professional = {
   bio?: string;
   certificates?: string[];
   yearsExp?: number;
-  userId?: number;
+
+  // Identificativi utente per chat
+  userId?: number;        // arriva da backend come user_id
+  username?: string;      // ⬅️ aggiunto: usalo per aprire/riusare la chat by username
+
   email?: string | null;
 };
 

@@ -1,5 +1,5 @@
 // client/src/components/professionisti/Filters.tsx
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Search, X, Star } from "lucide-react";
 
 type Role = "all" | "personal_trainer" | "nutrizionista";
@@ -14,15 +14,6 @@ type Props = {
   }) => void;
 };
 
-/* Debounce utility */
-function useDebouncedCallback<T extends (...args: any[]) => void>(cb: T, delay = 300) {
-  const t = useRef<number | null>(null);
-  return (...args: Parameters<T>) => {
-    if (t.current) window.clearTimeout(t.current);
-    t.current = window.setTimeout(() => cb(...args), delay);
-  };
-}
-
 export default function Filters({ onChange }: Props) {
   const [q, setQ] = useState("");
   const [role, setRole] = useState<Role>("all");
@@ -30,30 +21,18 @@ export default function Filters({ onChange }: Props) {
   const [minRating, setMinRating] = useState(0);
   const [maxPrice, setMaxPrice] = useState<number | "">("");
 
-  const emit = useDebouncedCallback(
-    () => onChange({ q, role, onlineOnly, minRating, maxPrice }),
-    250
-  );
-
-  // Emissione immediata per: ruolo, onlineOnly, minRating (slider)
-  useEffect(() => {
+  // 🔘 applica esplicitamente i filtri correnti
+  const apply = () => {
     onChange({ q, role, onlineOnly, minRating, maxPrice });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, onlineOnly, minRating]);
+  };
 
-  // Debounce per: q, maxPrice
-  useEffect(() => {
-    emit();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, maxPrice]);
-
+  // ♻️ resetta i controlli ma NON applica finché non clicchi “Applica filtri”
   const reset = () => {
     setQ("");
     setRole("all");
     setOnlineOnly(false);
     setMinRating(0);
     setMaxPrice("");
-    onChange({ q: "", role: "all", onlineOnly: false, minRating: 0, maxPrice: "" });
   };
 
   const label = "text-[13px] font-medium text-gray-700 dark:text-gray-200";
@@ -88,7 +67,7 @@ export default function Filters({ onChange }: Props) {
               id="q"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && onChange({ q, role, onlineOnly, minRating, maxPrice })}
+              onKeyDown={(e) => e.key === "Enter" && apply()}
               placeholder="Cerca un professionista nella tua zona…"
               className="
                 h-12 w-full rounded-full bg-transparent pl-10 pr-10
@@ -176,82 +155,97 @@ export default function Filters({ onChange }: Props) {
           />
         </div>
 
-      {/* DISPONIBILITÀ (segmented pill moderno) + RESET */}
-      <div className="md:col-span-12 mt-1 flex items-center justify-between">
-        <div>
-          <span className="text-[13px] font-medium text-gray-700 dark:text-gray-200">Disponibilità</span>
-          <div
-            role="tablist"
-            aria-label="Filtro disponibilità"
-            className="
-              mt-1 inline-flex items-center gap-1 rounded-full border
-              border-gray-200 bg-white p-1 shadow-sm
-              dark:border-gray-700 dark:bg-gray-900
-            "
-          >
-            {/* Tutti */}
-            <button
-              role="tab"
-              aria-selected={!onlineOnly}
-              onClick={() => setOnlineOnly(false)}
-              className={`
-                rounded-full px-3 py-1.5 text-sm transition
-                ${!onlineOnly
-                  ? "bg-gray-900 text-white shadow dark:bg-white dark:text-gray-900"
-                  : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"}
-              `}
-              title="Mostra tutti"
+        {/* DISPONIBILITÀ + AZIONI */}
+        <div className="md:col-span-12 mt-1 flex items-center justify-between">
+          <div>
+            <span className="text-[13px] font-medium text-gray-700 dark:text-gray-200">Disponibilità</span>
+            <div
+              role="tablist"
+              aria-label="Filtro disponibilità"
+              className="
+                mt-1 inline-flex items-center gap-1 rounded-full border
+                border-gray-200 bg-white p-1 shadow-sm
+                dark:border-gray-700 dark:bg-gray-900
+              "
             >
-              Tutti
+              {/* Tutti */}
+              <button
+                role="tab"
+                aria-selected={!onlineOnly}
+                onClick={() => setOnlineOnly(false)}
+                className={`
+                  rounded-full px-3 py-1.5 text-sm transition
+                  ${!onlineOnly
+                    ? "bg-gray-900 text-white shadow dark:bg-white dark:text-gray-900"
+                    : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"}
+                `}
+                title="Mostra tutti"
+              >
+                Tutti
+              </button>
+
+              {/* Online */}
+              <button
+                role="tab"
+                aria-selected={onlineOnly}
+                onClick={() => setOnlineOnly(true)}
+                className={`
+                  group relative rounded-full px-3 py-1.5 text-sm transition
+                  ${onlineOnly
+                    ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.35)]"
+                    : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"}
+                `}
+                title="Solo professionisti online"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <svg
+                    className={`h-4 w-4 ${onlineOnly ? "opacity-100" : "opacity-70"} transition-opacity`}
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                  >
+                    <path d="M5 12.55a11 11 0 0 1 14.08 0" />
+                    <path d="M8.5 16a6 6 0 0 1 7 0" />
+                    <path d="M12 20h.01" />
+                  </svg>
+                  Online
+                  {onlineOnly && (
+                    <span className="relative ml-1.5 inline-flex">
+                      <span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-white/70 opacity-75"></span>
+                      <span className="relative inline-block h-2 w-2 rounded-full bg-white"></span>
+                    </span>
+                  )}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={reset}
+              className="
+                rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800
+                hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30
+                dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800
+              "
+              title="Reimposta filtri (non applica automaticamente)"
+            >
+              Reset
             </button>
 
-            {/* Online */}
             <button
-              role="tab"
-              aria-selected={onlineOnly}
-              onClick={() => setOnlineOnly(true)}
-              className={`
-                group relative rounded-full px-3 py-1.5 text-sm transition
-                ${onlineOnly
-                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.35)]"
-                  : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"}
-              `}
-              title="Solo professionisti online"
+              type="button"
+              onClick={apply}
+              className="
+                rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white
+                hover:bg-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40
+                dark:bg-indigo-500 dark:hover:bg-indigo-600
+              "
+              title="Applica i filtri"
             >
-              <span className="inline-flex items-center gap-1.5">
-                <svg
-                  className={`h-4 w-4 ${onlineOnly ? "opacity-100" : "opacity-70"} transition-opacity`}
-                  viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-                >
-                  <path d="M5 12.55a11 11 0 0 1 14.08 0" />
-                  <path d="M8.5 16a6 6 0 0 1 7 0" />
-                  <path d="M12 20h.01" />
-                </svg>
-                Online
-                {onlineOnly && (
-                  <span className="relative ml-1.5 inline-flex">
-                    <span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-white/70 opacity-75"></span>
-                    <span className="relative inline-block h-2 w-2 rounded-full bg-white"></span>
-                  </span>
-                )}
-              </span>
+              Applica filtri
             </button>
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={reset}
-          className="
-            rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800
-            hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/30
-            dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800
-          "
-          title="Reimposta filtri"
-        >
-          Reset
-        </button>
-      </div>
       </div>
     </section>
   );

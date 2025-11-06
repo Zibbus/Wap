@@ -6,9 +6,13 @@ import type { Professional } from "../types/professional";
 import List from "../components/professionisti/List";
 import Filters from "../components/professionisti/Filters";
 import { useAuth } from "../hooks/useAuth";
-import ChatModal from "../components/chat/ChatModal";
-// CHANGED: serve per aprire il modal di login se non autenticato
+// Se vuoi aprire il login modal quando non autenticato
 import { useLoginModal } from "../hooks/useLoginModal";
+
+import {
+  openOrCreateConversationByUsername,
+  openOrCreateConversation,
+} from "../services/chat";
 
 type FiltersState = {
   q: string;
@@ -20,8 +24,8 @@ type FiltersState = {
 
 export default function Professionisti() {
   const navigate = useNavigate();
-  const { requireLogin, authData } = useAuth(); // CHANGED: uso anche authData
-  const { openLoginModal } = useLoginModal();   // CHANGED
+  const { requireLogin, authData } = useAuth();
+  const { openLoginModal } = useLoginModal();
 
   const [items, setItems] = useState<Professional[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -34,9 +38,6 @@ export default function Professionisti() {
     minRating: 0,
     maxPrice: "",
   });
-
-  // CHANGED: target per ChatModal (compose)
-  const [composeTarget, setComposeTarget] = useState<{ userId: number; name: string } | null>(null);
 
   useEffect(() => {
     let stop = false;
@@ -63,22 +64,45 @@ export default function Professionisti() {
     navigate(`/professionisti/${id}`);
   };
 
-  // CHANGED: nuova logica "Contatta" con compose e login modal
+  // ⬇️ Contatta: crea/riusa thread e apri direttamente la chat selezionata
   const handleContact = (id: number) => {
+    // se non loggato, apri il modal (se lo usi)
     if (!authData) {
       openLoginModal();
       return;
     }
-    const p = items.find((x) => x.id === id);
-    if (!p) return;
 
-    if (!("userId" in p) || !p.userId) {
-      console.warn("Professional senza userId: aggiungi userId nel payload dell'API");
-      // fallback: usa la rotta /chat (nel tuo App.tsx esiste /chat, non /chat/:id)
-      return requireLogin(() => navigate(`/chat`)); // CHANGED
+    const pro = items.find((x) => x.id === id);
+    if (!pro) {
+      navigate("/chat"); // fallback
+      return;
     }
 
-    setComposeTarget({ userId: p.userId, name: p.name });
+    requireLogin(async () => {
+      try {
+        let conversationId: number | null = null;
+
+        if (pro.username) {
+          ({ conversationId } = await openOrCreateConversationByUsername(pro.username));
+        } else if (pro.userId) {
+          ({ conversationId } = await openOrCreateConversation(pro.userId));
+        }
+
+        if (conversationId) {
+          // Passo anche un "peer" facoltativo come placeholder per la colonna sinistra
+          navigate("/chat", {
+            state: { conversationId, peer: { userId: pro.userId ?? 0, name: pro.name } },
+          });
+        } else {
+          // Se non abbiamo username né userId, apri la chat generica
+          console.warn("Professional senza username/userId: aggiungi questi campi al payload API.");
+          navigate("/chat");
+        }
+      } catch (err) {
+        console.error("Errore apertura chat:", err);
+        navigate("/chat"); // fallback sicuro
+      }
+    });
   };
 
   return (
@@ -105,16 +129,6 @@ export default function Professionisti() {
         <div className="mt-6">
           <List items={items} onOpen={handleOpen} onContact={handleContact} />
         </div>
-      )}
-
-      {/* CHANGED: Chat compose modal */}
-      {composeTarget && (
-        <ChatModal
-          targetUserId={composeTarget.userId}
-          targetName={composeTarget.name}
-          onClose={() => setComposeTarget(null)}
-          onOpenChat={() => navigate(`/chat`)} // CHANGED: vai su /chat (la tua rotta esistente)
-        />
       )}
     </div>
   );

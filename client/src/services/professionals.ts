@@ -10,18 +10,30 @@ const parseJson = (x: unknown, fallback: any[] = []) => {
 
 const mapRowFromApi = (r: any): Professional => ({
   id: Number(r.id),
-  name: String(r.name ?? r.username ?? ""),
+  // Preferisci display_name/name, poi fallback a username
+  name: String(r.name ?? r.display_name ?? r.username ?? ""),
   role: r.role, // "personal_trainer" | "nutrizionista"
+
   online: !!r.online,
   rating: Number(r.rating ?? 0),
   reviewsCount: Number(r.reviews_count ?? r.reviewsCount ?? 0),
-  pricePerHour: Number(r.price_per_hour ?? r.pricePerHour ?? 0),
+  pricePerHour: r.price_per_hour != null ? Number(r.price_per_hour) :
+                r.pricePerHour != null ? Number(r.pricePerHour) : 0,
+
   city: r.city ?? null,
   specialties: parseJson(r.specialties),
   languages: parseJson(r.languages),
   verified: !!r.verified,
   avatarUrl: r.avatar_url ?? r.avatarUrl ?? null,
   bio: r.bio ?? null,
+
+  // 🔑 IMPORTANTI per la chat:
+  userId: r.user_id != null ? Number(r.user_id) :
+          r.userId != null ? Number(r.userId) : undefined,
+  username: r.username ?? undefined,
+
+  // opzionali
+  email: r.email ?? null,
 });
 
 export async function listProfessionals(params?: {
