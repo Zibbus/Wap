@@ -1,4 +1,3 @@
-// client/src/pages/ScheduleListPage.tsx
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -113,7 +112,9 @@ export default function ScheduleListPage() {
               return (
                 <div
                   key={s.id}
-                  className="bg-white rounded-2xl shadow p-6 hover:shadow-lg transition-all"
+                  className={`rounded-2xl shadow p-6 hover:shadow-lg transition-all bg-white ${
+                    expired ? "border border-red-200" : "border border-transparent"
+                  }`}
                 >
                   <h2 className="text-xl font-semibold text-indigo-700 mb-2 capitalize">
                     {s.goal?.replace("_", " ")}
@@ -143,7 +144,6 @@ export default function ScheduleListPage() {
           </div>
         )}
 
-        {/* bottone nutrizione in coda alla sezione allenamento */}
         <div className="mt-8 flex justify-center">
           <button
             onClick={() => navigate("/Workout")}
@@ -177,7 +177,9 @@ export default function ScheduleListPage() {
               return (
                 <div
                   key={p.id}
-                  className="bg-white rounded-2xl shadow p-6 hover:shadow-lg transition-all"
+                  className={`rounded-2xl shadow p-6 hover:shadow-lg transition-all bg-white ${
+                    expired ? "border border-red-200" : "border border-transparent"
+                  }`}
                 >
                   <h3 className="text-xl font-semibold text-indigo-700 mb-2 capitalize">
                     {p.goal?.replace("_", " ")}
@@ -187,9 +189,9 @@ export default function ScheduleListPage() {
                   </p>
                   <p className="text-gray-600 mb-1">
                     Scadenza:{" "}
-                    <strong className={expired ? "text-red-600" : ""}>
+                    <span className={`font-semibold ${expired ? "!text-red-600" : "text-gray-800"}`}>
                       {dateLabel} {expired ? "(SCADUTA)" : ""}
-                    </strong>
+                    </span>
                   </p>
                   {p.creator && (
                     <p className="text-gray-600 mb-4">

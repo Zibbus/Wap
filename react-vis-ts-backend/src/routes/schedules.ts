@@ -1,359 +1,358 @@
-// routes/schedules.ts
 import { Router } from "express";
 import db from "../db";
-import requireAuth, { AuthUser } from "../middleware/requireAuth.js";
+import requireAuth from "../middleware/requireAuth";
 
 const router = Router();
 
-function isValidGoal(goal: any): goal is "peso_costante" | "aumento_peso" | "perdita_peso" | "altro" {
-  return ["peso_costante", "aumento_peso", "perdita_peso", "altro"].includes(goal);
+/** Utility: esegue query con try/catch semplice */
+async function q<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  const [rows] = await db.query(sql, params);
+  return rows as T[];
 }
 
-async function getCustomerIdByUserId(userId: number): Promise<number | null> {
-  const [rows] = await db.query("SELECT id FROM customers WHERE user_id = ? LIMIT 1", [userId]);
-  const r = (rows as any[])[0];
-  return r ? Number(r.id) : null;
-}
-
-async function getFreelancerIdByUserId(userId: number): Promise<number | null> {
-  const [rows] = await db.query("SELECT id FROM freelancers WHERE user_id = ? LIMIT 1", [userId]);
-  const r = (rows as any[])[0];
-  return r ? Number(r.id) : null;
-}
-
-/**
- * GET /api/schedules
- * Query accettate:
- *  - customer_id?: number
- *
- * Regole:
- * - Utente normale:
- *     - se passa customer_id dev'essere il suo (altrimenti 403)
- *     - se non passa customer_id usiamo quello derivato dall'utente loggato
- * - Professionista:
- *     - se passa customer_id, lo usiamo così com’è (se esiste)
- *     - se non passa customer_id, ritorniamo le schedule create da lui (freelancer_id = suo)
- */
-router.get("/", requireAuth, async (req, res) => {
-  const user = (req as any).user as AuthUser;
-  const isPro = user?.type === "professionista";
-  const qCustomerId = req.query.customer_id ? Number(req.query.customer_id) : null;
-
+/* =========================
+   GET /api/schedules
+   Lista schede con days_count e creatore (nome)
+   ========================= */
+router.get("/", requireAuth, async (req: any, res) => {
   try {
-    let where = "";
-    let params: any[] = [];
-
-    if (qCustomerId && Number.isFinite(qCustomerId)) {
-      // check esistenza
-      const [cRows] = await db.query("SELECT id, user_id FROM customers WHERE id = ? LIMIT 1", [qCustomerId]);
-      const cust = (cRows as any[])[0];
-      if (!cust) return res.status(400).json({ error: "Profilo cliente non trovato" });
-
-      if (!isPro && Number(cust.user_id) !== Number(user.id)) {
-        return res.status(403).json({ error: "Non autorizzato su questo cliente" });
-      }
-
-      where = "WHERE s.customer_id = ?";
-      params.push(qCustomerId);
-    } else {
-      if (isPro) {
-        // liste del professionista (quelle create da lui)
-        const freelancerId = await getFreelancerIdByUserId(Number(user.id));
-        if (!freelancerId) {
-          return res.json([]); // nessun profilo => nessuna scheda sua
-        }
-        where = "WHERE s.freelancer_id = ?";
-        params.push(freelancerId);
-      } else {
-        // utente normale -> le sue schede
-        const customerId = await getCustomerIdByUserId(Number(user.id));
-        if (!customerId) return res.json([]);
-        where = "WHERE s.customer_id = ?";
-        params.push(customerId);
-      }
-    }
-
-    const [rows] = await db.query(
-      `
-      SELECT 
+    // days_count via LEFT JOIN su days
+    const rows = await q<any>(`
+      SELECT
         s.id,
         s.customer_id,
+        s.freelancer_id,
         s.goal,
         s.expire,
-        s.freelancer_id,
-        COALESCE(CONCAT(u.first_name, ' ', u.last_name), u.username, u.email, CONCAT('user#', u.id)) AS creator,
-        (SELECT COUNT(*) FROM days d WHERE d.schedule_id = s.id) AS days_count
-      FROM schedules s
-      LEFT JOIN freelancers f ON f.id = s.freelancer_id
-      LEFT JOIN users u ON u.id = f.user_id
-      ${where}
-      ORDER BY s.created_at DESC, s.id DESC
-      `,
-      params
-    );
+        COUNT(DISTINCT d.id) AS days_count,
 
-    return res.json(rows);
-  } catch (err) {
-    console.error("[GET /api/schedules]", err);
-    return res.status(500).json({ error: "Errore caricamento schede" });
+        -- Nome creatore: se freelancer_id non è NULL, prendo user del freelancer
+        CASE
+          WHEN s.freelancer_id IS NOT NULL THEN
+            CONCAT(u_pf.first_name, ' ', u_pf.last_name)
+          ELSE
+            CONCAT(u_c.first_name, ' ', u_c.last_name)
+        END AS creator
+      FROM schedules s
+      LEFT JOIN days d ON d.schedule_id = s.id
+
+      -- utente del cliente
+      LEFT JOIN customers c   ON c.id = s.customer_id
+      LEFT JOIN users u_c     ON u_c.id = c.user_id
+
+      -- utente del professionista
+      LEFT JOIN freelancers f ON f.id = s.freelancer_id
+      LEFT JOIN users u_pf    ON u_pf.id = f.user_id
+
+      GROUP BY s.id
+      ORDER BY s.id DESC
+    `);
+
+    res.json(rows);
+  } catch (e) {
+    console.error("GET /api/schedules error:", e);
+    res.status(500).json({ error: "Errore interno" });
   }
 });
 
-/**
- * GET /api/schedules/:id
- * Dettaglio scheda con giorni + esercizi.
- * Permessi:
- *  - Utente normale: deve essere il proprietario del customer della schedule
- *  - Professionista: deve essere il creatore (freelancer_id suo) **oppure** (facoltativo) avere visibilità su quel customer
- */
-router.get("/:id", requireAuth, async (req, res) => {
-  const user = (req as any).user as AuthUser;
-  const isPro = user?.type === "professionista";
-  const id = Number(req.params.id);
-
-  if (!Number.isFinite(id)) return res.status(400).json({ error: "id non valido" });
-
+/* =========================
+   GET /api/schedules/:id
+   Dettaglio completo con days + exercises
+   ========================= */
+router.get("/:id", requireAuth, async (req: any, res) => {
   try {
-    // carica testa
-    const [headRows] = await db.query(
-      `
-      SELECT 
+    const scheduleId = Number(req.params.id);
+    if (!Number.isFinite(scheduleId)) return res.status(400).json({ error: "ID non valido" });
+
+    const headRows = await q<any>(`
+      SELECT
         s.id,
-        s.customer_id,
         s.goal,
         s.expire,
+        s.customer_id,
         s.freelancer_id,
-        COALESCE(CONCAT(uf.first_name, ' ', uf.last_name), uf.username, uf.email, CONCAT('user#', uf.id)) AS creator
+
+        -- per etichetta creatore lato FE
+        CASE
+          WHEN s.freelancer_id IS NOT NULL THEN u_pf.id
+          ELSE u_c.id
+        END AS creator_user_id,
+
+        CASE
+          WHEN s.freelancer_id IS NOT NULL THEN u_pf.first_name
+          ELSE u_c.first_name
+        END AS creator_first_name,
+
+        CASE
+          WHEN s.freelancer_id IS NOT NULL THEN u_pf.last_name
+          ELSE u_c.last_name
+        END AS creator_last_name
+
       FROM schedules s
-      LEFT JOIN freelancers f ON f.id = s.freelancer_id
-      LEFT JOIN users uf ON uf.id = f.user_id
+        LEFT JOIN customers c   ON c.id = s.customer_id
+        LEFT JOIN users u_c     ON u_c.id = c.user_id
+        LEFT JOIN freelancers f ON f.id = s.freelancer_id
+        LEFT JOIN users u_pf    ON u_pf.id = f.user_id
       WHERE s.id = ?
       LIMIT 1
-      `,
-      [id]
-    );
-    const head = (headRows as any[])[0];
+    `, [scheduleId]);
+
+    const head = headRows[0];
     if (!head) return res.status(404).json({ error: "Scheda non trovata" });
 
-    // permessi
-    if (!isPro) {
-      // utente normale -> deve combaciare il suo customer
-      const myCustomerId = await getCustomerIdByUserId(Number(user.id));
-      if (!myCustomerId || Number(head.customer_id) !== myCustomerId) {
-        return res.status(403).json({ error: "Non autorizzato" });
-      }
-    } else {
-      // pro: deve essere il creatore (freelancer_id suo)
-      const myFreelancerId = await getFreelancerIdByUserId(Number(user.id));
-      if (Number(head.freelancer_id || 0) !== Number(myFreelancerId || -1)) {
-        // se vuoi, qui potresti anche concedere visibilità “estesa”
-        // per semplicità, blocchiamo
-        return res.status(403).json({ error: "Non autorizzato" });
-      }
-    }
+    // Days
+    const dayRows = await q<any>(`
+      SELECT id, day
+      FROM days
+      WHERE schedule_id = ?
+      ORDER BY day ASC, id ASC
+    `, [scheduleId]);
 
-    // giorni
-    const [dayRows] = await db.query(
-      `SELECT id, day FROM days WHERE schedule_id = ? ORDER BY day ASC`,
-      [id]
-    );
-    const days = (dayRows as any[]).map((d) => ({ id: d.id, day: d.day, exercises: [] as any[] }));
-
-    if (days.length) {
-      const dayIds = days.map((d) => d.id);
-      const [exRows] = await db.query(
-        `
-        SELECT 
-          se.day_id,
+    // Exercises per day
+    const days = [];
+    for (const d of dayRows) {
+      const exRows = await q<any>(`
+        SELECT
+          se.exercise_id,
           e.title AS name,
+          e.musclegroups_id,
+          se.position,
           se.sets,
           se.reps,
           se.rest_seconds,
           se.weight_value,
-          se.notes,
-          se.position
+          se.notes
         FROM schedule_exercise se
-        INNER JOIN exercises e ON e.id = se.exercise_id
-        WHERE se.day_id IN ( ${dayIds.map(() => "?").join(",")} )
-        ORDER BY se.day_id ASC, se.position ASC, se.id ASC
-        `,
-        dayIds
-      );
+          LEFT JOIN exercises e ON e.id = se.exercise_id
+        WHERE se.day_id = ?
+        ORDER BY se.position ASC, se.id ASC
+      `, [d.id]);
 
-      const byDay = new Map<number, any[]>();
-      for (const d of days) byDay.set(d.id, []);
-      for (const r of exRows as any[]) {
-        byDay.get(r.day_id)!.push({
+      days.push({
+        id: d.id,
+        day: d.day,
+        exercises: exRows.map(r => ({
+          exercise_id: r.exercise_id,
           name: r.name,
+          musclegroups_id: r.musclegroups_id,
           sets: r.sets ?? null,
           reps: r.reps ?? null,
           rest_seconds: r.rest_seconds ?? null,
           weight_value: r.weight_value ?? null,
           notes: r.notes ?? null,
-        });
-      }
-      for (const d of days) d.exercises = byDay.get(d.id) ?? [];
+        })),
+      });
     }
 
-    return res.json({
+    res.json({
       id: head.id,
       goal: head.goal,
       expire: head.expire,
-      creator: head.creator,
+      customer_id: head.customer_id,
+      freelancer_id: head.freelancer_id,
+      creator_user_id: head.creator_user_id,
+      creator_first_name: head.creator_first_name,
+      creator_last_name: head.creator_last_name,
+      creator: [head.creator_first_name, head.creator_last_name].filter(Boolean).join(" ").trim(), // per compat
       days,
     });
-  } catch (err) {
-    console.error("[GET /api/schedules/:id]", err);
-    return res.status(500).json({ error: "Errore caricamento scheda" });
+  } catch (e) {
+    console.error("GET /api/schedules/:id error:", e);
+    res.status(500).json({ error: "Errore interno" });
   }
 });
 
-/**
- * POST /api/schedules
- * Body:
- *   { customer_id?: number, expire?: 'YYYY-MM-DD'|null, goal: 'peso_costante'|'aumento_peso'|'perdita_peso'|'altro' }
- * (Regole come discusso)
- */
-router.post("/", requireAuth, async (req, res) => {
-  const user = (req as any).user as AuthUser;
-  const { customer_id, expire, goal } = (req.body || {}) as {
-    customer_id?: number;
-    expire?: string | null;
-    goal?: string;
-  };
-
-  if (!goal || !isValidGoal(goal)) {
-    return res.status(400).json({ error: "goal mancante o non valido" });
-  }
-
-  const isPro = user?.type === "professionista";
-
+/* =========================
+   POST /api/schedules
+   Crea testa scheda. freelancer_id viene risolto se l'utente è un professionista.
+   body: { customer_id, expire, goal }
+   ========================= */
+router.post("/", requireAuth, async (req: any, res) => {
   try {
-    let resolvedCustomerId: number | null = null;
+    const userId: number = req.user?.id;
+    const { customer_id, expire, goal } = req.body || {};
 
-    if (typeof customer_id === "number" && Number.isFinite(customer_id)) {
-      const [cRows] = await db.query("SELECT id, user_id FROM customers WHERE id = ? LIMIT 1", [customer_id]);
-      const cust = (cRows as any[])[0];
-      if (!cust) return res.status(400).json({ error: "Profilo cliente non trovato" });
+    if (!customer_id) return res.status(400).json({ error: "customer_id obbligatorio" });
 
-      if (!isPro) {
-        if (Number(cust.user_id) !== Number(user.id)) {
-          return res.status(403).json({ error: "Non puoi creare schede per altri clienti" });
-        }
-      }
-      resolvedCustomerId = Number(cust.id);
-    } else {
-      if (isPro) {
-        return res.status(400).json({ error: "customer_id mancante" });
-      }
-      const myCustomerId = await getCustomerIdByUserId(Number(user.id));
-      if (!myCustomerId) return res.status(400).json({ error: "Profilo cliente non trovato" });
-      resolvedCustomerId = myCustomerId;
-    }
+    // Se l'utente è un professionista, prova a risolvere freelancer_id
+    const fr = await q<{ id: number }>(`SELECT id FROM freelancers WHERE user_id = ? LIMIT 1`, [userId]);
+    const freelancer_id = fr[0]?.id ?? null;
 
-    let freelancerId: number | null = null;
-    if (isPro) {
-      const fid = await getFreelancerIdByUserId(Number(user.id));
-      if (fid) freelancerId = fid;
-    }
-
-    const [r] = await db.query(
-      `INSERT INTO schedules (customer_id, freelancer_id, expire, goal)
-       VALUES (?, ?, ?, ?)`,
-      [resolvedCustomerId, freelancerId, expire || null, goal]
+    const result: any = await db.query(
+      `INSERT INTO schedules (customer_id, freelancer_id, expire, goal) VALUES (?,?,?,?)`,
+      [customer_id, freelancer_id, expire || null, goal || null]
     );
-    const id = (r as any).insertId;
+    const insertId = (result as any)[0]?.insertId ?? (result as any).insertId;
 
-    return res.status(201).json({
-      id,
-      customer_id: resolvedCustomerId,
-      freelancer_id: freelancerId,
-      expire: expire || null,
-      goal
-    });
-  } catch (err) {
-    console.error("[POST /api/schedules]", err);
-    return res.status(500).json({ error: "Errore creazione schedule" });
+    res.status(201).json({ id: insertId });
+  } catch (e) {
+    console.error("POST /api/schedules error:", e);
+    res.status(500).json({ error: "Errore creazione scheda" });
   }
 });
 
-/**
- * POST /api/schedules/day
- */
-router.post("/day", requireAuth, async (req, res) => {
-  const { schedule_id, day } = req.body || {};
-  const d = Number(day);
-  if (!schedule_id || ![1, 2, 3, 4, 5, 6, 7].includes(d)) {
-    return res.status(400).json({ error: "Parametri invalidi" });
-  }
+/* =========================
+   POST /api/schedules/day
+   Crea un giorno (tabella: days)
+   body: { schedule_id, day }
+   ========================= */
+router.post("/day", requireAuth, async (req: any, res) => {
   try {
-    const [r] = await db.query(
-      `INSERT INTO days (schedule_id, day) VALUES (?, ?)`,
-      [schedule_id, d]
+    const { schedule_id, day } = req.body || {};
+    if (!schedule_id || !day) return res.status(400).json({ error: "schedule_id e day obbligatori" });
+
+    const result: any = await db.query(
+      `INSERT INTO days (schedule_id, day) VALUES (?,?)`,
+      [schedule_id, day]
     );
-    res.status(201).json({ id: (r as any).insertId });
-  } catch (err) {
-    console.error("[POST /api/schedules/day]", err);
+    const insertId = (result as any)[0]?.insertId ?? (result as any).insertId;
+    res.status(201).json({ id: insertId });
+  } catch (e) {
+    console.error("POST /api/schedules/day error:", e);
     res.status(500).json({ error: "Errore creazione giorno" });
   }
 });
 
-/**
- * POST /api/schedules/exercises
- */
-router.post("/exercises", requireAuth, async (req, res) => {
-  const { scheduleId, items } = req.body || {};
-  if (!scheduleId || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ error: "Payload mancante" });
-  }
-
-  const conn = await (db as any).getConnection();
+/* =========================
+   POST /api/schedules/exercises
+   Inserimento bulk righe in schedule_exercise
+   body: { scheduleId, items: [{ day_id, exercise_id, position, sets, reps, rest_seconds, weight_value, notes }] }
+   ========================= */
+router.post("/exercises", requireAuth, async (req: any, res) => {
   try {
-    await conn.beginTransaction();
-
-    const [dayRows] = await conn.query(
-      `SELECT id FROM days WHERE schedule_id = ?`,
-      [scheduleId]
-    );
-    const dayIds = new Set((dayRows as any[]).map((r) => r.id));
-
-    const values: any[] = [];
-    for (const it of items) {
-      const day_id = Number(it.day_id);
-      const exercise_id = Number(it.exercise_id);
-      if (!day_id || !exercise_id) {
-        throw new Error("day_id o exercise_id mancanti");
-      }
-      if (!dayIds.has(day_id)) {
-        throw new Error(`day_id ${day_id} non appartiene alla schedule ${scheduleId}`);
-      }
-      values.push([
-        day_id,
-        exercise_id,
-        Number(it.position) || 1,
-        it.sets == null || it.sets === "" ? null : Math.max(0, Number(it.sets)),
-        it.reps == null || it.reps === "" ? null : Math.max(0, Number(it.reps)),
-        it.rest_seconds == null || it.rest_seconds === "" ? null : Math.max(0, Number(it.rest_seconds)),
-        it.weight_value == null || it.weight_value === "" ? null : Number(it.weight_value),
-        it.notes ?? null,
-      ]);
+    const { items } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "Nessun esercizio da inserire" });
     }
 
-    await conn.query(
-      `INSERT INTO schedule_exercise
-       (day_id, exercise_id, position, sets, reps, rest_seconds, weight_value, notes)
-       VALUES ?`,
-      [values]
+    // Insert multiplo
+    const valuesSql = items.map(() => `(?,?,?,?,?,?,?,?)`).join(",");
+    const params: any[] = [];
+    for (const it of items) {
+      params.push(
+        it.day_id,
+        it.exercise_id,
+        it.position ?? 1,
+        it.sets ?? null,
+        it.reps ?? null,
+        it.rest_seconds ?? null,
+        it.weight_value ?? null,
+        it.notes ?? null
+      );
+    }
+
+    await db.query(
+      `
+      INSERT INTO schedule_exercise
+        (day_id, exercise_id, position, sets, reps, rest_seconds, weight_value, notes)
+      VALUES ${valuesSql}
+      `,
+      params
     );
 
-    await conn.commit();
-    res.status(201).json({ inserted: values.length });
-  } catch (err: any) {
-    console.error("[POST /api/schedules/exercises]", err?.message || err);
-    try { await conn.rollback(); } catch {}
+    res.json({ ok: true, inserted: items.length });
+  } catch (e) {
+    console.error("POST /api/schedules/exercises error:", e);
     res.status(500).json({ error: "Errore salvataggio esercizi" });
-  } finally {
-    try { conn.release(); } catch {}
+  }
+});
+
+/* =========================
+   PUT /api/schedules/:id
+   Aggiorna meta (expire, goal)
+   ========================= */
+router.put("/:id", requireAuth, async (req: any, res) => {
+  try {
+    const scheduleId = Number(req.params.id);
+    if (!Number.isFinite(scheduleId)) return res.status(400).json({ error: "ID non valido" });
+
+    const { expire, goal } = req.body || {};
+    await db.query(
+      `UPDATE schedules SET expire = ?, goal = ? WHERE id = ?`,
+      [expire ?? null, goal ?? null, scheduleId]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("PUT /api/schedules/:id error:", e);
+    res.status(500).json({ error: "Errore aggiornamento scheda" });
+  }
+});
+
+/* =========================
+   POST /api/schedules/:id/replace
+   Rimpiazza giorni + esercizi in transazione
+   body: { days: [{ day, exercises: [{ position, exercise_id, name?, sets, reps, rest_seconds, weight_value, notes }] }] }
+   NOTA: lo schema reale non ha "name" nell'item; lo usiamo solo se exercise_id è null (saltiamo in quel caso).
+   ========================= */
+router.post("/:id/replace", requireAuth, async (req: any, res) => {
+  const conn = await (db as any).getConnection();
+  try {
+    const scheduleId = Number(req.params.id);
+    if (!Number.isFinite(scheduleId)) {
+      conn.release();
+      return res.status(400).json({ error: "ID non valido" });
+    }
+
+    const { days } = req.body || {};
+    if (!Array.isArray(days)) {
+      conn.release();
+      return res.status(400).json({ error: "days mancante o non array" });
+    }
+
+    await conn.beginTransaction();
+
+    // Cancella tutto l'attuale
+    await conn.query(`DELETE se FROM schedule_exercise se
+                      JOIN days d ON d.id = se.day_id
+                      WHERE d.schedule_id = ?`, [scheduleId]);
+    await conn.query(`DELETE FROM days WHERE schedule_id = ?`, [scheduleId]);
+
+    // Re-inserisci
+    for (const d of days) {
+      const [insDay]: any = await conn.query(
+        `INSERT INTO days (schedule_id, day) VALUES (?,?)`,
+        [scheduleId, d.day]
+      );
+      const dayId = insDay.insertId;
+
+      const items = Array.isArray(d.exercises) ? d.exercises : [];
+      if (items.length) {
+        const valuesSql = items
+          .filter((it: any) => it.exercise_id) // con il tuo schema serve l'id esercizio
+          .map(() => `(?,?,?,?,?,?,?,?)`).join(",");
+        if (valuesSql) {
+          const params: any[] = [];
+          for (const it of items) {
+            if (!it.exercise_id) continue;
+            params.push(
+              dayId,
+              it.exercise_id,
+              it.position ?? 1,
+              it.sets ?? null,
+              it.reps ?? null,
+              it.rest_seconds ?? null,
+              it.weight_value ?? null,
+              it.notes ?? null
+            );
+          }
+          await conn.query(
+            `INSERT INTO schedule_exercise
+             (day_id, exercise_id, position, sets, reps, rest_seconds, weight_value, notes)
+             VALUES ${valuesSql}`,
+            params
+          );
+        }
+      }
+    }
+
+    await conn.commit();
+    conn.release();
+    res.json({ ok: true });
+  } catch (e) {
+    try { await (conn as any).rollback(); } catch {}
+    try { (conn as any).release?.(); } catch {}
+    console.error("POST /api/schedules/:id/replace error:", e);
+    res.status(500).json({ error: "Errore replace scheda" });
   }
 });
 
