@@ -67,7 +67,7 @@ export default function Header() {
     async function fetchAvatarIfMissing() {
       if (!isLoggedIn || avatarUrl) return;
       try {
-        const me = await api.get<any>("/api/profile");
+        const me = await api.get<any>("/profile");
         const fromProfile: string | null =
           me?.professional?.avatar_url ??
           me?.avatar_url ??

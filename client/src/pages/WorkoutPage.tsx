@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, PlusCircle, Trash2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 import logoUrl from "../assets/IconaMyFitnobackground.png";
 
@@ -167,7 +167,6 @@ function normalizeProfessionalFromMePayload(me: any) {
       u?.freelancer
     ) || null;
 
-  // id libero del "freelancer" (può essere id del profilo professionista)
   const freelancer_id =
     pickFirst(
       me?.freelancer_id,
@@ -175,7 +174,6 @@ function normalizeProfessionalFromMePayload(me: any) {
       professional?.id
     ) ?? null;
 
-  // prova ad estrarre un display_name sensato
   const display_name =
     pickFirst(
       professional?.display_name,
@@ -186,7 +184,7 @@ function normalizeProfessionalFromMePayload(me: any) {
 
   return {
     professional: professional || (display_name ? { display_name } : null),
-    freelancer: professional || null,  // teniamo entrambi per compatibilità con getIsProfessional()
+    freelancer: professional || null,
     freelancer_id: freelancer_id ? Number(freelancer_id) : null,
   };
 }
@@ -384,11 +382,54 @@ function ExerciseSelect({
 }
 
 /* =========================
+   Helper per inferire gruppi da esercizi esistenti
+   ========================= */
+function inferGroupsFromDay(exs: Array<{ musclegroups_id?: number | null }>): string[] {
+  const rawIds = (exs || [])
+    .map(e => Number(e.musclegroups_id))
+    .filter(n => Number.isFinite(n)) as number[];
+
+  const uniqueIds = Array.from(new Set(rawIds));
+  if (uniqueIds.length) {
+    return uniqueIds.map(id => ID_TO_GROUP_NAME[id] ?? `Gruppo ${id}`);
+  }
+  // Se non riusciamo a inferire i gruppi dagli esercizi → Full Body (mostra tutto)
+  return ["Full Body"];
+}
+
+/* =========================
    Pagina
    ========================= */
 export default function WorkoutPage() {
   const navigate = useNavigate();
-  
+  const location = useLocation() as any;
+  const editSchedule = (location?.state?.editSchedule ?? null) as
+    | (ScheduleDetail & { /* opzionali se servono extra */ })
+    | null;
+
+  // Tipo locale per quello che ricevi da ScheduleDetailPage
+  type ScheduleDetail = {
+    id: number;
+    goal: "peso_costante" | "aumento_peso" | "perdita_peso" | "altro";
+    expire: string | null;
+    days: Array<{
+      id: number;
+      day: number;
+      exercises: Array<{
+        exercise_id?: number | null;
+        musclegroups_id?: number | null;
+        name: string;
+        sets: number | null;
+        reps: number | null;
+        rest_seconds: number | null;
+        weight_value: number | null;
+        notes: string | null;
+      }>;
+    }>;
+  };
+
+  const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
+
   // === Snapshot iniziale + state ===
   const snap = readAuthSnapshot();
   const token = snap.token;
@@ -409,6 +450,8 @@ export default function WorkoutPage() {
   const [availableExercises, setAvailableExercises] = useState<DBExercise[]>([]);
   const [availableByDay, setAvailableByDay] = useState<Record<number, DBExercise[]>>({});
 
+  const [consentAccepted, setConsentAccepted] = useState(false);
+
   const exportRef = useRef<HTMLElement | null>(null);
 
   const [ownerMode, setOwnerMode] = useState<OwnerMode>("self");
@@ -423,7 +466,7 @@ export default function WorkoutPage() {
     height: (user as any)?.height ?? user?.customer?.height ?? null,
   });
 
-  // ✅ Stato per banner “salvato”
+  // Stato per banner “salvato”
   const [saveSuccess, setSaveSuccess] = useState<{ id: number } | null>(null);
 
   // === Stati per gestione clienti esterni ===
@@ -442,6 +485,69 @@ export default function WorkoutPage() {
     weight: "" as number | "",
     height: "" as number | "",
   });
+
+  // ========= PATCH MODIFICA: precompila tutto quando arrivi da "Modifica scheda" =========
+  useEffect(() => {
+    if (!editSchedule) return;
+
+    (async () => {
+      // salta consenso e wizard gruppi
+      setConsentAccepted(true);
+
+      setEditingScheduleId(editSchedule.id);
+      setExpireDate(editSchedule.expire?.slice(0, 10) || "");
+
+      const goalMap: Record<string, Goal> = {
+        peso_costante: "peso_costante",
+        perdita_peso: "perdita_peso",
+        aumento_peso: "aumento_peso",
+        altro: "altro",
+      };
+      setGoal(goalMap[editSchedule.goal] ?? "peso_costante");
+
+      // 1) Mappa i giorni UI + inferisci i gruppi dal contenuto
+      const mapped = editSchedule.days.map(d => {
+        const groups = inferGroupsFromDay(d.exercises as any[]);
+        return {
+          giorno: d.day,
+          gruppi: groups,
+          gruppiConfermati: true,
+          esercizi: d.exercises.map(ex => ({
+            exerciseId: (ex as any).exercise_id ?? undefined,
+            nome: ex.name || "",
+            serie: ex.sets != null ? String(ex.sets) : "",
+            ripetizioni: ex.reps != null ? String(ex.reps) : "",
+            recupero: ex.rest_seconds != null ? String(ex.rest_seconds) : "",
+            peso: ex.weight_value != null ? String(ex.weight_value) : "",
+            note: ex.notes ?? undefined,
+          })),
+        } as GiornoAllenamento;
+      });
+
+      setGiorni(editSchedule.days.length);
+      setGiorniAllenamento(mapped);
+
+      // 2) Prefetch opzioni per OGNI giorno in base ai gruppi inferiti
+      const byDay: Record<number, DBExercise[]> = {};
+      for (const day of mapped) {
+        try {
+          const opts = await fetchExercisesForGroups(day.gruppi);
+          byDay[day.giorno] = opts;
+        } catch {
+          byDay[day.giorno] = [];
+        }
+      }
+      setAvailableByDay(byDay);
+
+      // 3) Imposta giorno corrente e opzioni della tendina
+      const firstDay = mapped[0]?.giorno ?? 1;
+      setCurrentDay(firstDay);
+      setAvailableExercises(byDay[firstDay] ?? []);
+
+      // 4) Mostra direttamente il pannello esercizi
+      setMostraEsercizi(true);
+    })();
+  }, [editSchedule]);
 
   // Se i dati sono incompleti, prova ad arricchirli da /api/me
   useEffect(() => {
@@ -464,7 +570,6 @@ export default function WorkoutPage() {
         if (!res.ok) return;
         const data = await res.json();
 
-        // normalizza profilo professionista da /api/me in qualunque forma arrivi
         const profNorm = normalizeProfessionalFromMePayload(data);
 
         const enriched: Partial<AuthUser> = {
@@ -505,8 +610,6 @@ export default function WorkoutPage() {
             last_name:  me.last_name ?? undefined,
             sex:        (me.sex ?? undefined) as any,
             dob:        me.dob ?? undefined,
-
-            // NUOVI campi (con fallback ai vecchi)
             weight:     (me.latest_weight ?? me.weight ?? me.customer?.weight ?? null),
             height:     (me.height ?? me.customer?.height ?? null),
           });
@@ -519,7 +622,7 @@ export default function WorkoutPage() {
     })();
   }, [ownerMode, token]);
 
-  // 🔥 Carica SEMPRE tutti i customer se l'utente è professionista (o admin)
+  // Carica SEMPRE tutti i customer se l'utente è professionista (o admin)
   useEffect(() => {
     if (!isProfessional || !token) return;
 
@@ -565,9 +668,9 @@ export default function WorkoutPage() {
     });
   }, [ownerMode, otherOwnerMode, selectedCustomerId, customers]);
 
-  // Inizializza i giorni quando l’utente sceglie il numero
+  // Inizializza i giorni quando l’utente sceglie il numero (solo creazione)
   useEffect(() => {
-    if (giorni && giorni > 0) {
+    if (giorni && giorni > 0 && !editingScheduleId) {
       setGiorniAllenamento(
         Array.from({ length: giorni }, (_, i) => ({
           giorno: i + 1,
@@ -581,7 +684,7 @@ export default function WorkoutPage() {
       setAvailableExercises([]);
       setAvailableByDay({});
     }
-  }, [giorni]);
+  }, [giorni, editingScheduleId]);
 
   const giornoCorrente = giorniAllenamento.find((g) => g.giorno === currentDay);
 
@@ -784,7 +887,7 @@ export default function WorkoutPage() {
   const isExerciseComplete = (dayNum: number, ex: Esercizio): boolean => {
     if (!ex.exerciseId) return false;
     const hasSerie = ex.serie !== "";
-       const hasRip = ex.ripetizioni !== "";
+    const hasRip = ex.ripetizioni !== "";
     const hasRec = ex.recupero !== "";
     const list = availableByDay[dayNum] ?? [];
     const opt = list.find((o) => o.id === ex.exerciseId);
@@ -849,7 +952,6 @@ export default function WorkoutPage() {
         return;
       }
 
-      // 1) Normalizza goal per l'API
       const goalMap: Record<string, string> = {
         peso_costante: "peso_costante",
         perdita_peso: "perdita_peso",
@@ -858,32 +960,107 @@ export default function WorkoutPage() {
       };
       const goalForApi = goalMap[goal as string] ?? "peso_costante";
 
-      // 2) Risolvi customer_id
       const resolvedCustomerId =
         typeof customerIdOverride === "number"
           ? customerIdOverride
           : getResolvedCustomerId(user, ownerMode, isProfessional, otherOwnerMode, selectedCustomerId);
 
-      if (!resolvedCustomerId) {
+      if (!resolvedCustomerId && !editingScheduleId) {
         alert("Seleziona un cliente esistente (o assicurati che l’utente abbia un record in 'customers').");
         return;
       }
 
-      // 3) Token
       const auth = JSON.parse(localStorage.getItem("authData") || "{}");
       const tokenLS: string | null = snap.token || auth?.token || null;
 
-      // 4) Prepara payload schedule
+      const toIntOrNull = (val: string | undefined | null, max: number): number | null => {
+        if (val == null || val === "") return null;
+        const n = Math.floor(Number(val));
+        if (!Number.isFinite(n)) return null;
+        return Math.min(max, Math.max(0, n));
+      };
+      const toWeightOrNull = (val: string | undefined | null): number | null => {
+        if (val == null || val === "") return null;
+        const n = Number(val);
+        if (!Number.isFinite(n)) return null;
+        const clamped = Math.min(9999.99, Math.max(0, n));
+        return Math.round(clamped * 100) / 100;
+      };
+
+      // ================================
+      // A) MODIFICA scheda esistente
+      // ================================
+      if (editingScheduleId) {
+        const putRes = await fetch(`/api/schedules/${editingScheduleId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...(tokenLS ? { Authorization: `Bearer ${tokenLS}` } : {}),
+          },
+          body: JSON.stringify({
+            expire: expireDate,
+            goal: goalForApi,
+          }),
+        });
+
+        if (putRes.status === 404) {
+          console.warn("PUT /api/schedules/:id non disponibile: creo nuova scheda come fallback.");
+        } else if (!putRes.ok) {
+          const text = await putRes.text().catch(() => "");
+          alert(`❌ Aggiornamento scheda rifiutato (${putRes.status}).\n${text || "Controlla i campi inviati."}`);
+          throw new Error("Errore update schedule");
+        } else {
+          // 2) Rimpiazza giorni+esercizi
+          const replacePayload = {
+            days: giorniAllenamento.map((g) => ({
+              day: g.giorno,
+              exercises: g.esercizi
+                .filter((ex) => ex.exerciseId || ex.nome)
+                .map((ex, idx) => ({
+                  position: idx + 1,
+                  exercise_id: ex.exerciseId ?? null,
+                  name: ex.nome || null,
+                  sets: toIntOrNull(ex.serie, 255),
+                  reps: toIntOrNull(ex.ripetizioni, 255),
+                  rest_seconds: toIntOrNull(ex.recupero, 65535),
+                  weight_value: toWeightOrNull(ex.peso),
+                  notes: ex.note ?? null,
+                })),
+            })),
+          };
+
+          const repRes = await fetch(`/api/schedules/${editingScheduleId}/replace`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(tokenLS ? { Authorization: `Bearer ${tokenLS}` } : {}),
+            },
+            body: JSON.stringify(replacePayload),
+          });
+
+          if (repRes.status === 404) {
+            console.warn("POST /api/schedules/:id/replace non disponibile: creo nuova scheda come fallback.");
+          } else if (!repRes.ok) {
+            const t = await repRes.text().catch(() => "");
+            alert(`❌ Aggiornamento giorni/esercizi rifiutato (${repRes.status}).\n${t || "Controlla i valori inseriti."}`);
+            throw new Error("Errore replace giorni/esercizi");
+          } else {
+            setSaveSuccess({ id: editingScheduleId });
+            return;
+          }
+        }
+        // se uno dei due endpoint manca → passa alla creazione nuova
+      }
+
+      // ================================
+      // B) CREA nuova scheda
+      // ================================
       const schedulePayload: any = {
         customer_id: resolvedCustomerId,
-        expire: expireDate,   // 'YYYY-MM-DD'
-        goal: goalForApi,     // enum del DB
+        expire: expireDate,
+        goal: goalForApi,
       };
-      // Se il backend supporta freelancer_id lato server (dalla sessione) non serve passarlo.
 
-      console.log("[POST] /api/schedules payload:", schedulePayload);
-
-      // 5) Crea la schedule
       const res = await fetch(`/api/schedules`, {
         method: "POST",
         headers: {
@@ -907,7 +1084,7 @@ export default function WorkoutPage() {
         return;
       }
 
-      // 6) Crea i giorni
+      // Crea i giorni
       const dayMap: Record<number, number> = {};
       for (const g of giorniAllenamento) {
         const dayRes = await fetch(`/api/schedules/day`, {
@@ -928,21 +1105,7 @@ export default function WorkoutPage() {
         dayMap[g.giorno] = Number(day.id);
       }
 
-      // 7) Prepara esercizi
-      const toIntOrNull = (val: string | undefined | null, max: number): number | null => {
-        if (val == null || val === "") return null;
-        const n = Math.floor(Number(val));
-        if (!Number.isFinite(n)) return null;
-        return Math.min(max, Math.max(0, n));
-      };
-      const toWeightOrNull = (val: string | undefined | null): number | null => {
-        if (val == null || val === "") return null;
-        const n = Number(val);
-        if (!Number.isFinite(n)) return null;
-        const clamped = Math.min(9999.99, Math.max(0, n));
-        return Math.round(clamped * 100) / 100;
-      };
-
+      // Prepara esercizi
       const allExercises = giorniAllenamento.flatMap((g) =>
         g.esercizi
           .filter((ex) => ex.exerciseId)
@@ -959,7 +1122,6 @@ export default function WorkoutPage() {
       );
 
       if (allExercises.length) {
-        console.log("[POST] /api/schedules/exercises items:", allExercises.length);
         const exRes = await fetch(`/api/schedules/exercises`, {
           method: "POST",
           headers: {
@@ -977,12 +1139,10 @@ export default function WorkoutPage() {
         }
       }
 
-      // ✅ Mostra banner di successo (come su Nutrition)
       setSaveSuccess({ id: scheduleId });
 
     } catch (err) {
       console.error(err);
-      // alert già gestiti sopra
     }
   };
 
@@ -1018,7 +1178,6 @@ export default function WorkoutPage() {
           })()
         : `${otherPerson.first_name} ${otherPerson.last_name}`.trim() || "Intestatario esterno";
 
-  // customer_id risolto per il bottone di salvataggio nell’anteprima
   const resolvedCustomerIdForPreview = getResolvedCustomerId(
     user,
     ownerMode,
@@ -1026,6 +1185,52 @@ export default function WorkoutPage() {
     otherOwnerMode,
     selectedCustomerId
   );
+
+  // === VISTA SOLO-CONSENSO (creazione) ===
+  if (!consentAccepted && !editingScheduleId) {
+    return (
+      <div className="w-full max-w-3xl mx-auto mt-10 mb-24">
+        <div className="bg-white dark:bg-gray-900 rounded-2xl shadow p-6 border dark:border-gray-800">
+          <h2 className="text-2xl font-bold text-indigo-700 dark:text-indigo-300 mb-3">
+            Informativa & consenso
+          </h2>
+          <div className="text-sm text-gray-700 dark:text-gray-200 space-y-3">
+            <p>
+              Questo generatore di schede di allenamento ha finalità informative ed educative.
+              Non sostituisce il parere di un medico o di un professionista qualificato.
+              In presenza di condizioni cliniche, infortuni, gravidanza o terapie in corso,
+              consulta il tuo medico prima di intraprendere qualsiasi programma di allenamento.
+            </p>
+            <p>
+              Dichiari di utilizzare il piano sotto la tua esclusiva responsabilità.
+              Gli autori dell’app non sono responsabili per eventuali conseguenze derivanti
+              da un uso improprio delle indicazioni fornite. In caso di dolore, capogiri, affanno
+              anomalo o altri sintomi, interrompi l’attività e chiedi un parere medico.
+            </p>
+            <ul className="list-disc ml-5">
+              <li>Riscaldati adeguatamente e rispetta i tempi di recupero.</li>
+              <li>Usa carichi adeguati al tuo livello e a tecnica corretta.</li>
+              <li>Idratati e ascolta i segnali del tuo corpo.</li>
+            </ul>
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              className="px-5 py-3 rounded-xl border border-gray-300 text-gray-700 dark:border-gray-700 dark:text-gray-200"
+              onClick={() => window.history.back()}
+            >
+              Annulla
+            </button>
+            <button
+              className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
+              onClick={() => setConsentAccepted(true)}
+            >
+              Accetto e procedo
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col items-center bg-indigo-50 dark:bg-gray-950 px-8 py-12 text-gray-800 dark:text-gray-100">
@@ -1414,7 +1619,6 @@ export default function WorkoutPage() {
                     )}
                   </div>
                 ) : (
-                  // Se non professionista o se in modalità manuale: campi manuali
                   (!isProfessional || otherOwnerMode === "manual") && (
                     <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
                       <div>
@@ -1548,21 +1752,20 @@ export default function WorkoutPage() {
             </div>
           )}
 
-          {/* VISTA OFF-SCREEN per export: non occupa spazio */}
+          {/* VISTA OFF-SCREEN per export */}
           <div
             aria-hidden="true"
             style={{
               position: "fixed",
               left: 0,
               top: 0,
-              opacity: 0,            // invisibile ma layouttato correttamente
+              opacity: 0,
               pointerEvents: "none",
               zIndex: -1,
             }}
           >
             <ExportWorkoutPreview
               ref={exportRef}
-              /* NON passare offscreen qui */
               meta={{
                 expire: expireDate || "—",
                 goal: goalForExport,
@@ -1612,7 +1815,7 @@ export default function WorkoutPage() {
                   goalForExport === "aumento_peso" ? "Aumento peso" : "—"
                 }</span>
               </div>
-            </div> 
+            </div>
 
             {/* scheda */}
             <div className="grid md:grid-cols-2 gap-4">
