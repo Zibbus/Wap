@@ -1,5 +1,6 @@
+// src/pages/NutritionPage.tsx
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 
 import FoodAsyncSelect from "../components/FoodAsyncSelect";
 import Html2CanvasExportButton from "../components/Html2CanvasExportButton";
@@ -29,7 +30,7 @@ type UserAnthro = {
 };
 
 type FoodRow = {
-  id?: number | null;
+  id?: number | null; // food_id (DB)
   description?: string;
   qty: number;
   unit: "g" | "ml" | "pcs" | "cup" | "tbsp" | "tsp" | "slice";
@@ -94,8 +95,8 @@ type MeResponse = {
   sex?: "M" | "F" | "O" | null;
   dob?: string | null;
 
-  height?: number | null;        // cm (users.height)
-  latest_weight?: number | null; // kg (weight_history ultimo)
+  height?: number | null;
+  latest_weight?: number | null;
 
   user?: {
     height?: number | null;
@@ -112,6 +113,48 @@ type MeResponse = {
   freelancer?: { id: number; vat: string } | null;
 };
 
+/* ====== Tipi per prefill (dettaglio piano) ====== */
+type ItemFromDetail = {
+  id: number;
+  position: number;
+  label: string;
+  qty: number | null;
+  unit: string | null;
+  kcal: number | null;
+  protein_g: number | null;
+  carbs_g: number | null;
+  fat_g: number | null;
+  fiber_g?: number | null;
+  food_id?: number | null;
+};
+
+type MealFromDetail = {
+  id: number;
+  position: number;
+  name: string;
+  notes: string | null;
+  items: ItemFromDetail[];
+};
+
+type DayFromDetail = {
+  id: number;
+  day: number;
+  meals: MealFromDetail[];
+};
+
+type PlanDetailFromState = {
+  id: number;
+  goal: string;
+  expire: string | null;
+  creator?: string;
+  freelancer_id?: number | null;
+  customer_id?: number | null;
+  creator_user_id?: number | null;
+  creator_first_name?: string | null;
+  creator_last_name?: string | null;
+  days: DayFromDetail[];
+};
+
 /* ===== helpers ===== */
 const activityFactor: Record<PlanState["activity"], number> = {
   sedentario: 1.2,
@@ -119,6 +162,15 @@ const activityFactor: Record<PlanState["activity"], number> = {
   moderato: 1.55,
   intenso: 1.725,
   atleta: 1.9,
+};
+
+const MEAL_TYPES = ["Colazione", "Merenda", "Pranzo", "Spuntino", "Cena"] as const;
+const MEAL_POS: Record<string, number> = {
+  Colazione: 1,
+  Merenda: 2,
+  Pranzo: 3,
+  Spuntino: 4,
+  Cena: 5,
 };
 
 type CustomerDetail = {
@@ -134,20 +186,12 @@ type CustomerDetail = {
   latest_weight: number | null;
 };
 
-/** Etichetta "Nome Cognome (nickname)" con fallback eleganti */
 function formatCustomerLabel(c: CustomerDetail): string {
   const first = (c.first_name ?? "").trim();
   const last  = (c.last_name ?? "").trim();
   const nick  = (c.username ?? "").trim();
-
-  const namePart =
-    (first || last)
-      ? [first, last].filter(Boolean).join(" ")
-      : (nick || c.email || `ID ${c.customer_id}`);
-
-  return nick && namePart !== nick
-    ? `${namePart} (${nick})`
-    : namePart;
+  const namePart = (first || last) ? [first, last].filter(Boolean).join(" ") : (nick || c.email || `ID ${c.customer_id}`);
+  return nick && namePart !== nick ? `${namePart} (${nick})` : namePart;
 }
 
 const MAX_CHEATS = 3;
@@ -158,12 +202,12 @@ function weekdayLabel(n: number) {
 }
 
 function defaultWeek(): NutritionDay[] {
-  const defaultMeals = [
-    { position: 1, name: "Colazione", items: [] as FoodRow[] },
-    { position: 2, name: "Merenda", items: [] as FoodRow[] },
-    { position: 3, name: "Pranzo", items: [] as FoodRow[] },
-    { position: 4, name: "Spuntino", items: [] as FoodRow[] },
-    { position: 5, name: "Cena", items: [] as FoodRow[] },
+  const defaultMeals: Meal[] = [
+    { position: 1, name: "Colazione", items: [] },
+    { position: 2, name: "Merenda", items: [] },
+    { position: 3, name: "Pranzo", items: [] },
+    { position: 4, name: "Spuntino", items: [] },
+    { position: 5, name: "Cena", items: [] },
   ];
   const withOneRow = defaultMeals.map((m) => ({
     ...m,
@@ -243,6 +287,12 @@ function kcalForGoal(goal: Goal, tdee: number | undefined) {
   }
 }
 
+function asNumber(v: any): number {
+  if (v === null || v === undefined || v === "") return 0;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function computeRowMacros(
   row: FoodRow
 ): Required<Pick<FoodRow, "kcal" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g">> {
@@ -250,30 +300,36 @@ function computeRowMacros(
   let factor = 0;
 
   if (per100) {
-    if (row.unit === "g" || row.unit === "ml") factor = (row.qty || 0) / 100;
-    else factor = row.qty || 0;
+    if (row.unit === "g" || row.unit === "ml") factor = asNumber(row.qty) / 100;
+    else factor = asNumber(row.qty);
 
-    const kcal = per100.kcal ? per100.kcal * factor : 0;
-    const p = per100.protein ? per100.protein * factor : 0;
-    const c = per100.carbs ? per100.carbs * factor : 0;
-    const f = per100.fat ? per100.fat * factor : 0;
-    const fi = per100.fiber ? per100.fiber * factor : 0;
+    const kcal = asNumber(per100.kcal) * factor;
+    const p    = asNumber(per100.protein) * factor;
+    const c    = asNumber(per100.carbs) * factor;
+    const f    = asNumber(per100.fat) * factor;
+    const fi   = asNumber(per100.fiber) * factor;
 
     return {
       kcal: Math.round(kcal || 0),
-      protein_g: Number(p?.toFixed(1) || 0),
-      carbs_g: Number(c?.toFixed(1) || 0),
-      fat_g: Number(f?.toFixed(1) || 0),
-      fiber_g: Number(fi?.toFixed(1) || 0),
+      protein_g: Number(p.toFixed(1)),
+      carbs_g: Number(c.toFixed(1)),
+      fat_g: Number(f.toFixed(1)),
+      fiber_g: Number(fi.toFixed(1)),
     };
   }
 
+  const kcal = asNumber(row.kcal);
+  const p    = asNumber(row.protein_g);
+  const c    = asNumber(row.carbs_g);
+  const f    = asNumber(row.fat_g);
+  const fi   = asNumber(row.fiber_g);
+
   return {
-    kcal: Math.round(row.kcal || 0),
-    protein_g: Number((row.protein_g || 0).toFixed(1)),
-    carbs_g: Number((row.carbs_g || 0).toFixed(1)),
-    fat_g: Number((row.fat_g || 0).toFixed(1)),
-    fiber_g: Number((row.fiber_g || 0).toFixed(1)),
+    kcal: Math.round(kcal),
+    protein_g: Number(p.toFixed(1)),
+    carbs_g: Number(c.toFixed(1)),
+    fat_g: Number(f.toFixed(1)),
+    fiber_g: Number(fi.toFixed(1)),
   };
 }
 
@@ -312,9 +368,34 @@ function foodApiFromRow(row: FoodRow): FoodApiType | null {
   };
 }
 
+/** Allinea posizioni pasti secondo MEAL_POS e ordina */
+function ensureMealPositions(meals: Meal[]): Meal[] {
+  const clone = meals.map(m => ({ ...m, items: m.items.map(it => ({ ...it })) }));
+  // assegna posizioni standard per i noti
+  for (const m of clone) {
+    const std = MEAL_POS[m.name];
+    if (std) m.position = std;
+  }
+  // per eventuali nomi sconosciuti, assegna dopo i noti
+  let pos = 6;
+  const used = new Set(clone.map(m => m.position));
+  for (const m of clone) {
+    if (!MEAL_POS[m.name]) {
+      while (used.has(pos)) pos++;
+      m.position = pos++;
+      used.add(m.position);
+    }
+  }
+  // ordina
+  clone.sort((a, b) => a.position - b.position);
+  return clone;
+}
+
 /* ===== COMPONENTE ===== */
 export default function NutritionPage() {
   const navigate = useNavigate();
+  const location = useLocation() as any;
+  const editPlan = (location?.state?.editPlan ?? null) as PlanDetailFromState | null;
 
   const { user, token } = readAuthSnapshot();
   const [userType, setUserType] = useState<"utente" | "professionista" | "admin" | undefined>(undefined);
@@ -329,8 +410,8 @@ export default function NutritionPage() {
 
   const [proCustomers, setProCustomers] = useState<CustomerDetail[]>([]);
 
-  // destinazioni per la "tendina" di aggiunta alimento per ogni pasto
-  const [addTarget, setAddTarget] = useState<Record<string, number>>({});
+  // usato per il selettore a livello Giorno
+  const [addTarget, setAddTarget] = useState<Record<string, number | string>>({});
 
   const [state, setState] = useState<PlanState>({
     ownerMode: "self",
@@ -347,6 +428,55 @@ export default function NutritionPage() {
     days: defaultWeek(),
     showPreview: false,
   });
+
+  // id piano in modifica (se arrivo dal dettaglio)
+  const [editingPlanId, setEditingPlanId] = useState<number | null>(editPlan?.id ?? null);
+
+  /* ===== Prefill da "Modifica piano" ===== */
+  useEffect(() => {
+    if (!editPlan) return;
+
+    const goalMap: Record<string, Goal> = {
+      mantenimento: "mantenimento",
+      perdita_peso: "perdita_peso",
+      aumento_peso: "aumento_peso",
+      definizione: "definizione",
+      massa: "massa",
+      altro: "altro",
+    };
+
+    const mappedDays: NutritionDay[] = (editPlan.days || []).map((d) => {
+      const meals = (d.meals || []).map((m) => ({
+        position: MEAL_POS[m.name] ?? m.position ?? 999,
+        name: m.name,
+        notes: m.notes || "",
+        items: (m.items && m.items.length ? m.items : []).map((it) => ({
+          id: (it.food_id ?? (it as any).food_id ?? null) as number | null,
+          description: it.label ?? "",
+          qty: (it.qty ?? 0) as number,
+          unit: ((it.unit as any) || "g") as FoodRow["unit"],
+          kcal: it.kcal ?? null,
+          protein_g: it.protein_g ?? null,
+          carbs_g: it.carbs_g ?? null,
+          fat_g: it.fat_g ?? null,
+          fiber_g: (it as any).fiber_g ?? null,
+          _per100: null,
+        })),
+      }));
+      return { day: d.day, meals: ensureMealPositions(meals) };
+    });
+
+    setEditingPlanId(editPlan.id);
+    setState((s) => ({
+      ...s,
+      consentAccepted: true,
+      cheatConfirmed: true,
+      expire: editPlan.expire ? editPlan.expire.slice(0, 10) : "",
+      goal: goalMap[editPlan.goal] ?? "mantenimento",
+      days: mappedDays.length ? mappedDays : s.days,
+      showPreview: false,
+    }));
+  }, [editPlan]);
 
   // ====== SELF ======
   useEffect(() => {
@@ -372,13 +502,13 @@ export default function NutritionPage() {
         const resolvedWeight =
           me.latest_weight ??
           me.customer?.weight ??
-          me.user?.weight ?? 
+          (me.user as any)?.weight ??
           null;
 
         const resolvedHeight =
           (typeof me.height === "number" ? me.height : null) ??
           me.customer?.height ??
-          me.user?.height ?? 
+          (me.user as any)?.height ??
           null;
 
         setSelfData({
@@ -457,24 +587,27 @@ export default function NutritionPage() {
       : "nessuno";
   }, [state.cheatDays]);
 
+  const editableDays = useMemo(
+    () => state.days.filter((d) => !new Set(state.cheatDays).has(d.day)),
+    [state.days, state.cheatDays]
+  );
+
   const exportDays: ExportDay[] = useMemo(() => {
-    return state.days
-      .filter((d) => !new Set(state.cheatDays).has(d.day))
-      .map((d) => {
-        const totals = computeDayTotals(d);
-        return {
-          label: `Giorno ${d.day} — ${weekdayLabel(d.day)}`,
-          totals: { kcal: totals.kcal, protein: totals.protein, carbs: totals.carbs, fiber: totals.fiber, fat: totals.fat },
-          meals: d.meals.map((m) => ({
-            name: m.name,
-            items: m.items.map((it) => {
-              const v = computeRowMacros(it);
-              return { text: `${it.description || "—"} — ${it.qty}${it.unit}${v.kcal ? `, ${v.kcal} kcal` : ""}` };
-            }),
-          })),
-        };
-      });
-  }, [state.days, state.cheatDays]);
+    return editableDays.map((d) => {
+      const totals = computeDayTotals(d);
+      return {
+        label: `Giorno ${d.day} — ${weekdayLabel(d.day)}`,
+        totals: { kcal: totals.kcal, protein: totals.protein, carbs: totals.carbs, fiber: totals.fiber, fat: totals.fat },
+        meals: ensureMealPositions(d.meals).map((m) => ({
+          name: m.name,
+          items: m.items.map((it) => {
+            const v = computeRowMacros(it);
+            return { text: `${it.description || "—"} — ${it.qty}${it.unit}${v.kcal ? `, ${v.kcal} kcal` : ""}` };
+          }),
+        })),
+      };
+    });
+  }, [editableDays]);
 
   // === VISTA SOLO-MESSAGGIO (centrata) ===
   if (savedOk) {
@@ -553,7 +686,7 @@ export default function NutritionPage() {
     );
   }
 
-  // 2) SGARRI
+  // 2) SGARRI (⚠️ classi corrette per centratura)
   if (!state.cheatConfirmed) {
     const safeUnique = (arr: number[]) =>
       Array.from(new Set(arr.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7))).sort((a, b) => a - b);
@@ -566,7 +699,7 @@ export default function NutritionPage() {
         const has = current.includes(d);
         if (has) return { ...s, cheatDays: current.filter((x) => x !== d) };
         if (current.length >= MAX_CHEATS) {
-          alert(`Puoi selezionare al massimo ${MAX_CHEATS} giorni di sgarro.\nGiorni utili minimi: ${7 - MAX_CHEATS}.`);
+          alert(`Puoi selezionare al massimo ${MAX_CHEATS} sgarri.\nGiorni utili minimi: ${7 - MAX_CHEATS}.`);
           return s;
         }
         return { ...s, cheatDays: safeUnique([...current, d]) };
@@ -625,9 +758,7 @@ export default function NutritionPage() {
     );
   }
 
-  /* ====== EDITOR + PREVIEW ====== */
-  const editableDays = state.days.filter((d) => !new Set(state.cheatDays).has(d.day));
-
+  // ====== Salvataggio ======
   const disabledSave =
     userType === "utente"
       ? !(state.ownerMode === "self" && !!state.selfCustomerId)
@@ -643,6 +774,89 @@ export default function NutritionPage() {
       return;
     }
 
+    // === MODIFICA piano esistente: PUT + REPLACE
+    if (editingPlanId) {
+      try {
+        const mergedNotes = state.notes?.trim()
+          ? `${state.notes.trim()}\n\nSgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`
+          : `Sgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`;
+
+        const putRes = await fetch(`http://localhost:4000/api/nutrition/plans/${editingPlanId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            expire: state.expire,
+            goal: state.goal,
+            notes: mergedNotes || null,
+          }),
+        });
+
+        if (putRes.status !== 404 && !putRes.ok) {
+          const t = await putRes.text().catch(() => "");
+          alert(`❌ Aggiornamento piano rifiutato (${putRes.status}).\n${t || "Controlla i dati inviati."}`);
+          throw new Error("PUT piano nutrizionale fallita");
+        }
+
+        const editableDaysLocal = state.days
+          .filter((d) => !new Set(state.cheatDays).has(d.day))
+          .map(d => ({ ...d, meals: ensureMealPositions(d.meals) }));
+
+        const replacePayload = {
+          days: editableDaysLocal.map((d) => ({
+            day: d.day,
+            meals: d.meals.map((m) => ({
+              position: m.position,
+              name: m.name,
+              notes: m.notes ?? null,
+              items: m.items.map((it, idx) => {
+                const v = computeRowMacros(it);
+                return {
+                  position: idx + 1,
+                  food_id: it.id ?? null,
+                  description: it.description || null,
+                  qty: it.qty ?? null,
+                  unit: it.unit,
+                  kcal: v.kcal ?? null,
+                  protein_g: v.protein_g ?? null,
+                  carbs_g: v.carbs_g ?? null,
+                  fat_g: v.fat_g ?? null,
+                  fiber_g: v.fiber_g ?? null,
+                };
+              }),
+            })),
+          })),
+        };
+
+        const repRes = await fetch(`http://localhost:4000/api/nutrition/plans/${editingPlanId}/replace`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify(replacePayload),
+        });
+
+        if (repRes.status !== 404 && !repRes.ok) {
+          const t = await repRes.text().catch(() => "");
+          alert(`❌ Aggiornamento contenuti rifiutato (${repRes.status}).\n${t || "Controlla i valori di alimenti/quantità/macros."}`);
+          throw new Error("REPLACE giorni/pasti/items fallita");
+        }
+
+        if (putRes.ok || repRes.ok) {
+          setSavedOk({ planId: editingPlanId });
+          setState((s) => ({ ...s, showPreview: false }));
+          return;
+        }
+
+      } catch (e) {
+        console.warn("Modifica piano non disponibile, procedo con creazione nuova.", e);
+      }
+    }
+
+    // ====== CREAZIONE NUOVA ======
     const effectiveCustomerId =
       userType === "utente"
         ? state.ownerMode === "self"
@@ -688,7 +902,11 @@ export default function NutritionPage() {
       const planId = plan.id;
 
       const dayIdMap: Record<number, number> = {};
-      for (const d of editableDays) {
+      const editableDaysLocal = state.days
+        .filter((d) => !new Set(state.cheatDays).has(d.day))
+        .map(d => ({ ...d, meals: ensureMealPositions(d.meals) }));
+
+      for (const d of editableDaysLocal) {
         const dRes = await fetch("http://localhost:4000/api/nutrition/days", {
           method: "POST",
           headers: {
@@ -703,7 +921,7 @@ export default function NutritionPage() {
       }
 
       const mealIdMap: Record<string, number> = {};
-      for (const d of editableDays) {
+      for (const d of editableDaysLocal) {
         const day_id = dayIdMap[d.day];
         for (const meal of d.meals) {
           const mRes = await fetch("http://localhost:4000/api/nutrition/meals", {
@@ -725,7 +943,7 @@ export default function NutritionPage() {
         }
       }
 
-      const itemsPayload = editableDays.flatMap((d) =>
+      const itemsPayload = editableDaysLocal.flatMap((d) =>
         d.meals.flatMap((meal) =>
           meal.items.map((it, idx) => {
             const v = computeRowMacros(it);
@@ -740,6 +958,7 @@ export default function NutritionPage() {
               protein_g: v.protein_g ?? null,
               carbs_g: v.carbs_g ?? null,
               fat_g: v.fat_g ?? null,
+              fiber_g: v.fiber_g ?? null,
             };
           })
         )
@@ -806,7 +1025,7 @@ export default function NutritionPage() {
                     <span className="mr-4"><strong>Grassi</strong>: {totals.fat} g</span>
                   </div>
                   <div className="space-y-2 text-sm">
-                    {d.meals.map((m) => (
+                    {ensureMealPositions(d.meals).map((m) => (
                       <div key={`prev-${d.day}-${m.position}`}>
                         <div className="font-semibold">{m.name}</div>
                         {m.items.length ? (
@@ -849,12 +1068,14 @@ export default function NutritionPage() {
 
           <button
             className={`px-5 py-3 rounded-xl ${
-              disabledSave ? "bg-gray-300 text-white" : "bg-emerald-600 text-white hover:bg-emerald-700"
+              editingPlanId
+                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                : (disabledSave ? "bg-gray-300 text-white" : "bg-emerald-600 text-white hover:bg-emerald-700")
             }`}
-            disabled={disabledSave}
+            disabled={!editingPlanId && disabledSave}
             onClick={handleSave}
           >
-            Salva nel DB
+            {editingPlanId ? "Salva modifiche" : "Salva nel DB"}
           </button>
         </div>
 
@@ -882,16 +1103,20 @@ export default function NutritionPage() {
       {/* intestazione/owner */}
       <div className="bg-white rounded-2xl shadow p-6 mb-6 mt-10">
         <div className="flex items-start gap-3 justify-between">
-          <h2 className="text-2xl font-bold text-indigo-700">Crea piano nutrizionale</h2>
+          <h2 className="text-2xl font-bold text-indigo-700">
+            {editingPlanId ? `Modifica piano #${editingPlanId}` : "Crea piano nutrizionale"}
+          </h2>
 
-          {/* azioni in alto: Modifica sgarri + Anteprima */}
+          {/* azioni in alto */}
           <div className="flex gap-2">
-            <button
-              className="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sm"
-              onClick={() => setState((s) => ({ ...s, cheatConfirmed: false }))}
-            >
-              Modifica sgarri
-            </button>
+            {!editingPlanId && (
+              <button
+                className="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sm"
+                onClick={() => setState((s) => ({ ...s, cheatConfirmed: false }))}
+              >
+                Modifica sgarri
+              </button>
+            )}
 
             <button
               className="px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 text-sm"
@@ -903,21 +1128,24 @@ export default function NutritionPage() {
         </div>
 
         <div className="flex flex-wrap gap-4 items-end mt-4">
+          {/* owner switch */}
           <div className="flex items-center gap-3">
             <label className="font-semibold text-indigo-700">Intestatario:</label>
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 opacity-80">
               <input
                 type="radio"
                 checked={state.ownerMode === "self"}
                 onChange={() => setState((s) => ({ ...s, ownerMode: "self" }))}
+                disabled={!!editingPlanId}
               />
               <span>Me stesso</span>
             </label>
-            <label className="flex items-center gap-2">
+            <label className="flex items-center gap-2 opacity-80">
               <input
                 type="radio"
                 checked={state.ownerMode === "other"}
                 onChange={() => setState((s) => ({ ...s, ownerMode: "other" }))}
+                disabled={!!editingPlanId}
               />
               <span>Un’altra persona</span>
             </label>
@@ -948,20 +1176,6 @@ export default function NutritionPage() {
                 <option value="altro">Altro</option>
               </select>
             </div>
-            <div>
-              <label className="block text-sm text-indigo-700 mb-1">Attività</label>
-              <select
-                className="p-2 rounded-md border border-indigo-200 bg-white"
-                value={state.activity}
-                onChange={(e) => setState((s) => ({ ...s, activity: e.target.value as PlanState["activity"] }))}
-              >
-                <option value="sedentario">Sedentario</option>
-                <option value="leggero">Leggero</option>
-                <option value="moderato">Moderato</option>
-                <option value="intenso">Intenso</option>
-                <option value="atleta">Atleta</option>
-              </select>
-            </div>
           </div>
         </div>
 
@@ -981,243 +1195,9 @@ export default function NutritionPage() {
               </div>
             )}
           </div>
-        ) : (
-          (userType === "professionista" || userType === "admin") ? (
-            <div className="mt-4 space-y-4">
-              {/* Scelta cliente esistente */}
-              <div className="flex items-end gap-3 flex-wrap">
-                <div className="grow min-w-[280px]">
-                  <label className="block text-sm text-indigo-700 mb-1">Cliente esistente</label>
-                  <select
-                    className="min-w-[260px] p-2 border rounded w-full"
-                    value={state.targetCustomerId ?? ""}
-                    onChange={(e) => {
-                      const cid = e.target.value ? Number(e.target.value) : null;
-                      setState((s) => ({ ...s, targetCustomerId: cid }));
-                    }}
-                  >
-                    <option value="" disabled>Seleziona cliente…</option>
-                    {proCustomers.map((c) => (
-                      <option key={c.customer_id} value={c.customer_id}>
-                        {formatCustomerLabel(c)} {/* Nome Cognome (nickname) */}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <button
-                    type="button"
-                    className="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-sm"
-                    onClick={() => setState((s) => ({ ...s, targetCustomerId: null }))}
-                    title="Pulisci selezione"
-                  >
-                    Pulisci
-                  </button>
-                </div>
-              </div>
-
-              {/* Riepilogo cliente selezionato */}
-              {(state.targetCustomerId) && (
-                <div className="mt-3 p-3 rounded border bg-indigo-50/40 border-indigo-100 text-sm">
-                  <div className="flex flex-wrap gap-6">
-                    <div>
-                      Cliente:{" "}
-                      <strong>
-                        {formatCustomerLabel(
-                          proCustomers.find(x => x.customer_id === state.targetCustomerId)!
-                        )}
-                      </strong>
-                    </div>
-                    <div>Sesso: <strong>{state.otherPerson.sex || "-"}</strong></div>
-                    <div>Età: <strong>{state.otherPerson.age || "-"}</strong></div>
-                    <div>Peso: <strong>{state.otherPerson.weight || "-"} kg</strong></div>
-                    <div>Altezza: <strong>{state.otherPerson.height || "-"} cm</strong></div>
-                  </div>
-                </div>
-              )}
-
-              {/* Inserimento manuale opzionale (se NON scegli un cliente) */}
-              {!state.targetCustomerId && (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-sm text-indigo-700">Nome</label>
-                    <input
-                      className="w-full p-2 border rounded"
-                      value={state.otherPerson.first_name}
-                      onChange={(e) =>
-                        setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, first_name: e.target.value } }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-indigo-700">Cognome</label>
-                    <input
-                      className="w-full p-2 border rounded"
-                      value={state.otherPerson.last_name}
-                      onChange={(e) =>
-                        setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, last_name: e.target.value } }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-indigo-700">Sesso</label>
-                    <select
-                      className="w-full p-2 border rounded"
-                      value={state.otherPerson.sex}
-                      onChange={(e) =>
-                        setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, sex: e.target.value as any } }))
-                      }
-                    >
-                      <option value="M">Maschio</option>
-                      <option value="F">Femmina</option>
-                      <option value="O">Altro</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm text-indigo-700">Età</label>
-                    <input
-                      type="number"
-                      className="w-full p-2 border rounded"
-                      value={state.otherPerson.age}
-                      onChange={(e) =>
-                        setState((s) => ({
-                          ...s,
-                          otherPerson: { ...s.otherPerson, age: e.target.value === "" ? "" : Number(e.target.value) },
-                        }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-indigo-700">Peso (kg)</label>
-                    <input
-                      type="number"
-                      className="w-full p-2 border rounded"
-                      value={state.otherPerson.weight}
-                      onChange={(e) =>
-                        setState((s) => ({
-                          ...s,
-                          otherPerson: { ...s.otherPerson, weight: e.target.value === "" ? "" : Number(e.target.value) },
-                        }))
-                      }
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-indigo-700">Altezza (cm)</label>
-                    <input
-                      type="number"
-                      className="w-full p-2 border rounded"
-                      value={state.otherPerson.height}
-                      onChange={(e) =>
-                        setState((s) => ({
-                          ...s,
-                          otherPerson: { ...s.otherPerson, height: e.target.value === "" ? "" : Number(e.target.value) },
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            // Utente normale: solo inserimento manuale
-            <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-4">
-              <div>
-                <label className="text-sm text-indigo-700">Nome</label>
-                <input
-                  className="w-full p-2 border rounded"
-                  value={state.otherPerson.first_name}
-                  onChange={(e) =>
-                    setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, first_name: e.target.value } }))
-                  }
-                />
-              </div>
-              <div>
-                <label className="text-sm text-indigo-700">Cognome</label>
-                <input
-                  className="w-full p-2 border rounded"
-                  value={state.otherPerson.last_name}
-                  onChange={(e) =>
-                    setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, last_name: e.target.value } }))
-                  }
-                />
-              </div>
-              <div>
-                <label className="text-sm text-indigo-700">Sesso</label>
-                <select
-                  className="w-full p-2 border rounded"
-                  value={state.otherPerson.sex}
-                  onChange={(e) =>
-                    setState((s) => ({ ...s, otherPerson: { ...s.otherPerson, sex: e.target.value as any } }))
-                  }
-                >
-                  <option value="M">Maschio</option>
-                  <option value="F">Femmina</option>
-                  <option value="O">Altro</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-sm text-indigo-700">Età</label>
-                <input
-                  type="number"
-                  className="w-full p-2 border rounded"
-                  value={state.otherPerson.age}
-                  onChange={(e) =>
-                    setState((s) => ({
-                      ...s,
-                      otherPerson: { ...s.otherPerson, age: e.target.value === "" ? "" : Number(e.target.value) },
-                    }))
-                  }
-                />
-              </div>
-              <div>
-                <label className="text-sm text-indigo-700">Peso (kg)</label>
-                <input
-                  type="number"
-                  className="w-full p-2 border rounded"
-                  value={state.otherPerson.weight}
-                  onChange={(e) =>
-                    setState((s) => ({
-                      ...s,
-                      otherPerson: { ...s.otherPerson, weight: e.target.value === "" ? "" : Number(e.target.value) },
-                    }))
-                  }
-                />
-              </div>
-              <div>
-                <label className="text-sm text-indigo-700">Altezza (cm)</label>
-                <input
-                  type="number"
-                  className="w-full p-2 border rounded"
-                  value={state.otherPerson.height}
-                  onChange={(e) =>
-                    setState((s) => ({
-                      ...s,
-                      otherPerson: { ...s.otherPerson, height: e.target.value === "" ? "" : Number(e.target.value) },
-                    }))
-                  }
-                />
-              </div>
-            </div>
-          )
-        )}
-        {/* riepilogo fabbisogno */}
-        <div className="mt-5 p-4 bg-indigo-50/60 rounded border border-indigo-100 text-sm">
-          <div className="flex flex-wrap gap-6">
-            <div>BMR: <strong>{derived.BMR ?? "-"}</strong> kcal</div>
-            <div>TDEE: <strong>{derived.TDEE ?? "-"}</strong> kcal</div>
-            <div>Target: <strong>{derived.targetKcal ?? "-"}</strong> kcal/die</div>
-            <div>
-              Sgarri: <strong>
-                {state.cheatDays.length
-                  ? state.cheatDays.sort((a, b) => a - b).map((d) => weekdayLabel(d)).join(", ")
-                  : "nessuno"}
-              </strong>
-            </div>
-          </div>
-        </div>
+        ) : null}
       </div>
-      
+
       {/* EDITOR SETTIMANA */}
       <div className="bg-white rounded-2xl shadow p-6">
         <h3 className="text-xl font-bold text-indigo-700 mb-4">Pianifica i tuoi pasti con semplicità!</h3>
@@ -1229,6 +1209,8 @@ export default function NutritionPage() {
           <div className="space-y-8">
             {editableDays.map((d) => {
               const totals = computeDayTotals(d);
+              const mealsOrdered = ensureMealPositions(d.meals);
+
               return (
                 <div key={d.day} className="border border-indigo-100 rounded-xl p-4 bg-indigo-50/40">
                   <div className="flex items-center justify-between mb-1">
@@ -1239,10 +1221,10 @@ export default function NutritionPage() {
 
                   <div className="text-xs text-gray-600 mb-3">
                     <span className="mr-4"><strong>Kcal</strong>: {totals.kcal}</span>
-                    <span className="mr-4"><strong>Prot</strong>: {totals.protein} g</span>
-                    <span className="mr-4"><strong>Carb</strong>: {totals.carbs} g</span>
-                    <span className="mr-4"><strong>Fibre</strong>: {totals.fiber} g</span>
-                    <span className="mr-4"><strong>Grassi</strong>: {totals.fat} g</span>
+                    <span className="mr-4"><strong>Prot</strong>: {totals.protein}</span>
+                    <span className="mr-4"><strong>Carb</strong>: {totals.carbs}</span>
+                    <span className="mr-4"><strong>Fibre</strong>: {totals.fiber}</span>
+                    <span className="mr-4"><strong>Grassi</strong>: {totals.fat}</span>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -1263,7 +1245,7 @@ export default function NutritionPage() {
                       </thead>
 
                       <tbody>
-                        {d.meals.map((meal, mIdx) => {
+                        {mealsOrdered.map((meal, mIdx) => {
                           if (!meal.items || meal.items.length === 0) return null;
 
                           const mealTotals = meal.items.reduce(
@@ -1298,7 +1280,9 @@ export default function NutritionPage() {
                                           setState((s) => {
                                             const next = structuredClone(s);
                                             const dayIndex = next.days.findIndex((x) => x.day === d.day);
-                                            next.days[dayIndex].meals[mIdx].items.splice(iIdx, 1);
+                                            const meals = ensureMealPositions(next.days[dayIndex].meals);
+                                            meals[mIdx].items.splice(iIdx, 1);
+                                            next.days[dayIndex].meals = meals;
                                             return next;
                                           })
                                         }
@@ -1315,18 +1299,22 @@ export default function NutritionPage() {
                                         value={meal.position}
                                         onChange={(e) =>
                                           setState((s) => {
+                                            const toPos = Number(e.target.value);
                                             const next = structuredClone(s);
                                             const dayIndex = next.days.findIndex((x) => x.day === d.day);
-                                            const fromMealIdx = mIdx;
-                                            const toPos = Number(e.target.value);
-                                            const moved = next.days[dayIndex].meals[fromMealIdx].items.splice(iIdx, 1)[0];
-                                            const toMealIdx = next.days[dayIndex].meals.findIndex((mm) => mm.position === toPos);
-                                            if (toMealIdx >= 0) next.days[dayIndex].meals[toMealIdx].items.push(moved);
+                                            const meals = ensureMealPositions(next.days[dayIndex].meals);
+
+                                            // sposta la riga nel pasto con quella position
+                                            const moved = meals[mIdx].items.splice(iIdx, 1)[0];
+                                            const toMealIdx = meals.findIndex((mm) => mm.position === toPos);
+                                            if (toMealIdx >= 0) meals[toMealIdx].items.push(moved);
+
+                                            next.days[dayIndex].meals = ensureMealPositions(meals);
                                             return next;
                                           })
                                         }
                                       >
-                                        {d.meals.map((opt) => (
+                                        {mealsOrdered.map((opt) => (
                                           <option key={opt.position} value={opt.position}>
                                             {opt.name}
                                           </option>
@@ -1354,7 +1342,7 @@ export default function NutritionPage() {
                                                 fat: food.fat_per_100,
                                                 fiber: food.fiber_per_100 ?? null,
                                               };
-                                              target.unit = food.default_unit;
+                                              target.unit = food.default_unit as any;
                                             } else {
                                               target.id = null;
                                               target._per100 = null;
@@ -1362,7 +1350,7 @@ export default function NutritionPage() {
                                             return next;
                                           });
                                         }}
-                                        placeholder="Cerca alimento…"
+                                        placeholder={row.description ? row.description : "Cerca alimento…"}
                                       />
                                     </td>
 
@@ -1416,65 +1404,35 @@ export default function NutritionPage() {
                                 );
                               })}
 
-                              {/* Row: Aggiunta rapida a QUALSIASI pasto del giorno */}
-                              <tr className="border-t-0" key={`add-any-${d.day}-${meal.position}`}>
+                              {/* Aggiungi ALIMENTO sotto il pasto (prima dei totali) */}
+                              <tr className="border-t-0" key={`add-food-${d.day}-${meal.position}`}>
                                 <td className="p-2" />
-                                <td className="p-2" colSpan={2}>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="text-sm text-gray-700">Aggiungi alimento a:</span>
-                                    <select
-                                      className="border rounded p-2 text-sm"
-                                      value={addTarget[`${d.day}-${meal.position}`] ?? meal.position}
-                                      onChange={(e) =>
-                                        setAddTarget((prev) => ({
-                                          ...prev,
-                                          [`${d.day}-${meal.position}`]: Number(e.target.value),
-                                        }))
-                                      }
-                                    >
-                                      {d.meals.map((opt) => (
-                                        <option key={opt.position} value={opt.position}>
-                                          {opt.name}
-                                        </option>
-                                      ))}
-                                    </select>
-
-                                    <button
-                                      type="button"
-                                      className="px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-50 text-sm"
-                                      onClick={() =>
-                                        setState((s) => {
-                                          const next = structuredClone(s);
-                                          const dayIndex = next.days.findIndex((x) => x.day === d.day);
-
-                                          const targetPos =
-                                            addTarget[`${d.day}-${meal.position}`] ?? meal.position;
-                                          const toMealIdx = next.days[dayIndex].meals.findIndex(
-                                            (mm) => mm.position === targetPos
-                                          );
-
-                                          if (toMealIdx >= 0) {
-                                            next.days[dayIndex].meals[toMealIdx].items.push({
-                                              qty: 100,
-                                              unit: "g",
-                                              description: "",
-                                              kcal: null,
-                                              protein_g: null,
-                                              carbs_g: null,
-                                              fat_g: null,
-                                              fiber_g: null,
-                                              _per100: null,
-                                            });
-                                          }
-                                          return next;
-                                        })
-                                      }
-                                    >
-                                      + Aggiungi alimento
-                                    </button>
-                                  </div>
+                                <td className="p-2" colSpan={8}>
+                                  <button
+                                    type="button"
+                                    className="px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-50 text-sm"
+                                    onClick={() =>
+                                      setState((s) => {
+                                        const next = structuredClone(s);
+                                        const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                        next.days[dayIndex].meals[mIdx].items.push({
+                                          qty: 100,
+                                          unit: "g",
+                                          description: "",
+                                          kcal: null,
+                                          protein_g: null,
+                                          carbs_g: null,
+                                          fat_g: null,
+                                          fiber_g: null,
+                                          _per100: null,
+                                        });
+                                        return next;
+                                      })
+                                    }
+                                  >
+                                    + Aggiungi alimento
+                                  </button>
                                 </td>
-                                <td className="p-2" colSpan={6} />
                               </tr>
 
                               {/* Totali pasto */}
@@ -1493,6 +1451,88 @@ export default function NutritionPage() {
                             </Fragment>
                           );
                         })}
+
+                        {/* Selettore UNICO a fine GIORNO: Aggiungi PASTO (o riga alimento se già esiste) */}
+                        <tr className="border-t-0">
+                          <td className="p-2" />
+                          <td className="p-2" colSpan={8}>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm text-gray-700">Aggiungi pasto:</span>
+                              <select
+                                className="border rounded p-2 text-sm"
+                                value={(addTarget[`${d.day}-MEALNAME`] as string) ?? MEAL_TYPES[0]}
+                                onChange={(e) =>
+                                  setAddTarget((prev) => ({
+                                    ...prev,
+                                    [`${d.day}-MEALNAME`]: e.target.value,
+                                  }))
+                                }
+                              >
+                                {MEAL_TYPES.map((name) => (
+                                  <option key={name} value={name}>
+                                    {name}
+                                  </option>
+                                ))}
+                              </select>
+
+                              <button
+                                type="button"
+                                className="px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-50 text-sm"
+                                onClick={() =>
+                                  setState((s) => {
+                                    const next = structuredClone(s);
+                                    const dayIndex = next.days.findIndex((x) => x.day === d.day);
+                                    const mealsArr = ensureMealPositions(next.days[dayIndex].meals);
+
+                                    const name =
+                                      (addTarget[`${d.day}-MEALNAME`] as string) ?? MEAL_TYPES[0];
+
+                                    const idx = mealsArr.findIndex(
+                                      (m) => (m.name || "").toLowerCase() === name.toLowerCase()
+                                    );
+
+                                    if (idx >= 0 && mealsArr[idx].items.length >= 1) {
+                                      mealsArr[idx].items.push({
+                                        qty: 100,
+                                        unit: "g",
+                                        description: "",
+                                        kcal: null,
+                                        protein_g: null,
+                                        carbs_g: null,
+                                        fat_g: null,
+                                        fiber_g: null,
+                                        _per100: null,
+                                      });
+                                    } else {
+                                      mealsArr.push({
+                                        position: MEAL_POS[name] ?? 999,
+                                        name,
+                                        notes: "",
+                                        items: [
+                                          {
+                                            qty: 100,
+                                            unit: "g",
+                                            description: "",
+                                            kcal: null,
+                                            protein_g: null,
+                                            carbs_g: null,
+                                            fat_g: null,
+                                            fiber_g: null,
+                                            _per100: null,
+                                          },
+                                        ],
+                                      });
+                                    }
+                                    next.days[dayIndex].meals = ensureMealPositions(mealsArr);
+                                    return next;
+                                  })
+                                }
+                              >
+                                + Aggiungi pasto
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -1502,7 +1542,7 @@ export default function NutritionPage() {
           </div>
         )}
 
-        {/* 🔽 Pulsante ANTEPRIMA alla fine della scheda, allineato a destra nel bianco */}
+        {/* Pulsante ANTEPRIMA alla fine */}
         <div className="mt-6 flex justify-end">
           <button
             className="px-5 py-3 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"
