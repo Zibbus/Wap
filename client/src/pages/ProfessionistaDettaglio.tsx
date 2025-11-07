@@ -11,6 +11,8 @@ import ProfileInfo from "../components/professionisti/ProfileInfo";
 import { useAuth } from "../hooks/useAuth";
 import { useLoginModal } from "../hooks/useLoginModal";
 
+import { usePageTitle } from "../hooks/usePageTitle";
+
 /* ---- Skeleton minimal per il loading ---- */
 function Skeleton() {
   return (
@@ -34,6 +36,7 @@ function Skeleton() {
 }
 
 export default function ProfessionistaDettaglio() {
+  usePageTitle("Professionisti");
   const { id } = useParams();
   const [p, setP] = useState<Professional | null>(null);
   const [loading, setLoading] = useState(true);

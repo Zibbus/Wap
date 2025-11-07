@@ -8,6 +8,8 @@ import logoUrl from "../assets/IconaMyFitnobackground.png";
 import Html2CanvasExportButton from "../components/Html2CanvasExportButton";
 import ExportWorkoutPreview, { type ExportWorkoutDay } from "../export/ExportWorkoutPreview";
 
+import { usePageTitle } from "../hooks/usePageTitle";
+
 /* =========================
    Tipi
    ========================= */
@@ -401,6 +403,7 @@ function inferGroupsFromDay(exs: Array<{ musclegroups_id?: number | null }>): st
    Pagina
    ========================= */
 export default function WorkoutPage() {
+  usePageTitle("Scheda di allenamento");
   const navigate = useNavigate();
   const location = useLocation() as any;
   const editSchedule = (location?.state?.editSchedule ?? null) as

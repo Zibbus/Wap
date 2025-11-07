@@ -1,24 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, Navigate } from "react-router-dom";
-import {
-  listConversations,
-  getMessages,
-  sendMessage,
-  type ChatMessage,
-} from "../services/chat";
+import { listConversations, getMessages, sendMessage, type ChatMessage } from "../services/chat";
 import { useAuth } from "../hooks/useAuth";
-import {
-  Paperclip,
-  FileText,
-  X,
-  FileVideo,
-  Image as ImageIcon,
-  Download,
-  Check,
-  CheckCheck,
-  Clock,
-  Search,
-} from "lucide-react";
+import { Paperclip, FileText, X, FileVideo, Image as ImageIcon, Download, Check, CheckCheck, Clock, Search } from "lucide-react";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 /* 👇 uso diretto dell’API client per unread + mark-as-read */
 import { api } from "../services/api";
@@ -75,6 +60,7 @@ function toAbsoluteUrl(path?: string): string | undefined {
 }
 
 export default function ChatPage() {
+  usePageTitle("Chat");
   const { authData } = useAuth();
   const myId = authData?.userId ?? null;
 

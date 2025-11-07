@@ -5,9 +5,10 @@ import StatsSection from "../components/homepage/StatsSection";
 import FadeInSection from "../components/homepage/FadeInSection";
 import GameRunner from "../components/homepage/GameRunner";
 import ImageCarousel from "../components/homepage/ImageCarousel";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 export default function HomePage() {
-
+  usePageTitle("Homepage");
   return (
     <div className="flex-1 from-indigo-50 to-white text-gray-800 dark:from-gray-950 dark:to-gray-900 dark:text-gray-100">
       <main className="flex flex-col items-center">

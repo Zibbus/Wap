@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { getSettings, saveSettings, type Settings } from "../services/settings";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 const sectionTitle = "text-lg font-semibold text-gray-800 dark:text-gray-100";
 const sectionCard  = "bg-white dark:bg-gray-900 rounded-2xl shadow-sm p-6 border border-transparent dark:border-gray-800";
@@ -42,6 +43,7 @@ const DEFAULTS: Settings = {
 };
 
 export default function SettingsPage() {
+  usePageTitle("Impostazioni");
   const { authData, isLoading } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);

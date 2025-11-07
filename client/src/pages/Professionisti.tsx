@@ -8,6 +8,7 @@ import Filters from "../components/professionisti/Filters";
 import { useAuth } from "../hooks/useAuth";
 // Se vuoi aprire il login modal quando non autenticato
 import { useLoginModal } from "../hooks/useLoginModal";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 import {
   openOrCreateConversationByUsername,
@@ -23,6 +24,7 @@ type FiltersState = {
 };
 
 export default function Professionisti() {
+  usePageTitle("Lista dei professionisti");
   const navigate = useNavigate();
   const { requireLogin, authData } = useAuth();
   const { openLoginModal } = useLoginModal();

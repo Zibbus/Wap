@@ -15,6 +15,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { getMyProfile, updateMyProfile, uploadAvatar, type MeResponse } from "../services/profile";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 // Stili condivisi (light/dark) per i campi "ghost"
 const wrapBase = "mt-1 flex items-center px-0 py-2 border-b transition";
@@ -63,6 +64,7 @@ function Chip({ children }: { children: React.ReactNode }) {
 /* ================================================================== */
 
 export default function ProfilePage() {
+  usePageTitle("Profilo");
   const { authData, isLoading, updateAvatarUrl } = useAuth();
   const navigate = useNavigate();
 

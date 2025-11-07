@@ -1,15 +1,17 @@
 import { useState } from "react";
 import ShopFilters from "../components/shop/ShopFilters";
 import ShopGrid from "../components/shop/ShopGrid";
+import { usePageTitle } from "../hooks/usePageTitle";
 
 export default function ShopPage() {
+  usePageTitle("Shop");
   const [filter, setFilter] = useState<"tutti" | "attrezzi" | "integratori" | "accessori">("tutti");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<any[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-b from-indigo-50 to-white text-gray-800 dark:from-gray-950 dark:to-gray-900 dark:text-gray-100">
+    <div className="min-h-screen flex flex-col bg-linear-to-b from-indigo-50 to-white text-gray-800 dark:from-gray-950 dark:to-gray-900 dark:text-gray-100">
       <main className="flex-1 w-full max-w-6xl mx-auto px-6 py-12">
         {/* 🛍️ Hero Section per lo shop */}
         <section className="text-center mb-12">

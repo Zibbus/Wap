@@ -9,6 +9,8 @@ import ExportNutritionPreview, { type ExportDay } from "../export/ExportNutritio
 import type { FoodApi as FoodApiType } from "../components/FoodAsyncSelect";
 import { api } from "../services/api";
 
+import { usePageTitle } from "../hooks/usePageTitle";
+
 /* ===== Tipi ===== */
 type Goal =
   | "mantenimento"
@@ -393,6 +395,7 @@ function ensureMealPositions(meals: Meal[]): Meal[] {
 
 /* ===== COMPONENTE ===== */
 export default function NutritionPage() {
+  usePageTitle("Scheda nutrizionale");
   const navigate = useNavigate();
   const location = useLocation() as any;
   const editPlan = (location?.state?.editPlan ?? null) as PlanDetailFromState | null;
@@ -1293,7 +1296,7 @@ export default function NutritionPage() {
                                       </button>
                                     </td>
 
-                                    <td className="p-2 w-[160px]">
+                                    <td className="p-2 w-40">
                                       <select
                                         className="w-full border rounded p-2 text-sm"
                                         value={meal.position}
