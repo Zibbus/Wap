@@ -23,6 +23,14 @@ MyFit/
 git clone https://github.com/<tuo-user>/<repo>.git
 cd MyFit
 ```
+Installa Ollama sul PC per impostare la API per l'IA la configurazione è già pronta nel file .env
+
+### 1.1 Guida rapida all'installazione di Ollama
+verifica versione scrivendo in powerhell di windows >> ollama --version
+a seguito se la versione è inferiore alla 3.2 installarla digitando questo comando >> ollama pull llama3.2
+infine se si vuole provare direttamente un test in powershell si può scrivere questo comado esempio:
+ollama run llama3.2 "Ciao! Suggeriscimi un allenamento total body di 20 minuti."
+
 
 ---
 

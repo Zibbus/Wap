@@ -253,7 +253,7 @@ export default function ProfilePage() {
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Hero header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-400 dark:from-indigo-700 dark:via-indigo-600 dark:to-indigo-500 p-6 shadow-sm">
+      <div className="relative overflow-hidden rounded-2xl from-indigo-600 via-indigo-500 to-indigo-400 dark:from-indigo-700 dark:via-indigo-600 dark:to-indigo-500 p-6 shadow-sm">
         <div className="flex items-center gap-5">
           <div className="w-20 h-20 rounded-full bg-white/10 ring-1 ring-white/20 overflow-hidden grid place-items-center shrink-0">
             {avatarSrc && avatarSrc !== DEFAULT_AVATAR ? (

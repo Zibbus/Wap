@@ -35,6 +35,19 @@ export default function Header() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { openLoginModal } = useLoginModal();
 
+  // Rende disponibile openLoginModal a qualunque componente (es. MyFitBot)
+useEffect(() => {
+  (window as any).openLoginModal = openLoginModal;
+
+  const onEvt = () => openLoginModal();
+  window.addEventListener("myfit:login:open", onEvt);
+
+  return () => {
+    delete (window as any).openLoginModal;
+    window.removeEventListener("myfit:login:open", onEvt);
+  };
+}, [openLoginModal]);
+
   const { authData, logout, updateAvatarUrl } = useAuth();
   const isLoggedIn = !!authData;
   const username = authData?.username;

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
+import requireAuth from "../middleware/requireAuth"; 
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
@@ -90,7 +91,7 @@ router.get("/ping", (_req, res) => {
   res.json({ ok: true, provider: PROVIDER });
 });
 
-router.post("/chat", limiter, /* requireAuth, */ async (req, res) => {
+router.post("/chat", limiter, requireAuth, async (req, res) => {
   try {
     const body = (req as any).body || {};
     const messages = sanitizeMessages(body.messages || []);
