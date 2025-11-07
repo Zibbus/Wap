@@ -411,14 +411,19 @@ export default function ChatPage() {
   }
 
   /* Filtro conversazioni (per nome o ultimo messaggio) */
-  const filteredConvs = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return convs;
-    return convs.filter(c => {
-      const name = c.peer.name?.toLowerCase() || "";
-      const last = c.lastBody?.toLowerCase() || "";
-      return name.includes(q) || last.includes(q);
-    });
+  const { filteredConvs, hasQuery } = useMemo(() => {
+  const q = query.trim().toLowerCase();
+  const hasQuery = q.length > 0;
+
+    const filtered = hasQuery
+      ? convs.filter(c => {
+          const name = c.peer.name?.toLowerCase() || "";
+          const last = c.lastBody?.toLowerCase() || "";
+          return name.includes(q) || last.includes(q);
+        })
+      : convs;
+
+    return { filteredConvs: filtered, hasQuery };
   }, [convs, query]);
 
   if (loading) {
@@ -511,7 +516,7 @@ export default function ChatPage() {
               );
             })}
 
-            {filteredConvs.length === 0 && (
+            {hasQuery && filteredConvs.length === 0 && (
               <li className="px-3 py-6 text-center text-xs text-slate-500 dark:text-slate-400">
                 Nessun risultato per “{query}”.
               </li>

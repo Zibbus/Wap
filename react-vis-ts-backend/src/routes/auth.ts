@@ -258,21 +258,35 @@ router.post("/login", async (req, res) => {
   }
 
   try {
-    // 👇 Aggiungo avatar_url alla SELECT
+    // 👇 includo u.is_bot
     const [rows] = await db.query(
       `SELECT 
-          u.id, u.username, u.email, u.password, u.first_name, u.last_name, 
-          u.sex, u.dob, u.type,
+          u.id,
+          u.username,
+          u.email,
+          u.password,
+          u.first_name,
+          u.last_name,
+          u.sex,
+          u.dob,
+          u.type,
+          u.is_bot,                                -- <=== IMPORTANTE
           COALESCE(u.avatar_url, pp.avatar_url) AS avatar_url
-      FROM users u
-      LEFT JOIN freelancers f ON f.user_id = u.id
-      LEFT JOIN professional_profiles pp ON pp.freelancer_id = f.id
-      WHERE u.username = ? OR u.email = ?
-      LIMIT 1`,
+       FROM users u
+       LEFT JOIN freelancers f ON f.user_id = u.id
+       LEFT JOIN professional_profiles pp ON pp.freelancer_id = f.id
+       WHERE u.username = ? OR u.email = ?
+       LIMIT 1`,
       [usernameOrEmail.trim(), usernameOrEmail.trim()]
     );
+
     const user = (rows as any[])[0];
     if (!user) return res.status(401).json({ error: "Credenziali errate" });
+
+    // blocco gli account bot (non interattivi)
+    if (Number(user.is_bot) === 1) {
+      return res.status(403).json({ error: "Account non abilitato all'accesso" });
+    }
 
     const ok = await bcryptjs.compare(password, user.password);
     if (!ok) return res.status(401).json({ error: "Credenziali errate" });
@@ -300,8 +314,7 @@ router.post("/login", async (req, res) => {
       { expiresIn: "1d" }
     );
 
-    // 👇 Rimando avatarUrl così il frontend può mostrarlo subito (header “Ciao, …”)
-    res.json({
+    return res.json({
       token,
       user: {
         id: user.id,
@@ -312,14 +325,14 @@ router.post("/login", async (req, res) => {
         type: user.type,
         sex: user.sex,
         dob: user.dob,
-        avatarUrl: user.avatar_url ?? null,  // <= aggiunto
+        avatarUrl: user.avatar_url ?? null,
         customer: customer ? { id: customer.id } : null,
         freelancer: freelancer ? { id: freelancer.id } : null,
       },
     });
   } catch (err) {
     console.error("[login][err]", err);
-    res.status(500).json({ error: "Errore server" });
+    return res.status(500).json({ error: "Errore server" });
   }
 });
 export default router;

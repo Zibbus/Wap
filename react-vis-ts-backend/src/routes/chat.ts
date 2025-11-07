@@ -4,7 +4,7 @@ import requireAuth from "../middleware/requireAuth";
 import type { RowDataPacket, ResultSetHeader } from "mysql2/promise";
 import { pushToThread, pushUnreadToUser } from "../ws";
 
-/* 🔽 NEW: upload allegati */
+/* 🔽 Upload allegati */
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -58,6 +58,16 @@ router.post("/start", requireAuth, async (req: any, res) => {
   if (!toUserId || toUserId === me) {
     return res.status(400).json({ error: "toUserId non valido" });
   }
+
+  /* 🔴 NEW: blocca chat diretta verso account bot */
+  const [botRows] = await db.query<RowDataPacket[]>(
+    "SELECT is_bot FROM users WHERE id=? LIMIT 1",
+    [Number(toUserId)]
+  );
+  if (botRows[0]?.is_bot === 1) {
+    return res.status(400).json({ error: "Non puoi avviare una chat diretta con il bot" });
+  }
+  /* 🔴 END NEW */
 
   const [a, b] = orderedPair(me, Number(toUserId));
 
@@ -134,6 +144,16 @@ router.post("/start-by-username", requireAuth, async (req: any, res) => {
     if (!toUserId || toUserId === me) {
       return res.status(400).json({ error: "Destinatario non valido" });
     }
+
+    /* 🔴 NEW: blocca chat diretta verso account bot */
+    const [botRows] = await db.query<RowDataPacket[]>(
+      "SELECT is_bot FROM users WHERE id=? LIMIT 1",
+      [toUserId]
+    );
+    if (botRows[0]?.is_bot === 1) {
+      return res.status(400).json({ error: "Non puoi avviare una chat diretta con il bot" });
+    }
+    /* 🔴 END NEW */
 
     const [a, b] = orderedPair(me, toUserId);
 
@@ -233,6 +253,7 @@ router.get("/threads", requireAuth, async (req: any, res) => {
       ON cpOt.thread_id = t.id AND cpOt.user_id <> ?
     JOIN users u
       ON u.id = cpOt.user_id
+     AND u.is_bot = 0                        -- 🔴 NEW: esclude thread col bot
     LEFT JOIN freelancers f
       ON f.user_id = u.id
     LEFT JOIN professional_profiles pp
@@ -246,7 +267,7 @@ router.get("/threads", requireAuth, async (req: any, res) => {
         GROUP BY thread_id
       ) last ON last.thread_id = m1.thread_id AND last.max_id = m1.id
     ) pm ON pm.thread_id = t.id
-    /* 🔴 messaggi non letti: id > last_read_message_id e non miei */
+    /* messaggi non letti: id > last_read_message_id e non miei */
     LEFT JOIN chat_messages m
       ON m.thread_id = t.id
      AND m.id > COALESCE(cpMe.last_read_message_id, 0)
@@ -279,6 +300,12 @@ router.get("/unread", requireAuth, async (req: any, res) => {
     FROM chat_threads t
     JOIN chat_participants cp
       ON cp.thread_id = t.id AND cp.user_id = ?
+    /* 🔴 NEW: join peer per filtrare bot */
+    JOIN chat_participants cpOther
+      ON cpOther.thread_id = t.id AND cpOther.user_id <> cp.user_id
+    JOIN users u
+      ON u.id = cpOther.user_id
+     AND u.is_bot = 0                        -- 🔴 NEW: esclude thread col bot
     LEFT JOIN chat_messages m
       ON m.thread_id = t.id
      AND m.id > COALESCE(cp.last_read_message_id, 0)
@@ -424,7 +451,7 @@ router.post("/:threadId/messages", requireAuth, async (req: any, res) => {
 });
 
 /**
- * 🔽 NEW: POST /api/chat/:threadId/attachments
+ * POST /api/chat/:threadId/attachments
  * - multipart/form-data con field 'file' (+ opzionale 'text' per accompagnare l’allegato)
  */
 router.post("/:threadId/attachments", requireAuth, upload.single("file"), async (req: any, res) => {

@@ -27,9 +27,17 @@ Installa Ollama sul PC per impostare la API per l'IA la configurazione è già p
 
 ### 1.1 Guida rapida all'installazione di Ollama
 verifica versione scrivendo in powerhell di windows >> ollama --version
-a seguito se la versione è inferiore alla 3.2 installarla digitando questo comando >> ollama pull llama3.2
+a seguito se la versione è inferiore alla 3.2 installarla digitando questo comando >> ollama pull qwen2.5:7b-instruct
 infine se si vuole provare direttamente un test in powershell si può scrivere questo comado esempio:
-ollama run llama3.2 "Ciao! Suggeriscimi un allenamento total body di 20 minuti."
+ollama run qwen2.5:14b-instruct "Ciao! Suggeriscimi un allenamento total body di 20 minuti."
+
+### 1.2 Comando per svuotare velocemente tutte le conversazioni di tutti gli utenti con il bot dal db
+DELETE t
+FROM chat_threads t
+LEFT JOIN chat_messages m ON m.thread_id = t.id
+WHERE t.is_bot_thread = 1
+  AND t.owner_user_id = YOUR_USER_ID_HERE
+  AND m.id IS NULL;
 
 
 ---
