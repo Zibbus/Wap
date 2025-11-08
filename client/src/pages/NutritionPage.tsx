@@ -188,14 +188,6 @@ type CustomerDetail = {
   latest_weight: number | null;
 };
 
-function formatCustomerLabel(c: CustomerDetail): string {
-  const first = (c.first_name ?? "").trim();
-  const last  = (c.last_name ?? "").trim();
-  const nick  = (c.username ?? "").trim();
-  const namePart = (first || last) ? [first, last].filter(Boolean).join(" ") : (nick || c.email || `ID ${c.customer_id}`);
-  return nick && namePart !== nick ? `${namePart} (${nick})` : namePart;
-}
-
 const MAX_CHEATS = 3;
 
 function weekdayLabel(n: number) {
