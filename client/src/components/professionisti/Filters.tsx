@@ -192,7 +192,7 @@ export default function Filters({ onChange }: Props) {
                 className={`
                   group relative rounded-full px-3 py-1.5 text-sm transition
                   ${onlineOnly
-                    ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.35)]"
+                    ? "bg-lineat-to-r from-emerald-500 to-teal-500 text-white shadow-[0_4px_18px_rgba(16,185,129,0.35)]"
                     : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"}
                 `}
                 title="Solo professionisti online"

@@ -4,12 +4,9 @@ import { useParams } from "react-router-dom";
 import { getProfessional } from "../services/professionals";
 import type { Professional } from "../types/professional";
 
-// 🔻 Import diretti, niente barrel
+// Import diretti, niente barrel
 import ProfileHeader from "../components/professionisti/ProfileHeader";
 import ProfileInfo from "../components/professionisti/ProfileInfo";
-
-import { useAuth } from "../hooks/useAuth";
-import { useLoginModal } from "../hooks/useLoginModal";
 
 import { usePageTitle } from "../hooks/usePageTitle";
 
@@ -20,10 +17,6 @@ function Skeleton() {
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
         <div className="flex items-start gap-4">
           <div className="h-16 w-16 rounded-full bg-gray-200 dark:bg-gray-800 animate-pulse" />
-          <div className="flex-1 space-y-2">
-            <div className="h-5 w-48 rounded bg-gray-200 dark:bg-gray-800 animate-pulse" />
-            <div className="h-4 w-64 rounded bg-gray-200 dark:bg-gray-800 animate-pulse" />
-          </div>
         </div>
         <div className="mt-6 space-y-2">
           <div className="h-4 w-full rounded bg-gray-200 dark:bg-gray-800 animate-pulse" />
@@ -36,14 +29,20 @@ function Skeleton() {
 }
 
 export default function ProfessionistaDettaglio() {
+  // Titolo base (hook a livello top – ok)
   usePageTitle("Professionisti");
+
   const { id } = useParams();
   const [p, setP] = useState<Professional | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const { authData } = useAuth();
-  const { openLoginModal } = useLoginModal();
+  // ✅ Aggiorna il titolo quando arrivano i dati, SENZA richiamare l'hook
+  useEffect(() => {
+    if (p?.name || p?.username) {
+      document.title = `${p.name || p.username} • MyFit`;
+    }
+  }, [p]);
 
   useEffect(() => {
     let alive = true;
@@ -67,11 +66,6 @@ export default function ProfessionistaDettaglio() {
       alive = false;
     };
   }, [id]);
-
-  const guard = (fn: () => void) => {
-    if (!authData) return openLoginModal();
-    fn();
-  };
 
   if (loading) return <Skeleton />;
 
@@ -98,18 +92,8 @@ export default function ProfessionistaDettaglio() {
   return (
     <div className="max-w-5xl mx-auto px-6 py-12">
       <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-        <ProfileHeader
-          p={p}
-          onMessage={() => guard(() => {
-            /* TODO: navigate("/chat/...") */
-          })}
-          onCall={() => guard(() => {
-            /* TODO: startCall() */
-          })}
-          onVideo={() => guard(() => {
-            /* TODO: startVideo() */
-          })}
-        />
+        {/* Il login ora è gestito dal ProfileHeader tramite useLoginModal */}
+        <ProfileHeader p={p} />
         <div className="mt-6">
           <ProfileInfo p={p} />
         </div>

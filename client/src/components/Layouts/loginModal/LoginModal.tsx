@@ -143,6 +143,7 @@ export default function LoginModal() {
       if (!isRegister) {
         // ---- LOGIN ----
         await login(username, password);
+        window.dispatchEvent(new Event("myfit:login:success"));
         closeLoginModal();
         return;
       }

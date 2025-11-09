@@ -146,9 +146,14 @@ useEffect(() => {
     }, 200);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     closeDropdown();
-    logout();
+    try {
+      await logout(); // svuota token/stato
+    } finally {
+      sessionStorage.removeItem("openConversationId");
+      navigate("/", { replace: true }); // torna alla home
+    }
   };
 
   const dropdownItemClass =

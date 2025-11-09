@@ -11,6 +11,7 @@ import type { Professional } from "../../types/professional";
 import { ROLE_LABEL } from "../../types/professional";
 import { useMemo } from "react";
 import { useAuth } from "../../hooks/useAuth";
+import { useLoginModal } from "../../hooks/useLoginModal";
 import {
   openOrCreateConversationByUsername,
   openOrCreateConversation,
@@ -31,7 +32,15 @@ const fmtEUR = new Intl.NumberFormat("it-IT", {
 
 export default function ProfileHeader({ p, onMessage }: Props) {
   const navigate = useNavigate();
-  const { requireLogin } = useAuth();
+  const auth = useAuth() as any;
+  const { openLoginModal } = useLoginModal();
+
+  const isAuthenticated: boolean = !!(
+    auth?.isAuthenticated ??
+    auth?.isLoggedIn ??
+    auth?.user ??
+    auth?.me
+  );
 
   const price = useMemo(() => {
     const value = Number.isFinite(p.pricePerHour as number)
@@ -45,36 +54,56 @@ export default function ProfileHeader({ p, onMessage }: Props) {
   const reviewsCount =
     typeof p.reviewsCount === "number" ? p.reviewsCount : 0;
 
-  async function handleContact() {
-    const start = async () => {
-      // prova ad usare lo username (migliore), altrimenti fallback su userId
-      const firstText =
-        window.prompt("Scrivi il primo messaggio:", "Ciao! 🙂")?.trim() || undefined;
-
-      try {
-        if (p.username) {
-          const { conversationId } = await openOrCreateConversationByUsername(
-            p.username,
-            firstText
-          );
+  async function startConversation() {
+    try {
+      // 1) preferisci username
+      if (p.username && p.username.trim()) {
+        const { conversationId } =
+          await openOrCreateConversationByUsername(p.username);
+        if (Number.isFinite(conversationId)) {
+          sessionStorage.setItem("openConversationId", String(conversationId));
           navigate("/chat", { state: { conversationId } });
           return;
         }
-        if (p.userId) {
-          const { conversationId } = await openOrCreateConversation(p.userId);
-          navigate("/chat", { state: { conversationId } });
-          return;
-        }
-        // se proprio mancano entrambi, apri la pagina chat “generica”
-        navigate("/chat");
-      } catch (err) {
-        console.error("Errore avvio chat:", err);
-        navigate("/chat");
       }
-    };
 
-    // obbliga il login, poi esegue start()
-    requireLogin(start);
+      // 2) fallback userId
+      const maybeUserId = (p as any).userId ?? (p as any).user?.id ?? null;
+      if (Number.isFinite(maybeUserId)) {
+        const { conversationId } = await openOrCreateConversation(
+          Number(maybeUserId)
+        );
+        if (Number.isFinite(conversationId)) {
+          sessionStorage.setItem("openConversationId", String(conversationId));
+          navigate("/chat", { state: { conversationId } });
+          return;
+        }
+      }
+
+      // 3) fallback finale
+      navigate("/chat");
+    } catch (err) {
+      console.error("Errore avvio chat:", err);
+      navigate("/chat");
+    }
+  }
+
+  async function handleContact() {
+    // Se non loggato → apri modal e registra un listener "one-shot" sul successo login
+    if (!isAuthenticated) {
+      const onSuccess = () => {
+        // appena il login va a buon fine, avvia direttamente la conversazione
+        startConversation();
+      };
+      window.addEventListener("myfit:login:success", onSuccess, { once: true });
+      if (typeof openLoginModal === "function") openLoginModal();
+      else if (typeof (window as any).openLoginModal === "function")
+        (window as any).openLoginModal();
+      return;
+    }
+
+    // già loggato → vai diretto
+    startConversation();
   }
 
   return (

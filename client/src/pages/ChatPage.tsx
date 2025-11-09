@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, Navigate } from "react-router-dom";
+import { useLocation, Navigate, useNavigate } from "react-router-dom";
 import { listConversations, getMessages, sendMessage, type ChatMessage } from "../services/chat";
 import { useAuth } from "../hooks/useAuth";
 import { Paperclip, FileText, X, FileVideo, Image as ImageIcon, Download, Check, CheckCheck, Clock, Search } from "lucide-react";
@@ -62,14 +62,32 @@ function toAbsoluteUrl(path?: string): string | undefined {
 export default function ChatPage() {
   usePageTitle("Chat");
   const { authData } = useAuth();
+  const navigate = useNavigate();
+
+  // Redirect reattivo se l'utente fa logout mentre è su /chat
+  useEffect(() => {
+    if (!authData) {
+      sessionStorage.removeItem("openConversationId");
+      navigate("/", { replace: true });
+    }
+  }, [authData, navigate]);
+
   const myId = authData?.userId ?? null;
 
+  // redirect se non loggato
   if (!authData) return <Navigate to="/" replace />;
 
   const location = useLocation() as {
     state?: { conversationId?: number; peer?: { userId: number; name: string; avatarUrl?: string } };
   };
-  const requestedId = location.state?.conversationId ?? null;
+
+  // legge dallo state o dal fallback in sessionStorage
+  const requestedIdFromState = location.state?.conversationId ?? null;
+  const requestedIdFromSession = (() => {
+    const v = sessionStorage.getItem("openConversationId");
+    return v ? Number(v) : null;
+  })();
+  const requestedId = requestedIdFromState || requestedIdFromSession || null;
 
   const [convs, setConvs] = useState<ConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -89,6 +107,13 @@ export default function ChatPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+  const files = Array.from(e.target.files || []);
+  e.target.value = ""; // reset per poter riselezionare lo stesso file
+  if (!files.length) return;
+  queueFiles(files);
+}
 
   /* Popup allegati + TAB */
   const [showAttachments, setShowAttachments] = useState(false);
@@ -131,7 +156,6 @@ export default function ChatPage() {
   /* 🔔 lettura unread (on load + polling) */
   async function refreshUnread() {
     try {
-      // ✅ niente doppio /api: il client api ha già il base URL
       const data = await api.get<{ total: number; byThread: Record<number, number> }>("/chat/unread");
       setUnreadByThread(data.byThread || {});
     } catch {
@@ -145,12 +169,17 @@ export default function ChatPage() {
       try {
         const list = await reloadConversations();
 
-        // ✅ Apri automaticamente SOLO se arrivi con uno state.conversationId valido
+        // Apri automaticamente SOLO se arrivi con un id valido
         if (requestedId && list.some((c) => c.conversationId === requestedId)) {
           setActiveId(requestedId);
         } else {
-          // Altrimenti non selezionare nulla: l'utente deve cliccare dalla lista
+          // altrimenti niente selezione: l’utente sceglie dalla lista
           setActiveId(null);
+        }
+
+        // pulisci il fallback per non riaprire sempre
+        if (requestedIdFromSession) {
+          sessionStorage.removeItem("openConversationId");
         }
 
         await refreshUnread();
@@ -183,7 +212,6 @@ export default function ChatPage() {
 
       // segna come letto sul backend
       try {
-        // ✅ endpoint normalizzato
         await api.post("/chat/read", { threadId: activeId });
         // 🔔 aggiorna subito badge in header
         window.dispatchEvent(new CustomEvent("myfit:unread:refresh"));
@@ -239,14 +267,6 @@ export default function ChatPage() {
     setIsDragging(false);
     const files = Array.from(e.dataTransfer.files || []);
     if (files.length === 0) return;
-    queueFiles(files);
-  }
-
-  /* input file → accoda */
-  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files || []);
-    e.target.value = "";
-    if (!files.length) return;
     queueFiles(files);
   }
 
@@ -738,7 +758,6 @@ export default function ChatPage() {
                 accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
                 onChange={onPickFile}
               />
-
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}

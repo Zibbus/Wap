@@ -22,7 +22,7 @@ type AuthContextType = {
   /** Compat: setta direttamente i dati (deve includere token valido) */
   loginWithData: (data: AuthData) => void;
   logout: () => Promise<void>;
-  /** Esegue fn solo se loggato (mini helper) */
+  /** Esegue fn solo se loggato (apre il LoginModal altrimenti) */
   requireLogin: (fn: () => void) => void;
 };
 
@@ -89,12 +89,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (usernameOrEmail: string, password?: string) => {
     setIsLoading(true);
     try {
-      // Deve restituire { token, user }
+      // Deve restituire { token, user } e lanciare su 401/redirect
       const res = await apiLogin(usernameOrEmail, password);
+
       const token: string = (res as any)?.token ?? "";
       const rawUser = (res as any)?.user ?? {};
 
-      if (!token) throw new Error("Token non presente nella risposta di login");
+      if (!token) {
+        // risposta invalida → tratta come credenziali errate
+        throw new Error("Credenziali non valide");
+      }
 
       const u = normalizeUser(rawUser, usernameOrEmail);
       const data: AuthData = {
@@ -105,9 +109,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         avatarUrl: u.avatarUrl,
       };
 
-      setAuthToken(token);                     // 👉 Authorization: Bearer <token> per tutte le chiamate
-      setAuthData(data);                       // stato in memoria
+      setAuthToken(token);                               // 👉 Authorization: Bearer <token> per tutte le chiamate
+      setAuthData(data);                                 // stato in memoria
       localStorage.setItem(LS_KEY, JSON.stringify(data)); // persistenza
+    } catch (err: any) {
+      // Propaga un messaggio pulito affinché il LoginModal lo mostri
+      const msg = err?.message || "Credenziali non valide";
+      throw new Error(msg);
     } finally {
       setIsLoading(false);
     }
@@ -132,10 +140,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const requireLogin = useCallback((fn: () => void) => {
     if (authData?.token) return fn();
-    // Se preferisci, qui puoi aprire il tuo LoginModal invece del prompt
-    const u = window.prompt("Per continuare, accedi. Username:");
-    if (u) login(u).then(fn).catch(() => {});
-  }, [authData?.token, login]);
+    // 🔔 Apri il LoginModal ufficiale (nessun prompt)
+    if (typeof (window as any).openLoginModal === "function") {
+      (window as any).openLoginModal();
+    } else {
+      // oppure usa l’evento supportato dal tuo LoginModalProvider
+      window.dispatchEvent(new Event("myfit:login:open"));
+    }
+  }, [authData?.token]);
 
   const updateAvatarUrl = useCallback((url: string) => {
     setAuthData(prev => {

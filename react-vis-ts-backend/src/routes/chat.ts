@@ -124,53 +124,51 @@ router.post("/start", requireAuth, async (req: any, res) => {
  * POST /api/chat/start-by-username
  * body: { toUsername: string, text?: string }
  */
+/**
+ * POST /api/chat/start-by-username
+ * body: { toUsername: string, text?: string }
+ */
 router.post("/start-by-username", requireAuth, async (req: any, res) => {
   const me = Number(req.user.id);
   const { toUsername, text } = req.body || {};
 
-  if (!toUsername || typeof toUsername !== "string") {
+  const wanted = String(toUsername || "").trim();
+  if (!wanted) {
     return res.status(400).json({ error: "toUsername mancante o non valido" });
   }
 
   try {
+    // 👇 match case-insensitive
     const [rows] = await db.query<RowDataPacket[]>(
-      "SELECT id FROM users WHERE username = ? LIMIT 1",
-      [toUsername.trim()]
+      "SELECT id, username, is_bot FROM users WHERE LOWER(username)=LOWER(?) LIMIT 1",
+      [wanted]
     );
-    const target = rows[0];
+    const target = rows?.[0];
     if (!target?.id) return res.status(404).json({ error: "Utente destinatario non trovato" });
 
     const toUserId = Number(target.id);
     if (!toUserId || toUserId === me) {
       return res.status(400).json({ error: "Destinatario non valido" });
     }
-
-    /* 🔴 NEW: blocca chat diretta verso account bot */
-    const [botRows] = await db.query<RowDataPacket[]>(
-      "SELECT is_bot FROM users WHERE id=? LIMIT 1",
-      [toUserId]
-    );
-    if (botRows[0]?.is_bot === 1) {
+    if (Number(target.is_bot) === 1) {
       return res.status(400).json({ error: "Non puoi avviare una chat diretta con il bot" });
     }
-    /* 🔴 END NEW */
 
     const [a, b] = orderedPair(me, toUserId);
-
     const conn = await db.getConnection();
+
     try {
       await conn.beginTransaction();
 
+      // cerca thread esistente 1:1 (via chat_links)
       const [linkRows] = await conn.query<RowDataPacket[]>(
         "SELECT thread_id FROM chat_links WHERE user_a=? AND user_b=? LIMIT 1",
         [a, b]
       );
 
-      let threadId: number | undefined =
-        linkRows && linkRows[0] && linkRows[0].thread_id
-          ? Number(linkRows[0].thread_id)
-          : undefined;
+      let threadId: number | undefined = linkRows?.[0]?.thread_id ? Number(linkRows[0].thread_id) : undefined;
 
+      // se non c'è, crea thread + partecipanti + link
       if (!threadId) {
         const [thrIns] = await conn.query<ResultSetHeader>("INSERT INTO chat_threads () VALUES ()");
         threadId = thrIns.insertId;
@@ -186,6 +184,7 @@ router.post("/start-by-username", requireAuth, async (req: any, res) => {
         );
       }
 
+      // messaggio iniziale opzionale
       const firstText = String(text ?? "").trim();
       let insertedId: number | null = null;
       if (firstText) {
@@ -200,7 +199,7 @@ router.post("/start-by-username", requireAuth, async (req: any, res) => {
 
       // 🔔 WS (se c'è messaggio iniziale)
       if (firstText && insertedId) {
-        await pushToThread(threadId, "chat:message:new", {
+        await pushToThread(threadId!, "chat:message:new", {
           threadId,
           message: { id: insertedId, senderId: me, body: firstText, createdAt: new Date().toISOString() },
         });
@@ -216,7 +215,7 @@ router.post("/start-by-username", requireAuth, async (req: any, res) => {
 
       return res.json({ ok: true, threadId });
     } catch (e) {
-      await conn.rollback();
+      try { await conn.rollback(); } catch {}
       throw e;
     } finally {
       conn.release();
