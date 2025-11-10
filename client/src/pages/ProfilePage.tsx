@@ -247,7 +247,25 @@ export default function ProfilePage() {
       </div>
     );
   }
-  if (!authData || !me) return null;
+  if (!authData) {
+  return (
+    <div className="container mx-auto px-4 py-16">
+      <div className="mx-auto max-w-2xl rounded-2xl border border-amber-200 bg-amber-50 p-8 text-amber-800 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-300">
+        Devi effettuare l’accesso per vedere il profilo.
+      </div>
+    </div>
+  );
+}
+
+if (!me) {
+  return (
+    <div className="container mx-auto px-4 py-16">
+      <div className="mx-auto max-w-2xl rounded-2xl border border-rose-200 bg-rose-50 p-8 text-rose-800 dark:border-rose-900 dark:bg-rose-900/20 dark:text-rose-300">
+        Impossibile caricare il profilo in questo momento.
+      </div>
+    </div>
+  );
+}
 
   // avatar effettivo (preview > db > default)
   const avatarSrc = avatarPreview || currentAvatar || DEFAULT_AVATAR;

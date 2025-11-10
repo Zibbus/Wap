@@ -3,7 +3,7 @@ import { usePageTitle } from "../hooks/usePageTitle";
 export default function ShopPage() {
   usePageTitle("Shop");
 
-  // 🔧 Modalità "work in progress"
+  // Modalità "work in progress"
   const UNDER_CONSTRUCTION = true;
 
   if (UNDER_CONSTRUCTION) {
@@ -62,7 +62,7 @@ export default function ShopPage() {
     );
   }
 
-  // 🧰 Quando sarai pronto a riattivare lo shop, sposta qui sotto la tua UI originale
+  // Mettere qui la UI quando decidiamo di procedere con lo shop
   // (ShopFilters, ShopGrid, ecc.)
   return null;
 }

@@ -4,9 +4,11 @@ import db from "../db";
 import requireAuth from "../middleware/requireAuth";
 
 /* ------- Provider (Ollama di default) ------- */
-const PROVIDER     = (process.env.PROVIDER || "ollama").toLowerCase();
-const OLLAMA_URL   = process.env.OLLAMA_URL || "http://localhost:11434";
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || "llama3.2";
+const PROVIDER           = (process.env.PROVIDER || "ollama").toLowerCase();
+const OLLAMA_URL         = process.env.OLLAMA_URL || "http://localhost:11434";
+const OLLAMA_MODEL       = process.env.OLLAMA_MODEL || "qwen2.5:7b-instruct";
+const OLLAMA_MODEL_LIGHT = process.env.OLLAMA_MODEL_LIGHT || "qwen2.5:1.5b-instruct";
+const LOW_MEMORY         = String(process.env.LOW_MEMORY ?? "0") === "1";
 
 const router = Router();
 
@@ -57,8 +59,7 @@ async function assertOwnAssistantThread(userId: number, threadId: number): Promi
   if (!rows[0]) throw new Error("Thread non trovato o non tuo");
 }
 
-/** Chat non-stream con Ollama */
-// ---- aggiungi vicino alle costanti esistenti (sopra o sotto OLLAMA_* ) ----
+/** ----------------------- Config Bot / Decoding ----------------------- */
 const BOT_SYSTEM_PROMPT =
   (process.env.BOT_SYSTEM_PROMPT || `
 Sei MyFitBot, un assistente che risponde in ITALIANO naturale, chiaro e professionale.
@@ -73,9 +74,20 @@ const BOT_TEMPERATURE = Number(process.env.BOT_TEMPERATURE ?? 0.4);
 const BOT_TOP_P       = Number(process.env.BOT_TOP_P ?? 0.9);
 const BOT_REPEAT_PEN  = Number(process.env.BOT_REPEAT_PENALTY ?? 1.05);
 const BOT_NUM_CTX     = Number(process.env.BOT_NUM_CTX ?? 4096);
+const BOT_NUM_CTX_LIGHT = Number(process.env.BOT_NUM_CTX_LIGHT ?? 2048);
 
 // (opzionale) rispondi nella lingua dell'ultimo utente?
 const BOT_MATCH_USER_LANG = String(process.env.BOT_MATCH_USER_LANG ?? "true").toLowerCase() === "true";
+
+/** Picker di modello e contesto */
+function pickModel(requested?: string) {
+  // priorità: modello esplicito nel body → LOW_MEMORY → default
+  if (requested && typeof requested === "string" && requested.trim()) return requested.trim();
+  return LOW_MEMORY ? OLLAMA_MODEL_LIGHT : OLLAMA_MODEL;
+}
+function pickCtx(modelUsed: string) {
+  return (modelUsed === OLLAMA_MODEL_LIGHT) ? BOT_NUM_CTX_LIGHT : BOT_NUM_CTX;
+}
 
 // Utility minima per “indovinare” la lingua (grezza ma efficace per IT vs EN)
 function detectLang(s: string): "it" | "en" | "other" {
@@ -88,10 +100,11 @@ function detectLang(s: string): "it" | "en" | "other" {
   return "other";
 }
 
-/** Chat non-stream con Ollama (migliorata) */
+/** Chat non-stream con Ollama (migliorata + modello selezionabile) */
 async function generateBotReply(
-  history: Array<{role:"user"|"assistant", content: string}>
-): Promise<string> {
+  history: Array<{role:"user"|"assistant", content: string}>,
+  requestedModel?: string
+): Promise<{ text: string; modelUsed: string }> {
   // costruisco il system prompt
   let sys = BOT_SYSTEM_PROMPT;
 
@@ -110,28 +123,43 @@ async function generateBotReply(
   // messaggi: system + history
   const messages = [{ role: "system", content: sys }, ...history];
 
-  // provider ollama
+  // modello + ctx
+  const modelUsed = pickModel(requestedModel);
+  const numCtx    = pickCtx(modelUsed);
+
   const body = {
-    model: OLLAMA_MODEL,
+    model: modelUsed,
     stream: false,
     messages,
     options: {
       temperature: BOT_TEMPERATURE,
       top_p: BOT_TOP_P,
       repeat_penalty: BOT_REPEAT_PEN,
-      num_ctx: BOT_NUM_CTX,
+      num_ctx: numCtx,
     }
   };
 
-  const resp = await fetch(`${OLLAMA_URL}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  if (!resp.ok) throw new Error(`Ollama error ${resp.status}`);
-  const json = await resp.json();
+  // ---- chiamata robusta a Ollama + log utili
+  let json: any;
+  try {
+    const resp = await fetch(`${OLLAMA_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => "");
+      console.error("[ollama /api/chat] HTTP", resp.status, txt);
+      throw new Error(`Ollama /api/chat HTTP ${resp.status}`);
+    }
+    json = await resp.json();
+  } catch (e: any) {
+    console.error("[ollama /api/chat] errore:", e?.message || e);
+    return { text: "Errore nel contattare il modello. Verifica che Ollama sia avviato e che il modello sia disponibile.", modelUsed };
+  }
+
   const content = json?.message?.content || json?.messages?.at(-1)?.content || "Non ho una risposta.";
-  return String(content);
+  return { text: String(content), modelUsed };
 }
 
 /** Titolo di fallback dal primo testo utente */
@@ -144,15 +172,16 @@ function fallbackTitleFrom(text: string) {
   return title.charAt(0).toUpperCase() + title.slice(1);
 }
 
-/** Prova a far generare il titolo al modello */
-async function askModelForTitle(promptText: string): Promise<string | null> {
+/** Prova a far generare il titolo al modello (con picker) */
+async function askModelForTitle(promptText: string, requestedModel?: string): Promise<string | null> {
   try {
     if (PROVIDER !== "ollama") return null;
+    const modelUsed = pickModel(requestedModel);
     const resp = await fetch(`${OLLAMA_URL}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: OLLAMA_MODEL,
+        model: modelUsed,
         prompt:
 `Sei un assistente. Genera un titolo breve (max 7 parole), chiaro e descrittivo in italiano per questa conversazione.
 Niente virgolette, niente emoji, niente punto finale.
@@ -161,12 +190,17 @@ Testo utente:
         stream: false,
       }),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => "");
+      console.error("[ollama /api/generate] HTTP", resp.status, txt);
+      return null;
+    }
     const json = await resp.json();
     const out = (json?.response || "").trim();
     if (!out) return null;
     return out.replace(/^["“”]+|["“”]+$/g, "").replace(/[.?!]\s*$/,"");
-  } catch {
+  } catch (e: any) {
+    console.error("[askModelForTitle] errore:", e?.message || e);
     return null;
   }
 }
@@ -402,11 +436,13 @@ router.delete("/thread/:id", requireAuth, async (req: any, res) => {
   }
 });
 
-/** POST /api/assistant/thread/:id/send { text } → invia + reply bot + titolo auto (+ botUserId) */
+/** POST /api/assistant/thread/:id/send { text, model? } → invia + reply bot + titolo auto (+ botUserId) */
 router.post("/thread/:id/send", requireAuth, async (req: any, res) => {
   const me = Number(req.user.id);
   const threadId = Number(req.params.id) || 0;
   const text = String(req.body?.text || "").trim();
+  const requestedModel = typeof req.body?.model === "string" ? req.body.model : undefined; // ✅ opzionale
+
   if (!threadId || !text) return res.status(400).json({ error: "Dati non validi" });
 
   try {
@@ -436,14 +472,14 @@ router.post("/thread/:id/send", requireAuth, async (req: any, res) => {
     [threadId, me, text]
   );
 
-  // 2) Titolo automatico se ancora generico
+  // 2) Titolo automatico se ancora generico (usa lo stesso picker del modello)
   const [tRows] = await db.query<RowDataPacket[]>(
     "SELECT title FROM chat_threads WHERE id=? LIMIT 1",
     [threadId]
   );
   const currentTitle = String(tRows?.[0]?.title || "");
   if (!currentTitle || /^nuova conversazione$/i.test(currentTitle)) {
-    const ai = await askModelForTitle(text);
+    const ai = await askModelForTitle(text, requestedModel);
     const fallback = fallbackTitleFrom(text);
     const newTitle = (ai || fallback).trim();
     if (newTitle && newTitle !== currentTitle) {
@@ -451,10 +487,13 @@ router.post("/thread/:id/send", requireAuth, async (req: any, res) => {
     }
   }
 
-  // 3) Genera risposta bot
+  // 3) Genera risposta bot (ritorna anche il modello usato)
   let reply = "Non ho una risposta al momento.";
+  let modelUsed = pickModel(requestedModel);
   try {
-    reply = await generateBotReply([...history, { role: "user", content: text }]);
+    const out = await generateBotReply([...history, { role: "user", content: text }], requestedModel);
+    reply = out.text;
+    modelUsed = out.modelUsed;
   } catch {
     reply = "Si è verificato un errore nel generare la risposta.";
   }
@@ -469,9 +508,51 @@ router.post("/thread/:id/send", requireAuth, async (req: any, res) => {
   res.json({
     threadId,
     messageUser: { id: insUser.insertId, senderId: me, body: text },
-    messageBot: { id: insBot.insertId, senderId: botId, body: reply },
-    botUserId: botId
+    messageBot:  { id: insBot.insertId, senderId: botId, body: reply },
+    botUserId: botId,
+    modelUsed, // ✅ utile per UI/debug
   });
+});
+
+/* ------------------------ HEALTH CHECK ------------------------ */
+/** Rotta diagnostica per capire subito se è DB o Ollama */
+router.get("/health", async (_req, res) => {
+  const out: any = { ok: true, checks: {} };
+
+  // DB connectivity + BOT_USER_ID
+  try {
+    const [dbInfo] = await db.query<RowDataPacket[]>("SELECT DATABASE() AS db, CURRENT_USER() AS user");
+    out.checks.db = "ok";
+    out.checks.dbInfo = dbInfo?.[0] || null;
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      "SELECT CAST(v AS UNSIGNED) AS botId FROM app_settings WHERE k='BOT_USER_ID' LIMIT 1"
+    );
+    out.checks.botUserId = rows?.[0]?.botId ?? null;
+    if (!out.checks.botUserId) {
+      out.ok = false;
+      out.checks.app_settings = "BOT_USER_ID mancante";
+    }
+  } catch (e: any) {
+    out.ok = false;
+    out.checks.db = "error: " + (e?.message || e);
+  }
+
+  // Ollama reachability
+  try {
+    const r = await fetch(`${OLLAMA_URL}/api/tags`);
+    out.checks.ollama = r.ok ? "ok" : `http ${r.status}`;
+  } catch (e: any) {
+    out.ok = false;
+    out.checks.ollama = "error: " + (e?.message || e);
+  }
+
+  // Modello selezionato (in base a LOW_MEMORY o override eventuali lato client)
+  out.checks.modelSelected = (String(process.env.LOW_MEMORY ?? "0") === "1")
+    ? (process.env.OLLAMA_MODEL_LIGHT || "qwen2.5:1.5b-instruct")
+    : (process.env.OLLAMA_MODEL || "qwen2.5:7b-instruct");
+
+  res.json(out);
 });
 
 export default router;
