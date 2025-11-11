@@ -1,4 +1,3 @@
-// src/pages/NutritionPage.tsx
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 
@@ -115,7 +114,6 @@ type MeResponse = {
   freelancer?: { id: number; vat: string } | null;
 };
 
-/* ====== Tipi per prefill (dettaglio piano) ====== */
 type ItemFromDetail = {
   id: number;
   position: number;
@@ -190,11 +188,13 @@ type CustomerDetail = {
 
 const MAX_CHEATS = 3;
 
+// etichetta ogni giorno con un numero
 function weekdayLabel(n: number) {
   const labels = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
   return labels[(n - 1) % 7];
 }
 
+// Funzione che mette automaticamente le celle iniziali
 function defaultWeek(): NutritionDay[] {
   const defaultMeals: Meal[] = [
     { position: 1, name: "Colazione", items: [] },
@@ -225,6 +225,7 @@ function defaultWeek(): NutritionDay[] {
   }));
 }
 
+// prende i dati dell'utente loggato
 function readAuthSnapshot() {
   const raw = JSON.parse(localStorage.getItem("authData") || "{}");
   const userFull = raw?.user ?? {};
@@ -245,6 +246,7 @@ function readAuthSnapshot() {
   };
 }
 
+// Calcola l'età
 function ageFromDOB(dob?: string | null): number | undefined {
   if (!dob) return undefined;
   const d = new Date(dob);
@@ -256,7 +258,7 @@ function ageFromDOB(dob?: string | null): number | undefined {
   return age;
 }
 
-/** Mifflin–St Jeor */
+// Calcolo BMR
 function bmr(sex: "M" | "F" | "O" | undefined, weightKg?: number, heightCm?: number, ageYears?: number) {
   if (!weightKg || !heightCm || !ageYears) return undefined;
   const base = 10 * weightKg + 6.25 * heightCm - 5 * ageYears;
@@ -266,6 +268,7 @@ function bmr(sex: "M" | "F" | "O" | undefined, weightKg?: number, heightCm?: num
   return base;
 }
 
+// Calcolo kcal per obiettivo
 function kcalForGoal(goal: Goal, tdee: number | undefined) {
   if (!tdee) return undefined;
   switch (goal) {
@@ -281,12 +284,14 @@ function kcalForGoal(goal: Goal, tdee: number | undefined) {
   }
 }
 
+// Converte un valore in numero (per la funzione dopo)
 function asNumber(v: any): number {
   if (v === null || v === undefined || v === "") return 0;
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
+// Calcola i macronutrienti di una riga
 function computeRowMacros(
   row: FoodRow
 ): Required<Pick<FoodRow, "kcal" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g">> {
@@ -327,6 +332,7 @@ function computeRowMacros(
   };
 }
 
+// Calcola i valori totali di un giorno
 function computeDayTotals(day: NutritionDay) {
   let kcal = 0, protein = 0, carbs = 0, fat = 0, fiber = 0;
   for (const meal of day.meals) {
@@ -348,6 +354,7 @@ function computeDayTotals(day: NutritionDay) {
   };
 }
 
+// Prende i valori di un alimento
 function foodApiFromRow(row: FoodRow): FoodApiType | null {
   if (!row?.id || !row?.description) return null;
   return {
@@ -362,7 +369,7 @@ function foodApiFromRow(row: FoodRow): FoodApiType | null {
   };
 }
 
-/** Allinea posizioni pasti secondo MEAL_POS e ordina */
+// Allinea posizioni pasti secondo MEAL_POS e ordina
 function ensureMealPositions(meals: Meal[]): Meal[] {
   const clone = meals.map(m => ({ ...m, items: m.items.map(it => ({ ...it })) }));
   // assegna posizioni standard per i noti
@@ -439,7 +446,8 @@ export default function NutritionPage() {
       massa: "massa",
       altro: "altro",
     };
-
+    
+    // Converte i dati del piano esistente (editPlan) 
     const mappedDays: NutritionDay[] = (editPlan.days || []).map((d) => {
       const meals = (d.meals || []).map((m) => ({
         position: MEAL_POS[m.name] ?? m.position ?? 999,
@@ -548,7 +556,7 @@ export default function NutritionPage() {
     }));
   }, [state.targetCustomerId, userType, proCustomers]);
 
-  // ====== DERIVATI ======
+  // ====== DERIVATI (Calcola quando serve i valori nutrizionali e li tiene memorizzati) ======
   const derived = useMemo(() => {
     const sex = state.ownerMode === "self" ? selfData.sex : state.otherPerson.sex;
     const weight =
@@ -605,7 +613,7 @@ export default function NutritionPage() {
     }
   }
 
-  // === VISTA SOLO-MESSAGGIO (centrata) ===
+  // === VISTA MESSAGGIO SALVATAGGIO SCHEDA ===
   if (savedOk) {
     return (
       <div className="min-h-screen grid place-items-center px-6">
@@ -682,13 +690,13 @@ export default function NutritionPage() {
     );
   }
 
-  // 2) SGARRI (⚠️ classi corrette per centratura)
+  // 2) SELEZIONARE SGARRI
   if (!state.cheatConfirmed) {
     const safeUnique = (arr: number[]) =>
       Array.from(new Set(arr.filter((d) => Number.isInteger(d) && d >= 1 && d <= 7))).sort((a, b) => a - b);
-
     const nonCheatCount = 7 - safeUnique(state.cheatDays).length;
 
+    // Attiva disattiva giorno sgarro
     const toggleDay = (d: number) =>
       setState((s) => {
         const current = safeUnique(s.cheatDays);
@@ -700,7 +708,8 @@ export default function NutritionPage() {
         }
         return { ...s, cheatDays: safeUnique([...current, d]) };
       });
-
+    
+    // Valida e conferma sgarri (massimo 3)  
     const handleConfirmCheats = () => {
       const cheats = safeUnique(state.cheatDays);
       if (cheats.length > MAX_CHEATS) {
@@ -754,9 +763,11 @@ export default function NutritionPage() {
     );
   }
 
-  // ====== Salvataggio ======
+  // Flag: stabilisce quando disabilitare il pulsante Salva in base a ruolo e intestatario
   const disabledSave =
-    userType === "utente"
+    state.ownerMode === "other" // blocco totale salvataggio per "altra persona"
+      ? true
+      : userType === "utente"
       ? !(state.ownerMode === "self" && !!state.selfCustomerId)
       : (userType === "professionista" || userType === "admin")
       ? state.ownerMode === "self"
@@ -764,15 +775,24 @@ export default function NutritionPage() {
         : !state.targetCustomerId
       : true;
 
+  // Handler principale: salva (modifica se esiste, altrimenti crea nuovo)
   const handleSave = async () => {
+    // Guardrail: con "altra persona" il salvataggio DB è vietato
+    if (state.ownerMode === "other") {
+      alert("Con 'Un’altra persona' non è possibile salvare nel DB. Puoi usare Anteprima o esportare in PNG.");
+      return;
+    }
+
+    // Validazione: serve la data di scadenza
     if (!state.expire) {
       alert("Inserisci la data di scadenza del piano.");
       return;
     }
 
-    // === MODIFICA piano esistente: PUT + REPLACE
+    // Modalità MODIFICA: aggiorna intestazione e sostituisce giorni/pasti/items
     if (editingPlanId) {
       try {
+        // Merge note + nota sgarri
         const mergedNotes = state.notes?.trim()
           ? `${state.notes.trim()}\n\nSgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`
           : `Sgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`;
@@ -791,10 +811,12 @@ export default function NutritionPage() {
             console.warn("PUT piano fallita o non disponibile:", e);
         }
 
+        // Giorni editabili: esclude sgarri e riallinea posizioni pasti
         const editableDaysLocal = state.days
           .filter((d) => !new Set(state.cheatDays).has(d.day))
           .map(d => ({ ...d, meals: ensureMealPositions(d.meals) }));
 
+        // Payload REPLACE: giorni → pasti → items già normalizzati
         const replacePayload = {
           days: editableDaysLocal.map((d) => ({
             day: d.day,
@@ -838,11 +860,12 @@ export default function NutritionPage() {
         }
 
       } catch (e) {
+        // Fallback: se la modifica fallisce, si tenterà la creazione
         console.warn("Modifica piano non disponibile, procedo con creazione nuova.", e);
       }
     }
 
-    // ====== CREAZIONE NUOVA ======
+    // Modalità CREAZIONE: crea piano + giorni + pasti + items
     const effectiveCustomerId =
       userType === "utente"
         ? state.ownerMode === "self"
@@ -852,22 +875,23 @@ export default function NutritionPage() {
         ? state.selfCustomerId ?? null
         : state.targetCustomerId ?? null;
 
+    // Guardrail: serve un customer_id valido
     if (!effectiveCustomerId) {
-      if (userType === "utente" && state.ownerMode === "other") {
-        alert("Non puoi salvare nel DB un piano intestato a un esterno.");
-      } else if ((userType === "professionista" || userType === "admin") && state.ownerMode === "other") {
-        alert("Seleziona un customer_id esistente per salvare nel DB.");
-      } else {
-        alert("Profilo cliente mancante.");
-      }
+      alert(
+        (userType === "professionista" || userType === "admin")
+          ? "Seleziona un customer_id esistente per salvare nel DB."
+          : "Profilo cliente mancante."
+      );
       return;
     }
 
     try {
+      // Merge note + nota sgarri
       const mergedNotes = state.notes?.trim()
         ? `${state.notes.trim()}\n\nSgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`
         : `Sgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`;
 
+      const tkn = token;
 
       const plan = await api.post<{ id: number }>("/nutrition/plans", {
         customer_id: effectiveCustomerId,
@@ -877,16 +901,19 @@ export default function NutritionPage() {
       });
       const planId = plan.id;
 
+      // Mappa giorno→id (per collegare pasti)
       const dayIdMap: Record<number, number> = {};
       const editableDaysLocal = state.days
         .filter((d) => !new Set(state.cheatDays).has(d.day))
         .map(d => ({ ...d, meals: ensureMealPositions(d.meals) }));
 
+      // Crea giorni (POST /days)
       for (const d of editableDaysLocal) {
         const dj = await api.post<{ id: number }>("/nutrition/days", { plan_id: planId, day: d.day });
         dayIdMap[d.day] = dj.id;
       }
 
+      // Mappa chiave (day-position) → meal_id
       const mealIdMap: Record<string, number> = {};
       for (const d of editableDaysLocal) {
         const day_id = dayIdMap[d.day];
@@ -901,6 +928,7 @@ export default function NutritionPage() {
         }
       }
 
+      // Payload bulk per items (derivando i macros calcolati)
       const itemsPayload = editableDaysLocal.flatMap((d) =>
         d.meals.flatMap((meal) =>
           meal.items.map((it, idx) => {
@@ -922,23 +950,35 @@ export default function NutritionPage() {
         )
       );
       if (itemsPayload.length) {
-        await api.post("/nutrition/items/bulk", { items: itemsPayload });
+        const iRes = await fetch("http://localhost:4000/api/nutrition/items/bulk", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(tkn ? { Authorization: `Bearer ${tkn}` } : {}),
+          },
+          body: JSON.stringify({ items: itemsPayload }),
+        });
+        if (!iRes.ok) throw new Error("Errore salvataggio alimenti");
       }
+
+      // Esito OK: mostra conferma e chiudi anteprima
       setSavedOk({ planId });
       setState((s) => ({ ...s, showPreview: false }));
     } catch (e) {
+      // Errore creazione generale
       console.error(e);
       alert("❌ Errore salvataggio piano.");
     }
   };
 
-  // PREVIEW
+  // PREVIEW: schermata di anteprima/esportazione e salvataggio
   if (state.showPreview) {
     return (
       <div className="w-full max-w-5xl mx-auto mt-8 md:pt-24">
         <div ref={previewRef} data-export-onecol style={{ background: "#ffffff" }} className="rounded-2xl shadow p-6">
           <h2 className="text-2xl font-bold text-indigo-700 mb-4">Anteprima piano nutrizionale</h2>
 
+          {/* Riepilogo metadati e calcoli */}
           <div className="mb-4 text-sm text-gray-700">
             <div className="flex flex-wrap gap-6">
               <div><strong>Scadenza:</strong> {state.expire || "—"}</div>
@@ -956,6 +996,7 @@ export default function NutritionPage() {
             </div>
           </div>
 
+          {/* Elenco giorni (solo non-sgarro) con pasti e alimenti */}
           <div className="grid md:grid-cols-2 gap-6" data-export-onecol>
             {editableDays.map((d) => {
               const totals = computeDayTotals(d);
@@ -1000,6 +1041,7 @@ export default function NutritionPage() {
           </div>
         </div>
 
+        {/* Azioni anteprima: torna, esporta, salva */}
         <div className="mt-6 flex flex-wrap gap-3 justify-end">
           <button
             className="px-5 py-3 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50"
@@ -1028,6 +1070,7 @@ export default function NutritionPage() {
           </button>
         </div>
 
+        {/* Componente offscreen per export PNG */}
         <ExportNutritionPreview
           ref={exportRef}
           offscreen
@@ -1046,7 +1089,7 @@ export default function NutritionPage() {
     );
   }
 
-  // ===== EDITOR =====
+  // EDITOR: schermata principale di compilazione e azioni di fondo
   return (
     <div className="w-full max-w-6xl mx-auto">
       {/* intestazione/owner */}
@@ -1144,7 +1187,94 @@ export default function NutritionPage() {
               </div>
             )}
           </div>
-        ) : null}
+        ) : (
+          /* === ALTRA PERSONA === */
+          <div className="mt-4">
+            <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-800 text-sm mb-4">
+              Hai selezionato <strong>Un’altra persona</strong>: il salvataggio su DB è disabilitato. Puoi comunque
+              generare l’Anteprima ed esportare il PNG.
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-indigo-700 mb-1">Nome</label>
+                <input
+                  className="p-2 rounded-md border border-indigo-200 bg-white w-full"
+                  value={state.otherPerson.first_name}
+                  onChange={(e) => setState(s => ({ ...s, otherPerson: { ...s.otherPerson, first_name: e.target.value } }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-indigo-700 mb-1">Cognome</label>
+                <input
+                  className="p-2 rounded-md border border-indigo-200 bg-white w-full"
+                  value={state.otherPerson.last_name}
+                  onChange={(e) => setState(s => ({ ...s, otherPerson: { ...s.otherPerson, last_name: e.target.value } }))}
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-indigo-700 mb-1">Sesso</label>
+                <select
+                  className="p-2 rounded-md border border-indigo-200 bg-white w-full"
+                  value={state.otherPerson.sex}
+                  onChange={(e) =>
+                    setState(s => ({ ...s, otherPerson: { ...s.otherPerson, sex: e.target.value as "M"|"F"|"O" } }))
+                  }
+                >
+                  <option value="M">M</option>
+                  <option value="F">F</option>
+                  <option value="O">Altro</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-indigo-700 mb-1">Età</label>
+                <input
+                  type="number"
+                  min={0}
+                  className="p-2 rounded-md border border-indigo-200 bg-white w-full"
+                  value={state.otherPerson.age}
+                  onChange={(e) =>
+                    setState(s => ({
+                      ...s,
+                      otherPerson: { ...s.otherPerson, age: e.target.value === "" ? "" : Number(e.target.value) },
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-indigo-700 mb-1">Peso (kg)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.1"
+                  className="p-2 rounded-md border border-indigo-200 bg-white w-full"
+                  value={state.otherPerson.weight}
+                  onChange={(e) =>
+                    setState(s => ({
+                      ...s,
+                      otherPerson: { ...s.otherPerson, weight: e.target.value === "" ? "" : Number(e.target.value) },
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-indigo-700 mb-1">Altezza (cm)</label>
+                <input
+                  type="number"
+                  min={0}
+                  className="p-2 rounded-md border border-indigo-200 bg-white w-full"
+                  value={state.otherPerson.height}
+                  onChange={(e) =>
+                    setState(s => ({
+                      ...s,
+                      otherPerson: { ...s.otherPerson, height: e.target.value === "" ? "" : Number(e.target.value) },
+                    }))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* EDITOR SETTIMANA */}
@@ -1500,6 +1630,29 @@ export default function NutritionPage() {
             Anteprima
           </button>
         </div>
+      </div>
+
+      {/* Footer azioni complessive */}
+      <div className="mt-6 flex justify-end gap-3">
+        <Html2CanvasExportButton
+          getTarget={() => exportRef.current}
+          filename="piano-nutrizionale.png"
+          scale={2}
+          label="Esporta PNG"
+        />
+        <button
+          className={`px-5 py-3 rounded-xl ${
+            editingPlanId
+              ? "bg-emerald-600 text-white hover:bg-emerald-700"
+              : (disabledSave ? "bg-gray-300 text-white cursor-not-allowed" : "bg-emerald-600 text-white hover:bg-emerald-700")
+          }`}
+          disabled={!editingPlanId && disabledSave}
+          onClick={handleSave}
+        >
+          {state.ownerMode === "other"
+            ? "Salvataggio disabilitato (altra persona)"
+            : (editingPlanId ? "Salva modifiche" : "Salva nel DB")}
+        </button>
       </div>
     </div>
   );

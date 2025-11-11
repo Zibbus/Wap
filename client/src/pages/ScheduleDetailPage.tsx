@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 
+/* ===== Tipi ===== */
 type Exercise = {
   exercise_id?: number | null;
   musclegroups_id?: number | null;
@@ -35,19 +36,22 @@ type ScheduleDetail = {
   days: Day[];
 };
 
+// Pagina: dettaglio scheda workout
 export default function ScheduleDetailPage() {
+  // Parametri routing (id scheda) e navigazione
   const { id } = useParams<{ id: string }>();
   const [schedule, setSchedule] = useState<ScheduleDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // ===== Auth snapshot (localStorage) =====
+  // Snapshot auth da localStorage (memoizzato)
   const auth = useMemo(() => {
     try { return JSON.parse(localStorage.getItem("authData") || "{}"); }
     catch { return {}; }
   }, []);
   const token: string | null = auth?.token ?? null;
 
+  // Dati utente corrente (normalizzati)
   const me = auth?.user ?? {};
   const myUserId: number | null = me?.id ?? auth?.userId ?? null;
   const myUsername: string | null = me?.username ?? auth?.username ?? null;
@@ -56,13 +60,14 @@ export default function ScheduleDetailPage() {
   const myFull  = [myFirst, myLast].filter(Boolean).join(" ").trim();
   const myRole  = (me?.type ?? auth?.role ?? null) as "utente" | "professionista" | "admin" | null;
 
+  // Id cliente/professionista (se presenti)
   const myCustomerId: number | null =
     (me?.customer?.id ?? auth?.customer_id ?? null) as number | null;
 
   const myFreelancerId: number | null =
     (me?.freelancer_id ?? me?.freelancer?.id ?? me?.professional?.id ?? null) as number | null;
 
-  // ===== helper scadenza =====
+  // Helper: verifica scadenza (fine giornata)
   function isExpiredDate(isoDate?: string | null): boolean {
     if (!isoDate) return false;
     const endOfDay = new Date(`${isoDate}T23:59:59`);
@@ -70,7 +75,7 @@ export default function ScheduleDetailPage() {
     return endOfDay.getTime() < now.getTime();
   }
 
-  // ===== Carica dettaglio =====
+  // Caricamento dettaglio scheda da API
   useEffect(() => {
     (async () => {
       try {
@@ -92,7 +97,7 @@ export default function ScheduleDetailPage() {
     })();
   }, [id, token]);
 
-  // ===== Etichetta creatore =====
+  // Etichetta creatore (preferisci Nome Cognome proprio se coincidente)
   const creatorLabel = useMemo(() => {
     if (!schedule) return "—";
     const apiFull = [schedule.creator_first_name, schedule.creator_last_name]
@@ -108,7 +113,7 @@ export default function ScheduleDetailPage() {
     }
   }, [schedule, myFreelancerId, myCustomerId, myFull, myUsername]);
 
-  // ===== Permessi modifica =====
+  // Permessi modifica lato client (backend fa comunque enforcement)
   const canEdit = useMemo(() => {
     if (!schedule) return false;
     const isPro = myRole === "professionista" || myRole === "admin";
@@ -135,7 +140,7 @@ export default function ScheduleDetailPage() {
     return isPro || createdByPro || createdByCustomer || sameByText || sameById;
   }, [schedule, myRole, myFreelancerId, myCustomerId, myFull, myUsername, myUserId]);
 
-  // ===== UI =====
+  // UI: stato errore
   if (error) {
     return (
       <div className="min-h-screen bg-white px-8 py-10">
@@ -143,18 +148,21 @@ export default function ScheduleDetailPage() {
           <button onClick={() => navigate(-1)} className="mb-6 text-indigo-600 hover:underline">
             ← Torna indietro
           </button>
-          <div className="text-red-600">{error}</div>
+        <div className="text-red-600">{error}</div>
         </div>
       </div>
     );
   }
 
+  // UI: loading iniziale
   if (!schedule)
     return <p className="text-center mt-20 text-gray-600">Caricamento...</p>;
 
+  // UI: preparazione etichette scadenza
   const expired = isExpiredDate(schedule.expire);
   const expireLabel = schedule.expire ? new Date(schedule.expire).toLocaleDateString() : "—";
 
+  // UI: dettaglio scheda + azioni
   return (
     <div className="min-h-screen bg-white px-8 py-10">
       <div className="max-w-5xl mx-auto">
@@ -197,6 +205,7 @@ export default function ScheduleDetailPage() {
           </div>
         </div>
 
+        {/* Giorni con esercizi */}
         <div className="grid md:grid-cols-2 gap-6 mt-6">
           {schedule.days.map((day) => (
             <div

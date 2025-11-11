@@ -108,12 +108,12 @@ export default function ChatPage() {
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
-  const files = Array.from(e.target.files || []);
-  e.target.value = ""; // reset per poter riselezionare lo stesso file
-  if (!files.length) return;
-  queueFiles(files);
-}
+  function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    e.target.value = ""; // reset per poter riselezionare lo stesso file
+    if (!files.length) return;
+    queueFiles(files);
+  }
 
   /* Popup allegati + TAB */
   const [showAttachments, setShowAttachments] = useState(false);

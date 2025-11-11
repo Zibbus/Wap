@@ -13,6 +13,7 @@ import { usePageTitle } from "../hooks/usePageTitle";
 /* =========================
    Tipi
    ========================= */
+// Tipo: singolo esercizio editabile
 type Esercizio = {
   exerciseId?: number; // ID esercizio selezionato
   nome: string;
@@ -23,6 +24,7 @@ type Esercizio = {
   note?: string;    // se undefined => campo note nascosto
 };
 
+// Tipo: giorno di allenamento con gruppi/esercizi
 type GiornoAllenamento = {
   giorno: number;
   gruppi: string[];
@@ -30,6 +32,7 @@ type GiornoAllenamento = {
   gruppiConfermati: boolean;
 };
 
+// Tipo: record esercizio dal DB
 type DBExercise = {
   id: number;
   name: string;               // title DB
@@ -41,8 +44,10 @@ type DBExercise = {
   defaultRecupero?: string;
 };
 
+// Enum obiettivo scheda
 type Goal = "peso_costante" | "perdita_peso" | "aumento_peso" | "altro";
 
+// Guard: valida un Goal
 function isGoal(v: unknown): v is Goal {
   return v === "peso_costante" || v === "perdita_peso" || v === "aumento_peso" || v === "altro";
 }
@@ -50,8 +55,10 @@ function isGoal(v: unknown): v is Goal {
 /* =========================
    ADD: Tipi intestatario + helper auth/eta
    ========================= */
+// Modalità intestatario (io/altro)
 type OwnerMode = "self" | "other";
 
+// Anagrafica utente base
 type UserAnthro = {
   first_name?: string;
   last_name?: string;
@@ -61,6 +68,7 @@ type UserAnthro = {
   height?: number | null;
 };
 
+// Snapshot utente autenticato
 type AuthUser = {
   id: number | null;
   username: string | null;
@@ -80,6 +88,7 @@ type AuthUser = {
   freelancer_id?: number | null;
 };
 
+// Legge auth snapshot dal localStorage (una tantum)
 function readAuthSnapshot(): { token: string | null; user: AuthUser } {
   try {
     const raw = JSON.parse(localStorage.getItem("authData") || "{}");
@@ -111,6 +120,7 @@ function readAuthSnapshot(): { token: string | null; user: AuthUser } {
   }
 }
 
+// True se l’utente è un professionista (o simili)
 function getIsProfessional(user: AuthUser | undefined | null): boolean {
   if (!user) return false;
   if (user.type === "professionista") return true;
@@ -121,6 +131,7 @@ function getIsProfessional(user: AuthUser | undefined | null): boolean {
   return false;
 }
 
+// Calcola l’età da data di nascita
 function ageFromDOB(dob?: string | null): number | undefined {
   if (!dob) return undefined;
   const d = new Date(dob);
@@ -132,6 +143,7 @@ function ageFromDOB(dob?: string | null): number | undefined {
   return age;
 }
 
+// Etichetta visuale per il professionista corrente
 function getProfessionalDisplay(): string | undefined {
   try {
     const raw = JSON.parse(localStorage.getItem("authData") || "{}");
@@ -151,19 +163,20 @@ function getProfessionalDisplay(): string | undefined {
   return undefined;
 }
 
+// Utility: primo valore non nullo/undefined
 function pickFirst<T = any>(...vals: any[]): T | null {
   for (const v of vals) if (v != null) return v as T;
   return null;
 }
 
+// Normalizza la struttura “/api/me” per il profilo professionista
 function normalizeProfessionalFromMePayload(me: any) {
-  // supporta /api/me che restituisce i campi sia top-level sia sotto user
   const u = me?.user ?? {};
   const professional =
     pickFirst(
       me?.professional,
       me?.prof,
-      me?.freelancer,                 // a volte il profilo è chiamato "freelancer"
+      me?.freelancer,
       u?.professional,
       u?.prof,
       u?.freelancer
@@ -191,7 +204,7 @@ function normalizeProfessionalFromMePayload(me: any) {
   };
 }
 
-/** Ritorna il customer_id risolto in base allo stato corrente */
+/** Ritorna il customer_id in base a modalità/ruolo */
 function getResolvedCustomerId(
   user: AuthUser | null | undefined,
   ownerMode: OwnerMode,
@@ -208,13 +221,14 @@ function getResolvedCustomerId(
     const cid = Number(selectedCustomerId);
     return Number.isFinite(cid) ? cid : null;
   }
-  // inserimento manuale o non pro: non abbiamo un customer DB
+  // inserimento manuale o non pro: non c’è un customer DB
   return null;
 }
 
 /* =========================
    Mappe gruppi
    ========================= */
+// Mappa nome→id per gruppi muscolari
 const GROUP_NAME_TO_ID: Record<string, number> = {
   Spalle: 1,
   Dorso: 2,
@@ -223,6 +237,7 @@ const GROUP_NAME_TO_ID: Record<string, number> = {
   Braccia: 5,
   Addome: 6,
 };
+// Mappa inversa id→nome
 const ID_TO_GROUP_NAME: Record<number, string> = Object.fromEntries(
   Object.entries(GROUP_NAME_TO_ID).map(([k, v]) => [v, k])
 ) as Record<number, string>;
@@ -230,6 +245,7 @@ const ID_TO_GROUP_NAME: Record<number, string> = Object.fromEntries(
 /* =========================
    Clienti (per tendina professionista)
    ========================= */
+// Tipo: record cliente (lista)
 type CustomerDetail = {
   customer_id: number;
   user_id?: number | null;
@@ -243,6 +259,7 @@ type CustomerDetail = {
   latest_weight?: number | null;
 };
 
+// Etichetta leggibile cliente
 function formatCustomerLabel(c: CustomerDetail): string {
   const first = (c.first_name ?? "").trim();
   const last  = (c.last_name ?? "").trim();
@@ -259,6 +276,7 @@ function formatCustomerLabel(c: CustomerDetail): string {
 /* =========================
    Combo Box cercabile (SOLO INPUT)
    ========================= */
+// Props per select esercizi custom
 type ExerciseSelectProps = {
   valueId?: number;
   valueName?: string;
@@ -268,9 +286,10 @@ type ExerciseSelectProps = {
   placeholder?: string;
 };
 
-// Max di ripetizioni/sets/weight/rest
+// Parser numero sicuro da stringa
 const toNum = (v: string) => (v === "" || v == null ? NaN : Number(v));
 
+// Select esercizi con filtro e gruppi
 function ExerciseSelect({
   valueId,
   valueName,
@@ -284,6 +303,7 @@ function ExerciseSelect({
   const [activeIdx, setActiveIdx] = useState<number>(-1);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
+  // Chiude il menu cliccando fuori
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
@@ -292,9 +312,11 @@ function ExerciseSelect({
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
+  // Filtro query
   const q = query.trim().toLowerCase();
   const filtered = q ? options.filter((o) => o.name.toLowerCase().includes(q)) : options;
 
+  // Raggruppa opzioni per gruppo
   const grouped = groupsOrder
     .map((gid) => ({
       gid,
@@ -303,9 +325,11 @@ function ExerciseSelect({
     }))
     .filter((g) => g.items.length > 0);
 
+  // Lista piatta per navigazione tastiera
   const flatList = grouped.flatMap((g) => g.items);
   const safeActiveIdx = Math.min(Math.max(activeIdx, -1), flatList.length - 1);
 
+  // Seleziona opzione per indice
   const selectByIdx = (idx: number) => {
     if (idx < 0 || idx >= flatList.length) return;
     onChange(flatList[idx]);
@@ -314,6 +338,7 @@ function ExerciseSelect({
     setActiveIdx(-1);
   };
 
+  // Testo visibile (valore selezionato)
   const displayText = valueId
     ? options.find((o) => o.id === valueId)?.name || valueName || ""
     : valueName || "";
@@ -386,6 +411,7 @@ function ExerciseSelect({
 /* =========================
    Helper per inferire gruppi da esercizi esistenti
    ========================= */
+// Deduce i gruppi di un giorno guardando gli esercizi
 function inferGroupsFromDay(exs: Array<{ musclegroups_id?: number | null }>): string[] {
   const rawIds = (exs || [])
     .map(e => Number(e.musclegroups_id))
@@ -395,13 +421,14 @@ function inferGroupsFromDay(exs: Array<{ musclegroups_id?: number | null }>): st
   if (uniqueIds.length) {
     return uniqueIds.map(id => ID_TO_GROUP_NAME[id] ?? `Gruppo ${id}`);
   }
-  // Se non riusciamo a inferire i gruppi dagli esercizi → Full Body (mostra tutto)
+  // fallback: Full Body
   return ["Full Body"];
 }
 
 /* =========================
    Pagina
    ========================= */
+// Pagina principale: creazione/modifica scheda allenamento
 export default function WorkoutPage() {
   usePageTitle("Scheda di allenamento");
   const navigate = useNavigate();
@@ -410,7 +437,7 @@ export default function WorkoutPage() {
     | (ScheduleDetail & { /* opzionali se servono extra */ })
     | null;
 
-  // Tipo locale per quello che ricevi da ScheduleDetailPage
+  // Tipo dei dettagli ricevuti da ScheduleDetailPage
   type ScheduleDetail = {
     id: number;
     goal: "peso_costante" | "aumento_peso" | "perdita_peso" | "altro";
@@ -431,34 +458,43 @@ export default function WorkoutPage() {
     }>;
   };
 
+  // ID scheda in modifica (se presente)
   const [editingScheduleId, setEditingScheduleId] = useState<number | null>(null);
 
-  // === Snapshot iniziale + state ===
+  // Snapshot auth + stato utente
   const snap = readAuthSnapshot();
   const token = snap.token;
   const [user, setUser] = useState<AuthUser>(snap.user);
 
+  // Flag: utente professionista?
   const isProfessional = getIsProfessional(user);
 
+  // Stati wizard + lista giorni/esercizi
   const [giorni, setGiorni] = useState<number | null>(null);
   const [currentDay, setCurrentDay] = useState(1);
   const [giorniAllenamento, setGiorniAllenamento] = useState<GiornoAllenamento[]>([]);
   const [mostraEsercizi, setMostraEsercizi] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
 
+  // Metadati scheda (scadenza/obiettivo)
   const [expireDate, setExpireDate] = useState<string>("");
   const [goal, setGoal] = useState<Goal | "">("");
 
+  // Stato caricamento + opzioni esercizi
   const [loadingEx, setLoadingEx] = useState<boolean>(false);
   const [availableExercises, setAvailableExercises] = useState<DBExercise[]>([]);
   const [availableByDay, setAvailableByDay] = useState<Record<number, DBExercise[]>>({});
 
+  // Flag consenso iniziale
   const [consentAccepted, setConsentAccepted] = useState(false);
 
+  // Ref export anteprima
   const exportRef = useRef<HTMLElement | null>(null);
 
+  // Modalità intestatario (self/other)
   const [ownerMode, setOwnerMode] = useState<OwnerMode>("self");
 
+  // Dati “me stesso” (mostra riassunto)
   const [loadingSelf, setLoadingSelf] = useState(false);
   const [selfData, setSelfData] = useState<UserAnthro>({
     first_name: user?.first_name ?? undefined,
@@ -469,17 +505,19 @@ export default function WorkoutPage() {
     height: (user as any)?.height ?? user?.customer?.height ?? null,
   });
 
-  // Stato per banner “salvato”
+  // Stato “salvato con successo”
   const [saveSuccess, setSaveSuccess] = useState<{ id: number } | null>(null);
 
-  // === Stati per gestione clienti esterni ===
+  // Gestione intestatario “altra persona”
   const [otherOwnerMode, setOtherOwnerMode] = useState<"existing" | "manual">(
     isProfessional ? "existing" : "manual"
   );
 
+  // Lista clienti visibile ai professionisti
   const [customers, setCustomers] = useState<CustomerDetail[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
 
+  // Dati manuali per “altro” (non DB)
   const [otherPerson, setOtherPerson] = useState({
     first_name: "",
     last_name: "",
@@ -489,12 +527,12 @@ export default function WorkoutPage() {
     height: "" as number | "",
   });
 
-  // ========= PATCH MODIFICA: precompila tutto quando arrivi da "Modifica scheda" =========
+  // PATCH: precompila pagina se arrivi da “Modifica scheda”
   useEffect(() => {
     if (!editSchedule) return;
 
     (async () => {
-      // salta consenso e wizard gruppi
+      // Salta consenso/wizard
       setConsentAccepted(true);
 
       setEditingScheduleId(editSchedule.id);
@@ -508,7 +546,7 @@ export default function WorkoutPage() {
       };
       setGoal(goalMap[editSchedule.goal] ?? "peso_costante");
 
-      // 1) Mappa i giorni UI + inferisci i gruppi dal contenuto
+      // Mappa giorni + inferisce gruppi
       const mapped = editSchedule.days.map(d => {
         const groups = inferGroupsFromDay(d.exercises as any[]);
         return {
@@ -530,7 +568,7 @@ export default function WorkoutPage() {
       setGiorni(editSchedule.days.length);
       setGiorniAllenamento(mapped);
 
-      // 2) Prefetch opzioni per OGNI giorno in base ai gruppi inferiti
+      // Prefetch esercizi per ogni giorno
       const byDay: Record<number, DBExercise[]> = {};
       for (const day of mapped) {
         try {
@@ -542,17 +580,17 @@ export default function WorkoutPage() {
       }
       setAvailableByDay(byDay);
 
-      // 3) Imposta giorno corrente e opzioni della tendina
+      // Imposta giorno corrente + opzioni
       const firstDay = mapped[0]?.giorno ?? 1;
       setCurrentDay(firstDay);
       setAvailableExercises(byDay[firstDay] ?? []);
 
-      // 4) Mostra direttamente il pannello esercizi
+      // Mostra pannello esercizi
       setMostraEsercizi(true);
     })();
   }, [editSchedule]);
 
-  // Se i dati sono incompleti, prova ad arricchirli da /api/me
+  // Idrata utente da /api/me se servono dettagli extra
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -596,7 +634,7 @@ export default function WorkoutPage() {
     return () => { cancelled = true; };
   }, [token, user?.customer, user?.type, user?.professional, user?.freelancer, user?.freelancer_id]);
 
-  // Carica profilo self (dettagli mostrati)
+  // Carica il profilo “self” per mostrare i dati nell’intestatario
   useEffect(() => {
     if (ownerMode !== "self" || !token) return;
 
@@ -625,7 +663,7 @@ export default function WorkoutPage() {
     })();
   }, [ownerMode, token]);
 
-  // Carica SEMPRE tutti i customer se l'utente è professionista (o admin)
+  // Carica tutti i customers (solo per professionisti/admin)
   useEffect(() => {
     if (!isProfessional || !token) return;
 
@@ -655,7 +693,7 @@ export default function WorkoutPage() {
     })();
   }, [isProfessional, token]);
 
-  // autocompila i dettagli quando selezioni un cliente
+  // Autocompila intestatario quando scegli un cliente esistente
   useEffect(() => {
     if (ownerMode !== "other" || otherOwnerMode !== "existing" || !selectedCustomerId) return;
     const c = customers.find((x) => x.customer_id === Number(selectedCustomerId));
@@ -671,7 +709,7 @@ export default function WorkoutPage() {
     });
   }, [ownerMode, otherOwnerMode, selectedCustomerId, customers]);
 
-  // Inizializza i giorni quando l’utente sceglie il numero (solo creazione)
+  // Inizializza struttura giorni quando scegli n° giorni (creazione)
   useEffect(() => {
     if (giorni && giorni > 0 && !editingScheduleId) {
       setGiorniAllenamento(
@@ -689,9 +727,11 @@ export default function WorkoutPage() {
     }
   }, [giorni, editingScheduleId]);
 
+  // Giorno corrente (derivato)
   const giornoCorrente = giorniAllenamento.find((g) => g.giorno === currentDay);
 
   /* Helpers */
+  // Converte nomi gruppi in id (gestendo Full Body)
   const namesToGroupIds = (names: string[]) => {
     const expanded = names.includes("Full Body")
       ? Array.from(new Set([...names, ...Object.keys(GROUP_NAME_TO_ID)]))
@@ -699,6 +739,7 @@ export default function WorkoutPage() {
     return Array.from(new Set(expanded.map((n) => GROUP_NAME_TO_ID[n]).filter(Boolean)));
   };
 
+  // Fetch esercizi filtrati per gruppi
   const fetchExercisesForGroups = async (groupNames: string[]): Promise<DBExercise[]> => {
     const ids = namesToGroupIds(groupNames);
     if (!ids.length) return [];
@@ -725,6 +766,7 @@ export default function WorkoutPage() {
   };
 
   /* Selezione gruppi */
+  // Aggiunge/toglie un gruppo nel giorno corrente
   const handleSelezionaGruppo = (gruppo: string) => {
     setGiorniAllenamento((prev) =>
       prev.map((g) => {
@@ -750,7 +792,7 @@ export default function WorkoutPage() {
     );
   };
 
-  // Fetch unico e cache per giorno
+  // Conferma gruppi: carica esercizi e prepara prima riga
   const handleConfermaGruppi = async () => {
     if (!giornoCorrente || !giornoCorrente.gruppi.length) return;
     try {
@@ -784,6 +826,7 @@ export default function WorkoutPage() {
     }
   };
 
+  // Sblocca modifica gruppi (reset esercizi)
   const handleCambiaGruppo = () => {
     if (!confirm("Cambiando i gruppi di questo giorno, gli esercizi inseriti verranno eliminati. Continuare?")) return;
     setGiorniAllenamento((prev) =>
@@ -799,6 +842,7 @@ export default function WorkoutPage() {
     setMostraEsercizi(false);
   };
 
+  // Cambia giorno corrente nel wizard
   const handleSwitchDay = (num: number) => {
     setCurrentDay(num);
     const d = giorniAllenamento.find((g) => g.giorno === num);
@@ -806,6 +850,7 @@ export default function WorkoutPage() {
     setAvailableExercises(availableByDay[num] ?? []);
   };
 
+  // Aggiunge una riga esercizio al giorno corrente
   const handleAggiungiEsercizio = () => {
     setGiorniAllenamento((prev) =>
       prev.map((g) =>
@@ -822,6 +867,7 @@ export default function WorkoutPage() {
     );
   };
 
+  // Elimina una riga esercizio
   const handleEliminaEsercizio = (index: number) => {
     setGiorniAllenamento((prev) =>
       prev.map((g) => {
@@ -833,7 +879,7 @@ export default function WorkoutPage() {
     );
   };
 
-  // set multiplo quando cambia esercizio (ID + nome, reset peso se non richiesto)
+  // Imposta selezione esercizio (ID+nome) e reset kg se non richiesti
   const handleSetExerciseSelection = (index: number, opt: DBExercise) => {
     setGiorniAllenamento((prev) =>
       prev.map((g) => {
@@ -853,6 +899,7 @@ export default function WorkoutPage() {
     );
   };
 
+  // Aggiorna un campo della riga esercizio
   const handleAggiornaEsercizio = (index: number, field: keyof Esercizio, value: string) => {
     if (field === "nome" && value === "") return;
     setGiorniAllenamento((prev) =>
@@ -864,6 +911,7 @@ export default function WorkoutPage() {
     );
   };
 
+  // Mostra/nasconde il campo note
   const handleToggleNota = (index: number) => {
     setGiorniAllenamento((prev) =>
       prev.map((g) => {
@@ -883,10 +931,10 @@ export default function WorkoutPage() {
   };
 
   /* Anteprima / Download / Salvataggio */
-  // Helpers numerici
+  // Clamp numerico utile per input
   const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
-  // --- VALIDAZIONE: almeno un esercizio completo per ogni giorno confermato ---
+  // Valida: almeno un esercizio completo per giorno confermato
   const isExerciseComplete = (dayNum: number, ex: Esercizio): boolean => {
     if (!ex.exerciseId) return false;
     const hasSerie = ex.serie !== "";
@@ -899,6 +947,7 @@ export default function WorkoutPage() {
     return hasSerie && hasRip && hasRec && hasPeso;
   };
 
+  // Controlla tutti i giorni confermati
   const allConfirmedDaysHaveAtLeastOneComplete = (): { ok: boolean; missingDay?: number } => {
     for (const g of giorniAllenamento) {
       if (!g.gruppiConfermati) continue;
@@ -908,6 +957,7 @@ export default function WorkoutPage() {
     return { ok: true };
   };
 
+  // Passa all’anteprima (dopo validazioni)
   const handleGoToPreview = () => {
     if (!expireDate) {
       alert("Imposta una data di scadenza prima di continuare.");
@@ -944,10 +994,11 @@ export default function WorkoutPage() {
     }
 
     setShowPreview(true);
-    setSaveSuccess(null); // reset eventuale banner
+    setSaveSuccess(null); // reset banner
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // Salva su DB (crea o modifica)
   const handleSaveToDb = async (customerIdOverride?: number | null) => {
     try {
       if (!expireDate || !goal || !giorniAllenamento.length) {
@@ -976,12 +1027,14 @@ export default function WorkoutPage() {
       const auth = JSON.parse(localStorage.getItem("authData") || "{}");
       const tokenLS: string | null = snap.token || auth?.token || null;
 
+      // Parser numeri interi limitati
       const toIntOrNull = (val: string | undefined | null, max: number): number | null => {
         if (val == null || val === "") return null;
         const n = Math.floor(Number(val));
         if (!Number.isFinite(n)) return null;
         return Math.min(max, Math.max(0, n));
       };
+      // Parser kg con due decimali
       const toWeightOrNull = (val: string | undefined | null): number | null => {
         if (val == null || val === "") return null;
         const n = Number(val);
@@ -1013,7 +1066,7 @@ export default function WorkoutPage() {
           alert(`❌ Aggiornamento scheda rifiutato (${putRes.status}).\n${text || "Controlla i campi inviati."}`);
           throw new Error("Errore update schedule");
         } else {
-          // 2) Rimpiazza giorni+esercizi
+          // REPLACE giorni + esercizi
           const replacePayload = {
             days: giorniAllenamento.map((g) => ({
               day: g.giorno,
@@ -1052,7 +1105,7 @@ export default function WorkoutPage() {
             return;
           }
         }
-        // se uno dei due endpoint manca → passa alla creazione nuova
+        // fallback alla creazione nuova se gli endpoint non esistono
       }
 
       // ================================
@@ -1108,7 +1161,7 @@ export default function WorkoutPage() {
         dayMap[g.giorno] = Number(day.id);
       }
 
-      // Prepara esercizi
+      // Prepara array esercizi per bulk insert
       const allExercises = giorniAllenamento.flatMap((g) =>
         g.esercizi
           .filter((ex) => ex.exerciseId)
@@ -1124,6 +1177,7 @@ export default function WorkoutPage() {
           }))
       );
 
+      // Salva esercizi bulk
       if (allExercises.length) {
         const exRes = await fetch(`/api/schedules/exercises`, {
           method: "POST",
@@ -1149,7 +1203,7 @@ export default function WorkoutPage() {
     }
   };
 
-  // === Dati per la vista off-screen (export one-column)
+  // Dati per anteprima/export (one column)
   const exportDays: ExportWorkoutDay[] = Array.from({ length: giorni ?? 0 }).map((_, i) => {
     const g = giorniAllenamento.find((x) => x.giorno === i + 1);
     return {
@@ -1169,8 +1223,10 @@ export default function WorkoutPage() {
   /* =========================
      Render (Allenamento)
   ========================= */
+  // Goal normalizzato per export
   const goalForExport: Goal = isGoal(goal) && goal !== "altro" ? goal : "peso_costante";
 
+  // Etichetta intestatario per anteprima
   const intestatarioLabel =
     ownerMode === "self"
       ? `${selfData.first_name ?? ""} ${selfData.last_name ?? ""}`.trim() || (JSON.parse(localStorage.getItem("authData") || "{}")?.username || "—")
@@ -1181,6 +1237,7 @@ export default function WorkoutPage() {
           })()
         : `${otherPerson.first_name} ${otherPerson.last_name}`.trim() || "Intestatario esterno";
 
+  // Customer id risolto (per pulsante salva)
   const resolvedCustomerIdForPreview = getResolvedCustomerId(
     user,
     ownerMode,
@@ -1189,7 +1246,7 @@ export default function WorkoutPage() {
     selectedCustomerId
   );
 
-  // === VISTA SOLO-CONSENSO (creazione) ===
+  // Vista consenso iniziale (solo creazione)
   if (!consentAccepted && !editingScheduleId) {
     return (
       <div className="w-full max-w-3xl mx-auto mt-10 mb-24">
@@ -1235,8 +1292,10 @@ export default function WorkoutPage() {
     );
   }
 
+  // Render principale (wizard + anteprima)
   return (
     <div className="min-h-screen flex flex-col items-center bg-indigo-50 dark:bg-gray-950 px-8 py-12 text-gray-800 dark:text-gray-100">
+      {/* STEP: scelta numero di giorni */}
       {giorni === null && !showPreview && (
         <motion.div
           key="allenamento-giorni"
@@ -1267,7 +1326,7 @@ export default function WorkoutPage() {
           animate={{ opacity: 1, y: 0 }}
           className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-10 w-full max-w-5xl mt-10 flex flex-col items-center border border-transparent dark:border-gray-800"
         >
-          {/* Pulsanti Giorni */}
+          {/* Navigazione giorni */}
           <div className="flex flex-wrap justify-center gap-3 mb-6">
             {Array.from({ length: giorni }).map((_, i) => (
               <button
@@ -1284,7 +1343,7 @@ export default function WorkoutPage() {
             ))}
           </div>
 
-          {/* header + nav */}
+          {/* Header e frecce giorno */}
           <div className="flex items-center gap-4 mb-6">
             <button
               onClick={() => handleSwitchDay(Math.max(1, currentDay - 1))}
@@ -1305,7 +1364,7 @@ export default function WorkoutPage() {
             </button>
           </div>
 
-          {/* selezione gruppi / esercizi */}
+          {/* Selezione gruppi o lista esercizi */}
           {!mostraEsercizi ? (
             <>
               <p className="text-indigo-700 dark:text-indigo-300 mb-6">Seleziona i gruppi muscolari da allenare</p>
@@ -1475,7 +1534,7 @@ export default function WorkoutPage() {
             </>
           )}
 
-          {/* Riepilogo + form impostazioni scheda */}
+          {/* Riepilogo + impostazioni scheda */}
           <div className="mt-10 w-full">
             <h3 className="text-lg font-semibold text-indigo-700 dark:text-indigo-300 mb-3 text-center">Riepilogo allenamento</h3>
             <div className="flex flex-wrap justify-center gap-3 mb-6">
@@ -1498,7 +1557,7 @@ export default function WorkoutPage() {
               })}
             </div>
 
-            {/* Form: intestatario + scadenza + obiettivo */}
+            {/* Impostazioni scheda: intestatario/scadenza/goal */}
             <div className="max-w-2xl mx-auto bg-indigo-50/60 dark:bg-gray-800 border border-indigo-100 dark:border-gray-700 rounded-xl p-5 mb-6">
               <h4 className="text/base font-semibold text-indigo-800 dark:text-indigo-300 mb-4">Impostazioni scheda</h4>
 
@@ -1531,7 +1590,7 @@ export default function WorkoutPage() {
                   </label>
                 </div>
 
-                {/* Se OTHER: professionista vede sempre la tendina con TUTTI i customer */}
+                {/* Altra persona: vista professionista (cliente esistente o manuale) */}
                 {ownerMode === "other" && isProfessional && (
                   <div className="mt-4 space-y-3">
                     <div className="flex items-center gap-6">
@@ -1605,7 +1664,7 @@ export default function WorkoutPage() {
                   </div>
                 )}
 
-                {/* Dati intestatario mostrati */}
+                {/* Dati intestatario (self o manuale) */}
                 {ownerMode === "self" ? (
                   <div className="mt-3 text-sm text-gray-700 dark:text-gray-200">
                     {loadingSelf ? (
@@ -1736,7 +1795,7 @@ export default function WorkoutPage() {
             Anteprima scheda allenamento
           </h2>
 
-          {/* ✅ Banner successo dopo salvataggio */}
+          {/* Banner successo salvataggio */}
           {saveSuccess && (
             <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-800 p-4 text-emerald-800 dark:text-emerald-200">
               <div className="font-semibold">
@@ -1755,7 +1814,7 @@ export default function WorkoutPage() {
             </div>
           )}
 
-          {/* VISTA OFF-SCREEN per export */}
+          {/* Contenuto off-screen per export */}
           <div
             aria-hidden="true"
             style={{
@@ -1780,9 +1839,9 @@ export default function WorkoutPage() {
             />
           </div>
 
-          {/* Anteprima visiva compatta */}
+          {/* Anteprima visiva */}
           <div className="relative bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
-            {/* HEADER COMPATTO */}
+            {/* Header compatto */}
             <div className="mb-2">
               <div className="flex items-start justify-between">
                 <div className="leading-tight">
@@ -1809,7 +1868,7 @@ export default function WorkoutPage() {
                 />
               </div>
 
-              {/* metadati, margine piccolo */}
+              {/* Metadati */}
               <div className="text-sm text-gray-600 dark:text-gray-300 mt-2">
                 <span className="mr-4"><strong>Scadenza:</strong> {expireDate || "—"}</span>
                 <span><strong>Obiettivo:</strong> {
@@ -1820,7 +1879,7 @@ export default function WorkoutPage() {
               </div>
             </div>
 
-            {/* scheda */}
+            {/* Griglia giorni */}
             <div className="grid md:grid-cols-2 gap-4">
               {Array.from({ length: giorni ?? 0 }).map((_, i) => {
                 const g = giorniAllenamento.find((x) => x.giorno === i + 1);
@@ -1853,6 +1912,7 @@ export default function WorkoutPage() {
             </div>
           </div>
 
+          {/* Azioni anteprima */}
           <div className="mt-4 flex flex-wrap gap-3 justify-center">
             <button
               onClick={() => setShowPreview(false)}

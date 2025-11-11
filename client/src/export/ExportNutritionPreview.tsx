@@ -1,5 +1,6 @@
 import { forwardRef, useImperativeHandle, useRef } from "react";
 
+// Tipi dati per item/pasto/giorno da esportare
 export type ExportMealItem = { text: string };
 export type ExportMeal = { name: string; items: ExportMealItem[] };
 export type ExportDay = {
@@ -8,6 +9,7 @@ export type ExportDay = {
   meals: ExportMeal[];
 };
 
+// Metadati di testata (scadenza, obiettivo, parametri)
 export type ExportMeta = {
   expire: string;
   goal: string;
@@ -18,17 +20,22 @@ export type ExportMeta = {
   cheats?: string;
 };
 
+// Props del componente export
 export type ExportNutritionPreviewProps = {
   meta: ExportMeta;
   days: ExportDay[];
   offscreen?: boolean;
 };
 
+// Componente di anteprima “compatibile” per export PNG (forwardRef verso il nodo root)
 const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewProps>(
   ({ meta, days, offscreen = false }, ref) => {
+    // ref interno al contenitore da esporre all’esterno
     const rootRef = useRef<HTMLDivElement>(null);
+    // espone il nodo reale tramite il ref esterno (per html2canvas)
     useImperativeHandle(ref, () => rootRef.current as unknown as HTMLElement);
 
+    // Stili base del “foglio” (render sicuro per html2canvas)
     const baseBody: React.CSSProperties = {
       margin: 0,
       padding: 0,
@@ -40,6 +47,7 @@ const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewPro
       lineHeight: "1.4",
     };
 
+    // Contenitore pagina A4-like centrata
     const page: React.CSSProperties = {
       width: "800px",
       maxWidth: "800px",
@@ -49,12 +57,13 @@ const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewPro
       border: "1px solid rgb(229,231,235)",
       borderRadius: "8px",
       boxSizing: "border-box",
-      position: offscreen ? "absolute" : "static",
+      position: offscreen ? "absolute" : "static", // se offscreen, sposta fuori dallo schermo
       left: offscreen ? "-10000px" : "auto",
       top: offscreen ? "0" : "auto",
       zIndex: offscreen ? 0 : "auto",
     };
 
+    // Titolo documento
     const title: React.CSSProperties = {
       margin: "0 0 12px 0",
       padding: "0",
@@ -65,6 +74,7 @@ const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewPro
       textTransform: "none",
     };
 
+    // Box metadati piano
     const metaBox: React.CSSProperties = {
       margin: "0 0 12px 0",
       padding: "8px",
@@ -73,6 +83,7 @@ const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewPro
       borderRadius: "6px",
       boxSizing: "border-box",
     };
+    // Riga singola di metadati
     const row: React.CSSProperties = {
       margin: "0 0 4px 0",
       padding: "0",
@@ -82,6 +93,7 @@ const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewPro
       overflowWrap: "anywhere",
     };
 
+    // Sezione per ogni giorno
     const section: React.CSSProperties = {
       margin: "12px 0 0 0",
       padding: "12px",
@@ -89,6 +101,7 @@ const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewPro
       borderRadius: "6px",
       background: "rgb(255,255,255)",
     };
+    // Titolo della sezione (giorno)
     const sectionTitle: React.CSSProperties = {
       margin: "0 0 8px 0",
       padding: "0",
@@ -97,6 +110,7 @@ const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewPro
       color: "rgb(31,41,55)",
     };
 
+    // Riepilogo totali del giorno
     const totals: React.CSSProperties = {
       margin: "0 0 8px 0",
       padding: "6px",
@@ -104,6 +118,7 @@ const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewPro
       border: "1px solid rgb(229,231,235)",
       borderRadius: "4px",
     };
+    // Voce singola dei totali
     const totalItem: React.CSSProperties = {
       display: "inline-block",
       margin: "0 12px 0 0",
@@ -111,6 +126,7 @@ const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewPro
       color: "rgb(55,65,81)",
     };
 
+    // Card del singolo pasto
     const meal: React.CSSProperties = {
       margin: "8px 0 0 0",
       padding: "8px",
@@ -118,12 +134,14 @@ const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewPro
       borderRadius: "4px",
       background: "rgb(255,255,255)",
     };
+    // Nome pasto
     const mealName: React.CSSProperties = {
       margin: "0 0 6px 0",
       padding: "0",
       fontWeight: 600,
       color: "rgb(49,46,129)",
     };
+    // Lista alimenti
     const ulFoods: React.CSSProperties = {
       margin: "0",
       padding: "0 0 0 18px",
@@ -131,6 +149,7 @@ const ExportNutritionPreview = forwardRef<HTMLElement, ExportNutritionPreviewPro
       listStylePosition: "outside",
     };
 
+    // Render struttura stampabile/esportabile
     return (
       <div style={baseBody}>
         <div ref={rootRef} id="export-safe-root" style={page}>

@@ -1,4 +1,3 @@
-// client/src/components/Layouts/loginModal/LoginModal.tsx
 import { useEffect, useId, useState } from "react";
 import { useAuth } from "../../../hooks/useAuth";
 import { useLoginModal } from "../../../hooks/useLoginModal";

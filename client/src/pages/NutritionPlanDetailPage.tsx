@@ -49,15 +49,18 @@ type PlanDetail = {
 };
 
 /* ===== Helpers ===== */
+// Confronto numerico “soft” tra id
 const eqId = (a: unknown, b: unknown) =>
   a !== null && a !== undefined && b !== null && b !== undefined && Number(a) === Number(b);
 
+// True se data (alla fine del giorno) è nel passato
 function isExpiredDate(isoDate?: string | null): boolean {
   if (!isoDate) return false;
   const endOfDay = new Date(`${isoDate}T23:59:59`);
   return endOfDay.getTime() < Date.now();
 }
 
+// Somma macro di un giorno
 function dayTotals(d: Day) {
   let kcal = 0, p = 0, c = 0, f = 0, fi = 0;
   for (const m of d.meals) {
@@ -78,6 +81,7 @@ function dayTotals(d: Day) {
   };
 }
 
+// Snapshot auth normalizzato da localStorage
 function readAuthSnapshot() {
   let raw: any = {};
   try { raw = JSON.parse(localStorage.getItem("authData") || "{}"); } catch {}
@@ -96,26 +100,27 @@ function readAuthSnapshot() {
   };
 }
 
+// Pagina dettaglio piano nutrizionale
 export default function NutritionPlanDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [plan, setPlan] = useState<PlanDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Auth (normalizzata)
+  // Auth memoizzata (token/utente)
   const { token, user } = useMemo(readAuthSnapshot, []);
   const myUsername = user.username || null;
   const myFull = [user.firstName, user.lastName].filter(Boolean).join(" ").trim();
   const myRole = user.type as "utente" | "professionista" | "admin" | null;
 
-  // IDs effettivi (fallback da /api/me se non presenti in localStorage)
+  // Stato: id cliente/professionista effettivi
   const [ids, setIds] = useState<{ customerId: number | null; freelancerId: number | null }>({
     customerId: user.customerId ?? null,
     freelancerId: user.freelancerId ?? null,
   });
 
+  // Lazy fetch /me per riempire ids mancanti
   useEffect(() => {
-    // Se non abbiamo customerId/freelancerId, proviamo a recuperarli da /api/me
     if (!token) return;
     if (ids.customerId != null || ids.freelancerId != null) return;
 
@@ -127,12 +132,12 @@ export default function NutritionPlanDetailPage() {
           freelancerId: me?.freelancer?.id ?? null,
         });
       } catch {
-        // fallback: lascia i permessi al backend
+        // backend farà enforcement permessi
       }
     })();
   }, [token, ids.customerId, ids.freelancerId]);
 
-  // Fetch dettaglio
+  // Fetch dettaglio piano
   useEffect(() => {
     (async () => {
       try {
@@ -144,41 +149,37 @@ export default function NutritionPlanDetailPage() {
     })();
   }, [id, token]);
 
-  // Etichetta creatore: preferisci Nome + Cognome
+  // Etichetta creatore (preferisce Nome Cognome)
   const creatorLabel = useMemo(() => {
     if (!plan) return "—";
     const apiFull = [plan.creator_first_name, plan.creator_last_name].filter(Boolean).join(" ").trim();
     if (apiFull) return apiFull;
-
-    // se non c'è freelancer: creato dal cliente
     if (!plan.freelancer_id) {
       return myFull || myUsername || plan.creator || "Cliente";
     }
     return plan.creator || "Professionista";
   }, [plan, myFull, myUsername]);
 
-  // Permessi per mostrare il bottone
+  // Id effettivi per permessi client-side
   const effectiveCustomerId = ids.customerId;
   const effectiveFreelancerId = ids.freelancerId;
 
+  // Regole di visibilità bottone “Modifica”
   const canEdit = useMemo(() => {
     if (!plan) return false;
     if (myRole === "admin") return true;
 
-    // Se abbiamo almeno uno dei due ID, valutiamo in modo "stretto"
     if (effectiveCustomerId != null || effectiveFreelancerId != null) {
       const isOwnerCustomer = eqId(plan.customer_id, effectiveCustomerId);
       const isOwnerPro = eqId(plan.freelancer_id, effectiveFreelancerId);
       return Boolean(isOwnerCustomer || isOwnerPro);
     }
 
-    // Fallback: non siamo riusciti a ricavare gli ID dal client,
-    // mostriamo comunque il bottone e lasciamo che i permessi siano
-    // fatti valere dal backend (PUT/REPLACE già protetti).
+    // Fallback: lascia decidere al backend
     return true;
   }, [plan, myRole, effectiveCustomerId, effectiveFreelancerId]);
 
-  // Payload leggero per la NutritionPage (evita “scoppio”)
+  // Payload essenziale da passare all'editor (NutritionPage)
   const editPayload = useMemo(() => {
     if (!plan) return null;
     return {
@@ -216,7 +217,7 @@ export default function NutritionPlanDetailPage() {
     };
   }, [plan]);
 
-  // UI
+  // UI: error state
   if (error) {
     return (
       <div className="min-h-screen bg-white px-8 py-10">
@@ -230,11 +231,14 @@ export default function NutritionPlanDetailPage() {
     );
   }
 
+  // UI: loading
   if (!plan) return <p className="text-center mt-20 text-gray-600">Caricamento…</p>;
 
+  // UI: calcolo scadenza/etichetta
   const expired = isExpiredDate(plan.expire);
   const expireLabel = plan.expire ? new Date(plan.expire).toLocaleDateString() : "—";
 
+  // UI: dettaglio piano + azioni (indietro/modifica)
   return (
     <div className="min-h-screen bg-white px-8 py-10">
       <div className="max-w-5xl mx-auto">
@@ -274,6 +278,7 @@ export default function NutritionPlanDetailPage() {
           · Creatore: <strong>{creatorLabel}</strong>
         </p>
 
+        {/* Giorni con riepilogo macro e pasti */}
         <div className="grid md:grid-cols-2 gap-6">
           {plan.days.map((d) => {
             const t = dayTotals(d);

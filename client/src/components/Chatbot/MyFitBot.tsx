@@ -8,6 +8,8 @@ import { api } from "../../services/api";
 import { useAuth } from "../../hooks/useAuth";
 
 type MaybeUser = { id?: number | string; username?: string } | null;
+
+// Autenticazione del bot per capire se l'utente è loggato
 const useAuthState = () => {
   const auth = useAuth() as any;
   const rawFlag = auth?.isAuthenticated ?? auth?.isLoggedIn ?? null;
@@ -55,7 +57,7 @@ type AssistantThread = {
 
 type AssistantFolder = { id: number; name: string; createdAt?: string };
 
-// utils
+// Creazione del titolo automatica
 function autoTitleFrom(text: string) {
   const t = (text || "").replace(/\s+/g, " ").trim();
   if (!t) return "Nuova conversazione";
@@ -64,6 +66,8 @@ function autoTitleFrom(text: string) {
   if (sentence.length > 60) title = title.replace(/\s+\S*$/, "") + "…";
   return title.charAt(0).toUpperCase() + title.slice(1);
 }
+
+// Creazione automatica del timestamp
 const monthsIT = ["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"];
 function fmtTime(d: Date) { return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
 function startOfDay(d: Date) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
@@ -157,7 +161,7 @@ export default function MyFitBot({
     })();
   }, [isAuthenticated]);
 
-  // loads
+  // Carica cartelle e chat
   async function loadFolders() {
     try {
       const resp = await api.get<AssistantFolder[]>("/assistant/folders");

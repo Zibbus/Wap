@@ -1,6 +1,7 @@
 // src/export/ExportWorkoutPreview.tsx
 import { forwardRef, useImperativeHandle, useRef } from "react";
 
+// Tipi item esercizio esportato (righe)
 export type ExportWorkoutItem = {
   name: string;
   serie?: string | null;
@@ -10,6 +11,7 @@ export type ExportWorkoutItem = {
   note?: string | null;
 };
 
+// Metadati testata export (scadenza/goal/logo/intestatari)
 export type ExportWorkoutMeta = {
   expire: string;
   goal: "peso_costante" | "perdita_peso" | "aumento_peso";
@@ -19,6 +21,7 @@ export type ExportWorkoutMeta = {
   creator?: string;
 };
 
+// Struttura giorno esportato (gruppi + lista esercizi)
 export type ExportWorkoutDay = {
   label: string;
   groups: string[];
@@ -32,18 +35,22 @@ export type ExportWorkoutDay = {
   }>;
 };
 
+// Props del componente di export
 type Props = {
   meta: ExportWorkoutMeta;
   days: ExportWorkoutDay[];
   offscreen?: boolean;
 };
 
+// Componente export “compatibile” per html2canvas (espone il nodo root via ref)
 const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
   ({ meta, days, offscreen = false }, ref) => {
+    // Ref interno al contenitore reale da passare a html2canvas
     const rootRef = useRef<HTMLDivElement>(null);
+    // Espone rootRef all’esterno come HTMLElement
     useImperativeHandle(ref, () => rootRef.current as unknown as HTMLElement);
 
-    // ===== STILI SAFE =====
+    // Stile base del documento (font/sfondo sicuri)
     const baseBody: React.CSSProperties = {
       margin: 0,
       padding: 0,
@@ -55,6 +62,7 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
       lineHeight: "1.4",
     };
 
+    // Contenitore pagina centrata (posizionabile offscreen)
     const page: React.CSSProperties = {
       width: "800px",
       maxWidth: "800px",
@@ -70,16 +78,18 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
       zIndex: offscreen ? 0 : "auto",
     };
 
+    // Titolo principale (sobrio)
     const title: React.CSSProperties = {
       margin: "0 0 8px 0",
       padding: "0",
       fontSize: "22px",
       fontWeight: 700,
-      color: "rgb(17,17,17)", // grigio molto scuro
+      color: "rgb(17,17,17)",
       textAlign: "left",
       textTransform: "none",
     };
 
+    // Riga metadati in linea (scadenza/obiettivo)
     const metaInline: React.CSSProperties = {
       margin: "0 0 12px 0",
       padding: "0",
@@ -87,10 +97,12 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
       color: "rgb(55,65,81)",
     };
 
+    // Spaziatura tra metadati
     const metaChunk: React.CSSProperties = {
       marginRight: "18px",
     };
 
+    // Box di sezione per ogni giorno
     const section: React.CSSProperties = {
       margin: "12px 0 0 0",
       padding: "12px",
@@ -99,6 +111,7 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
       background: "rgb(255,255,255)",
     };
 
+    // Header sezione (titolo giorno + gruppi)
     const sectionHead: React.CSSProperties = {
       margin: "0 0 8px 0",
       padding: "0",
@@ -107,6 +120,7 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
       justifyContent: "space-between",
     };
 
+    // Titolo della sezione (giorno)
     const sectionTitle: React.CSSProperties = {
       margin: 0,
       padding: 0,
@@ -115,6 +129,7 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
       color: "rgb(31,41,55)",
     };
 
+    // Sottotitolo gruppi muscolari
     const sectionSub: React.CSSProperties = {
       margin: 0,
       padding: 0,
@@ -122,12 +137,13 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
       color: "rgb(107,114,128)",
     };
 
-    // esercizio SENZA rettangolo (no bordo/sfondo)
+    // Riga esercizio (senza box)
     const exercise: React.CSSProperties = {
       margin: "10px 0 0 0",
       padding: "0",
     };
 
+    // Nome esercizio
     const exerciseName: React.CSSProperties = {
       margin: "0 0 4px 0",
       padding: 0,
@@ -135,12 +151,14 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
       color: "rgb(31,41,55)",
     };
 
+    // Dettagli serie/rip/kg/rec
     const exerciseRow: React.CSSProperties = {
       margin: 0,
       padding: 0,
       color: "rgb(55,65,81)",
     };
 
+    // Riga note esercizio
     const note: React.CSSProperties = {
       margin: "4px 0 0 0",
       padding: 0,
@@ -148,8 +166,10 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
       color: "rgb(75,85,99)",
     };
 
+    // Helper per mostrare trattino quando vuoto
     const small = (v?: string | null) => (v && String(v).trim() !== "" ? v : "—");
 
+    // Etichetta leggibile obiettivo
     const goalLabel =
       meta.goal === "peso_costante"
         ? "Peso costante"
@@ -159,10 +179,11 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
         ? "Aumento peso"
         : "—";
 
+    // Render del layout stampabile/esportabile
     return (
       <div style={baseBody}>
         <div ref={rootRef} id="export-safe-root" style={page}>
-          {/* Logo opzionale (senza object-fit) */}
+          {/* Logo opzionale (posizionato in alto a destra) */}
           {meta.logoPath ? (
             <div style={{ position: "relative", height: "0px" }}>
               <img
@@ -180,17 +201,19 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
             </div>
           ) : null}
 
-          {/* Titolo (senza “compatibile” né trattino) */}
+          {/* Titolo documento con eventuale intestatario */}
           <h1 style={title}>
             Scheda allenamento{meta.ownerName ? ` di: ${meta.ownerName}` : ""}
           </h1>
+
+          {/* Firma professionista (se presente) */}
           {meta.professionalName ? (
             <div style={{ margin: "0 0 8px 0", padding: 0, fontSize: "14px", color: "rgb(75,85,99)" }}>
               <em>curata da: {meta.professionalName}</em>
             </div>
           ) : null}
 
-          {/* Scadenza + Obiettivo sulla stessa riga (niente box celeste) */}
+          {/* Metadati sintetici (scadenza/obiettivo) */}
           <div style={metaInline}>
             <span style={metaChunk}>
               <strong>Scadenza:</strong> {small(meta.expire)}
@@ -200,7 +223,7 @@ const ExportWorkoutPreview = forwardRef<HTMLElement, Props>(
             </span>
           </div>
 
-          {/* Giorni */}
+          {/* Sezioni per ogni giorno */}
           {days.map((day, idx) => (
             <div key={idx} style={section}>
               <div style={sectionHead}>

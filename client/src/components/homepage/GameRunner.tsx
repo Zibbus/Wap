@@ -1,27 +1,35 @@
 import { useEffect, useRef, useState } from "react";
 
+// Componente canvas con loop di gioco, input e stato UI
 export default function GameRunner() {
+  // ref al canvas
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // stato punteggio
   const [score, setScore] = useState(0);
+  // stato game over
   const [isGameOver, setIsGameOver] = useState(false);
+  // stato partita iniziata
   const [isStarted, setIsStarted] = useState(false);
 
+  // ref “volatile” per lo stato runtime (non triggerano render)
   const startedRef = useRef(false);
   const runningRef = useRef(false);
   const gameOverRef = useRef(false);
   const jumpingRef = useRef(false);
   const reqIdRef = useRef<number | null>(null);
 
+  // fisica di base
   const gravity = 0.6;
   const jumpStrength = 12;
 
+  // setup, loop e input (una sola volta)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    // 🔹 Sprite
+    // sprite sheet (corsa, salto, ostacolo)
     const runSprite = new Image();
     const jumpSprite = new Image();
     const hurdleSprite = new Image();
@@ -30,11 +38,13 @@ export default function GameRunner() {
     jumpSprite.src = new URL("../../assets/AtletaSalto.png", import.meta.url).href;
     hurdleSprite.src = new URL("../../assets/Ostacoli.png", import.meta.url).href;
 
+    // dimensioni frame/schermo
     const frameW = 128;
     const frameH = 128;
     const drawW = 128;
     const drawH = 128;
 
+    // indice dei frame della corsa
     const runFrames = [
       { x: 0, y: 0 },
       { x: 1, y: 0 },
@@ -42,6 +52,7 @@ export default function GameRunner() {
       { x: 1, y: 1 },
     ];
 
+    // stato animazione/gioco interno al loop
     let currentFrame = 0;
     let frameTimer = 0;
     const frameDelay = 8;
@@ -56,6 +67,7 @@ export default function GameRunner() {
     let speed = 7;
     let obstacles: { x: number; type: "low" | "high" }[] = [];
 
+    // avvia/resetta una partita
     const startGame = () => {
       setIsGameOver(false);
       setIsStarted(true);
@@ -76,12 +88,14 @@ export default function GameRunner() {
       reqIdRef.current = requestAnimationFrame(update);
     };
 
+    // termina la partita
     const endGame = () => {
       runningRef.current = false;
       gameOverRef.current = true;
       setIsGameOver(true);
     };
 
+    // applica il salto (se non in volo)
     const jump = () => {
       if (!runningRef.current || gameOverRef.current) return;
       if (!jumpingRef.current) {
@@ -91,12 +105,13 @@ export default function GameRunner() {
       }
     };
 
+    // disegna l’atleta con frame corretti (corsa/salto)
     const drawAthlete = () => {
       const sprite = jumpingRef.current ? jumpSprite : runSprite;
       const f = !jumpingRef.current ? runFrames[currentFrame] : { x: 0, y: 0 };
       const sx = f.x * frameW;
       const sy = f.y * frameH;
-      const cropTop = 5;
+      const cropTop = 5; // taglio margine alto per centratura
       const cropY = sy + cropTop;
       const cropH = frameH - cropTop;
       const destX = PLAYER_X;
@@ -111,6 +126,7 @@ export default function GameRunner() {
       }
     };
 
+    // disegna ostacolo e restituisce la hitbox per collisione
     const drawObstacle = (x: number, type: "low" | "high") => {
       const sx = 0;
       const sy = type === "low" ? 0 : 128;
@@ -124,16 +140,19 @@ export default function GameRunner() {
       };
     };
 
+    // loop principale: fisica, spawn ostacoli, collisioni, score
     const update = () => {
       if (!runningRef.current) return;
       frame++;
 
+      // sfondo + terreno
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#eef2ff";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#6366f1";
       ctx.fillRect(0, GROUND_TOP, canvas.width, GROUND_HEIGHT);
 
+      // gravità e atterraggio
       velocity += gravity;
       playerBottom += velocity;
       if (playerBottom > GROUND_TOP) {
@@ -145,22 +164,27 @@ export default function GameRunner() {
         }
       }
 
+      // atleta
       drawAthlete();
 
+      // velocità dinamica in base al punteggio
       if (score > 1500) speed = 10;
       else if (score >= 500 && score <= 1500) speed = 9;
 
+      // spawn ostacoli periodico
       if (frame % 130 === 0) {
         const type = Math.random() < 0.5 ? "low" : "high";
         obstacles.push({ x: canvas.width, type });
       }
 
+      // movimento ostacoli + collisione AABB
       const newObstacles: { x: number; type: "low" | "high" }[] = [];
       for (const obs of obstacles) {
         obs.x -= speed;
         if (obs.x + 128 > 0) newObstacles.push(obs);
         const box = drawObstacle(obs.x, obs.type);
 
+        // hitbox semplificata del player
         const hitX = PLAYER_X + 36;
         const hitW = drawW - 72;
         const hitTop = playerBottom - drawH + 40;
@@ -178,54 +202,42 @@ export default function GameRunner() {
       }
       obstacles = newObstacles;
 
+      // punteggio incrementale
       if (frame % 10 === 0 && !gameOverRef.current) setScore((p) => p + 1);
+
+      // prossimo frame
       reqIdRef.current = requestAnimationFrame(update);
     };
 
-    // ✅ Rileva in modo robusto se l'utente sta scrivendo
+    // rileva se l’utente sta digitando per non rubare la spacebar
     const isTypingNow = (): boolean => {
       const ae = (document.activeElement as HTMLElement | null);
       if (!ae) return false;
-
-      // 1) contenteditable o discendenti contenteditable
-      if (ae.isContentEditable || ae.closest?.('[contenteditable=""],[contenteditable="true"]')) {
-        return true;
-      }
-
-      // 2) elementi con ruolo "textbox" (editor custom)
-      if (ae.getAttribute?.("role") === "textbox" || ae.closest?.('[role="textbox"]')) {
-        return true;
-      }
-
-      // 3) input/textarea con tipi testuali
+      if (ae.isContentEditable || ae.closest?.('[contenteditable=""],[contenteditable="true"]')) return true;
+      if (ae.getAttribute?.("role") === "textbox" || ae.closest?.('[role="textbox"]')) return true;
       const tag = ae.tagName?.toLowerCase();
       if (tag === "textarea") return true;
       if (tag === "input") {
         const type = (ae as HTMLInputElement).type?.toLowerCase();
-        const textTypes = new Set([
-          "text", "search", "email", "url", "tel", "password", "number"
-        ]);
+        const textTypes = new Set(["text","search","email","url","tel","password","number"]);
         if (textTypes.has(type || "text")) return true;
       }
-
       return false;
     };
 
+    // input: space = start/jump (senza interferire con i campi di testo)
     const handleKey = (e: KeyboardEvent) => {
-      // Ignora IME/composizione
-      // @ts-ignore - alcune runtime espongono isComposing
+      // @ts-ignore: alcune runtime espongono isComposing (IME)
       if ((e as any).isComposing) return;
-
       if (e.code === "Space" || e.key === " ") {
-        // ⛔ se l'utente sta scrivendo, NON toccare la spacebar
         if (isTypingNow()) return;
-
-        e.preventDefault(); // serve passive:false
+        e.preventDefault();
         if (!startedRef.current || gameOverRef.current) startGame();
         else jump();
       }
     };
 
+    // bind input e disegno idle iniziale
     window.addEventListener("keydown", handleKey, { passive: false });
 
     const drawIdle = () => {
@@ -238,12 +250,14 @@ export default function GameRunner() {
 
     runSprite.onload = drawIdle;
 
+    // cleanup: input e RAF
     return () => {
       window.removeEventListener("keydown", handleKey);
       if (reqIdRef.current) cancelAnimationFrame(reqIdRef.current);
     };
   }, []);
 
+  // UI canvas + overlay (start/game over) + punteggio
   return (
     <div className="flex flex-col items-center justify-center py-12">
       <h2 className="text-3xl font-extrabold text-indigo-700 mb-2">

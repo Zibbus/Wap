@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../services/api";
 
+// Tipi: scheda allenamento (lista)
 type Schedule = {
   id: number;
   customer_id: number;
@@ -11,6 +12,7 @@ type Schedule = {
   days_count: number;
 };
 
+// Tipi: piano nutrizionale (lista)
 type NutritionPlan = {
   id: number;
   customer_id: number;
@@ -25,13 +27,15 @@ type NutritionPlan = {
   creator?: string | null; // fallback stringa se fornita
 };
 
+// Pagina: lista schede (allenamento + nutrizione) del cliente
 export default function ScheduleListPage() {
+  // Stato: liste e messaggi di errore
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [nutritionPlans, setNutritionPlans] = useState<NutritionPlan[]>([]);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // ===== Auth snapshot per etichetta "Creatore" =====
+  // Auth snapshot per etichetta creatore (solo Nome + Cognome)
   const auth = useMemo(() => {
     try { return JSON.parse(localStorage.getItem("authData") || "{}"); }
     catch { return {}; }
@@ -41,7 +45,7 @@ export default function ScheduleListPage() {
   const myLast  = (me?.last_name  ?? me?.lastName  ?? "") as string;
   const myFullNames = [myFirst, myLast].filter(Boolean).join(" ").trim(); // SOLO Nome Cognome
 
-  // helper: data scaduta?
+  // Helper: verifica se una data è scaduta (fine giornata)
   const isExpired = (dateStr?: string | null) => {
     if (!dateStr) return false;
     const exp = new Date(`${dateStr}T23:59:59`);
@@ -49,12 +53,8 @@ export default function ScheduleListPage() {
     return exp.getTime() < Date.now();
   };
 
+  // Effetto: carica liste da API (allenamento + nutrizione)
   useEffect(() => {
-    const authLS = JSON.parse(localStorage.getItem("authData") || "{}");
-    const token: string | null = authLS?.token || null;
-
-    const commonHeaders: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
-
     // Schede allenamento
     (async () => {
       try {
@@ -79,6 +79,7 @@ export default function ScheduleListPage() {
     })();
   }, []);
 
+  // UI: contenitore principale + avvisi
   return (
     <div className="min-h-screen bg-indigo-50 px-8 py-10 space-y-12">
       {/* errore auth */}
@@ -91,7 +92,7 @@ export default function ScheduleListPage() {
         </div>
       )}
 
-      {/* ===== Sezione Allenamento ===== */}
+      {/* Sezione: Allenamento */}
       <section className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold text-indigo-700">Le tue schede di allenamento</h1>
@@ -139,6 +140,7 @@ export default function ScheduleListPage() {
           </div>
         )}
 
+        {/* CTA: crea nuova scheda allenamento */}
         <div className="mt-8 flex justify-center">
           <button
             onClick={() => navigate("/Workout")}
@@ -149,7 +151,7 @@ export default function ScheduleListPage() {
         </div>
       </section>
 
-      {/* ===== Sezione Nutrizione ===== */}
+      {/* Sezione: Nutrizione */}
       <section className="max-w-6xl mx-auto">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-2xl font-bold text-indigo-700">Le tue schede nutrizionali</h1>
@@ -162,8 +164,7 @@ export default function ScheduleListPage() {
                 const expired = isExpired(p.expire);
                 const dateLabel = p.expire ? new Date(p.expire).toLocaleDateString() : "—";
 
-                // Richiesta: "nome e cognome del creatore".
-                // Se NON c'è freelancer_id => il creatore è l'utente che sta visualizzando.
+                // Calcolo etichetta creatore (Pro → nome/cognome se presenti; Cliente → i tuoi Nome/Cognome)
                 const names = [p.creator_first_name ?? "", p.creator_last_name ?? ""]
                   .map((s) => s?.trim())
                   .filter(Boolean)
@@ -171,8 +172,8 @@ export default function ScheduleListPage() {
                   .trim();
 
                 const creatorName = p.freelancer_id
-                  ? (names || p.creator || "Professionista")   // se il pro non ha nomi, usa p.creator o fallback
-                  : (myFullNames || "Tu");                     // se creato dall'utente, mostra suoi Nome Cognome (no nickname)
+                  ? (names || p.creator || "Professionista")
+                  : (myFullNames || "Tu");
 
                 return (
                   <div
@@ -207,7 +208,7 @@ export default function ScheduleListPage() {
               })}
             </div>
 
-            {/* Richiesta: pulsante "Crea" al centro SOTTO le schede */}
+            {/* CTA: crea nuovo piano nutrizionale */}
             <div className="mt-8 flex justify-center">
               <button
                 onClick={() => navigate("/nutrizione")}
