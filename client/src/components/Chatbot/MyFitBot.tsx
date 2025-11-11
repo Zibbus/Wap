@@ -276,6 +276,54 @@ export default function MyFitBot({
     return m.senderId === 0 || m.senderId === myId;
   };
 
+  // === Helper invio con fallback chiavi body ===
+  async function sendAssistantMessage(threadId: number, text: string) {
+    // 1) prova con { text }
+    try {
+      return await api.post<{
+        threadId: number;
+        messageUser: AssistantMessage;
+        messageBot: AssistantMessage;
+        botUserId?: number;
+      }>(`/assistant/thread/${threadId}/send`, { text });
+    } catch (e: any) {
+      const msg = (e?.message || "").toLowerCase();
+
+      // 2) se il backend si aspetta { message }
+      if (msg.includes("text") || msg.includes("campo") || msg.includes("missing") || msg.includes("invalid")) {
+        try {
+          return await api.post<{
+            threadId: number;
+            messageUser: AssistantMessage;
+            messageBot: AssistantMessage;
+            botUserId?: number;
+          }>(`/assistant/thread/${threadId}/send`, { message: text });
+        } catch (e2: any) {
+          const msg2 = (e2?.message || "").toLowerCase();
+
+          // 3) ultimo tentativo: { prompt }
+          if (msg2.includes("message") || msg2.includes("missing") || msg2.includes("invalid")) {
+            return await api.post<{
+              threadId: number;
+              messageUser: AssistantMessage;
+              messageBot: AssistantMessage;
+              botUserId?: number;
+            }>(`/assistant/thread/${threadId}/send`, { prompt: text });
+          }
+          throw e2;
+        }
+      }
+      throw e;
+    }
+  }
+
+  // Utility per estrarre un messaggio leggibile d’errore
+  function toMessage(e: unknown, fallback = "Errore nell'invio") {
+    if (e instanceof Error) return e.message;
+    if (typeof e === "string") return e;
+    try { return JSON.stringify(e); } catch { return fallback; }
+  }
+
   // send (crea thread solo quando invii, se non esiste)
   const onSend = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -284,44 +332,71 @@ export default function MyFitBot({
     if (!text) return;
 
     let threadId = activeThreadId;
+
+    // Se non c'è una conversazione attiva, creane una
     if (!threadId) {
-      // crea thread silenzioso
-      const resp = await api.post<{ threadId: number }>("/assistant/threads", {
-        title: autoTitleFrom(text),
-        folderId: activeFolderId ?? undefined,
-      });
-      const data = (resp as any)?.data ?? resp;
-      const created = Number(data?.threadId);
-      if (!created) return;
-      threadId = created;
-      setActiveThreadId(created);
-      await loadMessages(created);
-      await loadThreads();
+      try {
+        const resp = await api.post<{ threadId: number }>("/assistant/threads", {
+          title: autoTitleFrom(text),
+          folderId: activeFolderId ?? undefined,
+        });
+        const data = (resp as any)?.data ?? resp;
+        const created = Number(data?.threadId);
+        if (!created) throw new Error("Impossibile creare una nuova conversazione");
+        threadId = created;
+        setActiveThreadId(created);
+        await loadMessages(created);
+        await loadThreads();
+      } catch (e) {
+        alert(toMessage(e, "Creazione conversazione fallita"));
+        return;
+      }
     }
 
     setInput("");
     const tempId = Date.now();
-    setMessages(prev => [...prev, { id: tempId, senderId: 0, body: text, createdAt: new Date().toISOString() }]);
+    setMessages(prev => [
+      ...prev,
+      { id: tempId, senderId: 0, body: text, createdAt: new Date().toISOString() },
+    ]);
     setSending(true);
 
     try {
-      const resp = await api.post<{
-        threadId: number;
-        messageUser: AssistantMessage;
-        messageBot: AssistantMessage;
-        botUserId?: number;
-      }>(`/assistant/thread/${threadId}/send`, { text });
-
+      // 🔁 invio con fallback chiavi { text } → { message } → { prompt }
+      const resp = await sendAssistantMessage(threadId!, text);
       const data = (resp as any)?.data ?? resp;
+
       if (typeof data?.botUserId === "number") setBotUserId(data.botUserId);
 
-      const mu = data?.messageUser ?? { id: tempId, senderId: myId, body: text, createdAt: new Date().toISOString() };
-      const mb = data?.messageBot ?? { id: tempId + 1, senderId: -999, body: "…", createdAt: new Date().toISOString() };
+      const mu = data?.messageUser ?? {
+        id: tempId,
+        senderId: myId,
+        body: text,
+        createdAt: new Date().toISOString(),
+      };
+      const mb = data?.messageBot ?? {
+        id: tempId + 1,
+        senderId: -999,
+        body: "…",
+        createdAt: new Date().toISOString(),
+      };
 
       setMessages(prev => prev.filter(m => m.id !== tempId).concat([mu, mb]));
       await loadThreads();
-    } catch {
-      setMessages(prev => prev.filter(m => m.id !== tempId).concat([{ id: tempId, senderId: -1, body: "Errore nell'invio.", createdAt: new Date().toISOString() }]));
+    } catch (e) {
+      const msg = toMessage(e, "Errore nell'invio del messaggio");
+      setMessages(prev =>
+        prev
+          .filter(m => m.id !== tempId)
+          .concat([
+            {
+              id: tempId,
+              senderId: -1,
+              body: `❌ ${msg}`,
+              createdAt: new Date().toISOString(),
+            },
+          ])
+      );
     } finally {
       setSending(false);
     }

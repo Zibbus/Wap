@@ -76,7 +76,7 @@ export function attachWs(server: HttpServer) {
 
   wss.on("connection", (socket: AuthedWs, req: IncomingMessage) => {
     // token nella query: ws://host/ws?token=...
-    const url = new URL(req.url || "", "http://localhost");
+    const url = new URL(req.url || "", "http://internal");
     const token = url.searchParams.get("token") || "";
 
     try {

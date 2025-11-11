@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../services/api";
 
 type Schedule = {
   id: number;
@@ -57,23 +58,12 @@ export default function ScheduleListPage() {
     // Schede allenamento
     (async () => {
       try {
-        const res = await fetch("http://localhost:4000/api/schedules", {
-          headers: {
-            Accept: "application/json",
-            ...commonHeaders,
-          },
-        });
-
-        if (res.status === 401) {
+        const data = await api.get<Schedule[]>("/schedules");
+        setSchedules(Array.isArray(data) ? data : []);
+      } catch (e: any) {
+        if (String(e?.message || "").includes("401")) {
           setErrorMsg("Sessione scaduta o non autenticato.");
-          setSchedules([]);
-          return;
         }
-
-        const data = await res.json().catch(() => []);
-        setSchedules(Array.isArray(data) ? (data as Schedule[]) : []);
-      } catch (e) {
-        console.error("Errore caricamento schede (allenamento):", e);
         setSchedules([]);
       }
     })();
@@ -81,18 +71,8 @@ export default function ScheduleListPage() {
     // Piani nutrizionali
     (async () => {
       try {
-        const res = await fetch("http://localhost:4000/api/nutrition/plans", {
-          headers: {
-            Accept: "application/json",
-            ...commonHeaders,
-          },
-        });
-        if (res.status === 401) {
-          setNutritionPlans([]);
-          return;
-        }
-        const data = await res.json().catch(() => []);
-        setNutritionPlans(Array.isArray(data) ? (data as NutritionPlan[]) : []);
+        const data = await api.get<NutritionPlan[]>("/nutrition/plans");
+        setNutritionPlans(Array.isArray(data) ? data : []);
       } catch {
         setNutritionPlans([]);
       }

@@ -1,6 +1,7 @@
 // src/pages/NutritionPlanDetailPage.tsx
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { api } from "../services/api";
 
 /* ===== Tipi ===== */
 type Item = {
@@ -120,17 +121,13 @@ export default function NutritionPlanDetailPage() {
 
     (async () => {
       try {
-        const res = await fetch("http://localhost:4000/api/me", {
-          headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        });
-        if (!res.ok) return; // fallback: lascio decidere al backend lato azione
-        const me = await res.json();
+        const me = await api.get<any>("/me");
         setIds({
           customerId: me?.customer?.id ?? null,
           freelancerId: me?.freelancer?.id ?? null,
         });
       } catch {
-        // ignora, fallback su permessi lato backend
+        // fallback: lascia i permessi al backend
       }
     })();
   }, [token, ids.customerId, ids.freelancerId]);
@@ -139,17 +136,7 @@ export default function NutritionPlanDetailPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`http://localhost:4000/api/nutrition/plans/${id}`, {
-          headers: {
-            Accept: "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-        });
-        if (!res.ok) {
-          const t = await res.text().catch(() => "");
-          throw new Error(t || `HTTP ${res.status}`);
-        }
-        const data = (await res.json()) as PlanDetail;
+        const data = await api.get<PlanDetail>(`/nutrition/plans/${id}`);
         setPlan(data);
       } catch (e: any) {
         setError(e?.message || "Errore caricamento piano nutrizionale");

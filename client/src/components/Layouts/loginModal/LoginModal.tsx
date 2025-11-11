@@ -2,9 +2,7 @@
 import { useEffect, useId, useState } from "react";
 import { useAuth } from "../../../hooks/useAuth";
 import { useLoginModal } from "../../../hooks/useLoginModal";
-
-// Se usi proxy Vite: AUTH_BASE = "http://localhost:4000" o import.meta.env.VITE_AUTH_BASE
-const AUTH_BASE = import.meta.env.VITE_AUTH_BASE ?? "http://localhost:4000";
+import { authApi } from "../../../services/api";
 
 /* ---------------------------------- Icons ---------------------------------- */
 // Occhio aperto/chiuso minimal (niente librerie extra)
@@ -25,6 +23,7 @@ function EyeOffIcon() {
 }
 
 /* ----------------------------- Password Field ------------------------------ */
+// mi serve per scambiare il tipo di input tra password e text
 function PasswordField({
   value,
   onChange,
@@ -75,17 +74,18 @@ function PasswordField({
 }
 
 /* --------------------------------- Modal ---------------------------------- */
+// Logica principale per login e registrazine
 export default function LoginModal() {
   const { login } = useAuth();
   const { closeLoginModal } = useLoginModal();
 
   const [isRegister, setIsRegister] = useState(false);
 
-  // comuni
+  // Qui ho i campi per il login
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
-  // registrazione
+  // Qui ho i campi per la registrazione
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [dob, setDob] = useState("");
@@ -93,15 +93,15 @@ export default function LoginModal() {
   const [userType, setUserType] = useState<"utente" | "professionista">("utente");
   const [email, setEmail] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [weight, setWeight] = useState<number | "">("");
-  const [height, setHeight] = useState<number | "">("");
-  const [vat, setVat] = useState("");
+  const [weight, setWeight] = useState<number | "">(""); // Me lo chiede solo se l'utente è un costumer
+  const [height, setHeight] = useState<number | "">(""); // Me lo chiede solo se l'utente è un costumer
+  const [vat, setVat] = useState(""); // Me lo chiede solo se l'utente è professionista
 
   // avatar (solo registrazione, opzionale)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
 
-  // messaggi / stato
+  // messaggi / stato (caricamento / errore / successo)
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +121,7 @@ export default function LoginModal() {
     setSuccessMsg(null);
   }
 
+  // funzione di inserimento foto avatar durante la registrazione (mostra solo l'anteprima)
   function onPickAvatar(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] || null;
     setAvatarFile(f);
@@ -128,6 +129,7 @@ export default function LoginModal() {
     setAvatarPreview(f ? URL.createObjectURL(f) : null);
   }
 
+  // Mi serve se decido di rimuovere o modificare l'immagine
   useEffect(() => {
     return () => {
       if (avatarPreview) URL.revokeObjectURL(avatarPreview);
@@ -144,7 +146,7 @@ export default function LoginModal() {
         // ---- LOGIN ----
         await login(username, password);
         window.dispatchEvent(new Event("myfit:login:success"));
-        closeLoginModal();
+        closeLoginModal(); // Se il login è andato a buon fine chiude la finestra di login
         return;
       }
 
@@ -153,7 +155,7 @@ export default function LoginModal() {
         throw new Error("Le password non coincidono.");
       }
 
-      // payload base (usato solo se non c'è file)
+      // payload base (usato solo se non c'è file per avatar)
       const payload: any = {
         username,
         password,
@@ -172,7 +174,7 @@ export default function LoginModal() {
         payload.vat = vat || null;
       }
 
-      // 1) registra utente — UNA SOLA CHIAMATA
+      // 1) registra utente — UNA SOLA CHIAMATA - controlla se c'è il file che andrà a sostituire le iniziali dell'avatar
       if (avatarFile) {
         // invio TUTTO come multipart (il backend /api/auth/register accetta "avatar")
         const fd = new FormData();
@@ -194,27 +196,13 @@ export default function LoginModal() {
 
         fd.append("avatar", avatarFile); // campo atteso dal backend
 
-        const res = await fetch(`${AUTH_BASE}/api/auth/register`, {
-          method: "POST",
-          credentials: "include",
-          body: fd, // NON settare Content-Type manualmente
-        });
-        if (!res.ok) {
-          const t = await res.text().catch(() => "");
-          throw new Error(t || `Errore registrazione (HTTP ${res.status})`);
-        }
+        // Registra con immagine avatar
+        await authApi.post("/register", fd);
+
       } else {
-        // nessun file: invio JSON
-        const res = await fetch(`${AUTH_BASE}/api/auth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) {
-          const t = await res.text().catch(() => "");
-          throw new Error(t || `Errore registrazione (HTTP ${res.status})`);
-        }
+        // nessun file: invio JSON quindi passa al payload base
+       await authApi.post("/register", payload);
+
       }
 
       setSuccessMsg("Registrazione completata! Eseguo l'accesso…");

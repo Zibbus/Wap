@@ -1,5 +1,5 @@
 // client/src/services/profile.ts
-import { api } from "./api";
+import { api, API_BASE } from "./api";
 
 export type MeResponse = {
   user: {
@@ -60,22 +60,12 @@ export async function updateMyProfile(body: {
  */
 export async function uploadAvatar(file: File): Promise<{ ok: true; avatarUrl: string }> {
   const form = new FormData();
-  form.append("avatar", file); // <-- NOME CAMPO CORRETTO per multer.single("avatar")
+  form.append("avatar", file);
 
-  // Recupero token dal localStorage dove AuthProvider salva "authData"
-  let token: string | undefined;
-  try {
-    const raw = localStorage.getItem("authData");
-    if (raw) token = JSON.parse(raw)?.token;
-  } catch {
-    /* ignore */
-  }
-
-  const res = await fetch(`/profile/avatar`, {
-    method: "PATCH",               // <-- usa PATCH come prima; se il route è POST, cambia in "POST"
-    body: form,                    // <-- niente JSON.stringify
+  const res = await fetch(`${API_BASE}/profile/avatar`, {
+    method: "PATCH",
+    body: form,
     credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
   });
 
   if (!res.ok) {

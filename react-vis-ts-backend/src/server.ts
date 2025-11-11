@@ -27,7 +27,13 @@ import { attachWs } from "./ws.js"; // WebSocket helpers
 const app = express();
 
 // Middleware base
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+// CORS_ORIGINS accetta una lista separata da virgola (es: "http://localhost:5173,https://app.mysite.com")
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || "http://localhost:5173")
+  .split(",")
+  .map(s => s.trim())
+  .filter(Boolean);
+
+app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
 app.use(express.json());
 
 app.use("/api/assistant", assistantRouter);
@@ -56,11 +62,13 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 
 // HTTP server + WebSocket
 const PORT = Number(process.env.PORT) || 4000;
+const PUBLIC_URL = process.env.PUBLIC_URL || `http://localhost:${PORT}`;
+
 const server = http.createServer(app);
 attachWs(server);
 
 server.listen(PORT, () => {
-  console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`✅ Server running on ${PUBLIC_URL}`);
 });
 
 export default server;

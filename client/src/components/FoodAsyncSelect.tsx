@@ -2,6 +2,7 @@
 import { useMemo, useRef } from "react";
 import AsyncSelect from "react-select/async";
 import type { StylesConfig } from "react-select";
+import { API_BASE } from "../services/api"; // <— usa base centralizzato
 
 export type FoodApi = {
   id: number;
@@ -45,11 +46,12 @@ export default function FoodAsyncSelect({
     abortRef.current = ctrl;
 
     const hasQuery = q.trim().length > 0;
-    const url = hasQuery
-      ? `http://localhost:4000/api/foods?query=${encodeURIComponent(q.trim())}&limit=20`
-      : `http://localhost:4000/api/foods?limit=20`;
+    const qs = hasQuery
+      ? `?query=${encodeURIComponent(q.trim())}&limit=20`
+      : `?limit=20`;
 
-    const res = await fetch(url, {
+    const res = await fetch(`${API_BASE}/foods${qs}`, {
+      credentials: "include",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       signal: ctrl.signal,
     });

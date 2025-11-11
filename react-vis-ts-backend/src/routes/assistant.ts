@@ -5,7 +5,7 @@ import requireAuth from "../middleware/requireAuth";
 
 /* ------- Provider (Ollama di default) ------- */
 const PROVIDER           = (process.env.PROVIDER || "ollama").toLowerCase();
-const OLLAMA_URL         = process.env.OLLAMA_URL || "http://localhost:11434";
+const OLLAMA_URL = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434";
 const OLLAMA_MODEL       = process.env.OLLAMA_MODEL || "qwen2.5:7b-instruct";
 const OLLAMA_MODEL_LIGHT = process.env.OLLAMA_MODEL_LIGHT || "qwen2.5:1.5b-instruct";
 const LOW_MEMORY         = String(process.env.LOW_MEMORY ?? "0") === "1";

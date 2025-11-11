@@ -1,5 +1,5 @@
 // client/src/services/auth.ts
-const AUTH_BASE = import.meta.env.VITE_AUTH_BASE ?? "http://localhost:4000";
+import { AUTH_BASE } from "./api";
 
 export type LoginResponse = { token: string; user: any };
 
@@ -13,7 +13,7 @@ export async function apiLogin(
   usernameOrEmail: string,
   password?: string
 ): Promise<LoginResponse> {
-  const res = await fetch(`${AUTH_BASE}/api/auth/login`, {
+  const res = await fetch(`${AUTH_BASE}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
@@ -55,7 +55,7 @@ export async function apiLogin(
  */
 export async function apiLogout(): Promise<void> {
   try {
-    await fetch(`${AUTH_BASE}/api/auth/logout`, {
+    await fetch(`${AUTH_BASE}/logout`, {
       method: "POST",
       credentials: "include",
       redirect: "manual",

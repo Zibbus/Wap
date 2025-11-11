@@ -477,22 +477,10 @@ export default function NutritionPage() {
   useEffect(() => {
     if (state.ownerMode !== "self") return;
 
-    const tkn = token;
-    if (!tkn) {
-      setSelfData({});
-      setState((s) => ({ ...s, selfCustomerId: null }));
-      setUserType(undefined);
-      return;
-    }
-
     (async () => {
       try {
         setLoadingSelf(true);
-        const res = await fetch("http://localhost:4000/api/me", {
-          headers: { Authorization: `Bearer ${tkn}` },
-        });
-        if (!res.ok) throw new Error("Impossibile ottenere /api/me");
-        const me: MeResponse = await res.json();
+        const me: MeResponse = await api.get("/me");
 
         const resolvedWeight =
           me.latest_weight ??
@@ -603,6 +591,19 @@ export default function NutritionPage() {
       };
     });
   }, [editableDays]);
+
+  function toMessage(e: unknown, fallback = "Errore sconosciuto") {
+    if (e instanceof Error) return e.message;
+    if (typeof e === "string") return e;
+    if (e && typeof e === "object" && "message" in e && typeof (e as any).message === "string") {
+      return (e as any).message;
+    }
+    try {
+      return JSON.stringify(e);
+    } catch {
+      return fallback;
+    }
+  }
 
   // === VISTA SOLO-MESSAGGIO (centrata) ===
   if (savedOk) {
@@ -776,23 +777,18 @@ export default function NutritionPage() {
           ? `${state.notes.trim()}\n\nSgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`
           : `Sgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`;
 
-        const putRes = await fetch(`http://localhost:4000/api/nutrition/plans/${editingPlanId}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({
+        let putOk = false;
+        try {
+          await api.put(`/nutrition/plans/${editingPlanId}`, {
             expire: state.expire,
             goal: state.goal,
             notes: mergedNotes || null,
-          }),
-        });
-
-        if (putRes.status !== 404 && !putRes.ok) {
-          const t = await putRes.text().catch(() => "");
-          alert(`❌ Aggiornamento piano rifiutato (${putRes.status}).\n${t || "Controlla i dati inviati."}`);
-          throw new Error("PUT piano nutrizionale fallita");
+          });
+          putOk = true;
+        } catch (e) {
+            const msg = toMessage(e, "Controlla i dati inviati.");
+            alert(`❌ Aggiornamento piano rifiutato.\n${msg}`);
+            console.warn("PUT piano fallita o non disponibile:", e);
         }
 
         const editableDaysLocal = state.days
@@ -825,22 +821,17 @@ export default function NutritionPage() {
           })),
         };
 
-        const repRes = await fetch(`http://localhost:4000/api/nutrition/plans/${editingPlanId}/replace`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify(replacePayload),
-        });
-
-        if (repRes.status !== 404 && !repRes.ok) {
-          const t = await repRes.text().catch(() => "");
-          alert(`❌ Aggiornamento contenuti rifiutato (${repRes.status}).\n${t || "Controlla i valori di alimenti/quantità/macros."}`);
-          throw new Error("REPLACE giorni/pasti/items fallita");
+        let repOk = false;
+        try {
+          await api.post(`/nutrition/plans/${editingPlanId}/replace`, replacePayload);
+          repOk = true;
+        } catch (e) {
+          const msg = toMessage(e, "Controlla i valori di alimenti/quantità/macros.");
+          alert(`❌ Aggiornamento contenuti rifiutato.\n${msg}`);
+          console.warn("REPLACE giorni/pasti/items fallita:", e);
         }
 
-        if (putRes.ok || repRes.ok) {
+        if (putOk || repOk) {
           setSavedOk({ planId: editingPlanId });
           setState((s) => ({ ...s, showPreview: false }));
           return;
@@ -877,23 +868,13 @@ export default function NutritionPage() {
         ? `${state.notes.trim()}\n\nSgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`
         : `Sgarri: ${state.cheatDays.sort((a, b) => a - b).join(", ") || "nessuno"}.`;
 
-      const tkn = token;
 
-      const planRes = await fetch("http://localhost:4000/api/nutrition/plans", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(tkn ? { Authorization: `Bearer ${tkn}` } : {}),
-        },
-        body: JSON.stringify({
-          customer_id: effectiveCustomerId,
-          expire: state.expire,
-          goal: state.goal,
-          notes: mergedNotes || null,
-        }),
+      const plan = await api.post<{ id: number }>("/nutrition/plans", {
+        customer_id: effectiveCustomerId,
+        expire: state.expire,
+        goal: state.goal,
+        notes: mergedNotes || null,
       });
-      if (!planRes.ok) throw new Error("Errore creazione piano");
-      const plan = await planRes.json();
       const planId = plan.id;
 
       const dayIdMap: Record<number, number> = {};
@@ -902,16 +883,7 @@ export default function NutritionPage() {
         .map(d => ({ ...d, meals: ensureMealPositions(d.meals) }));
 
       for (const d of editableDaysLocal) {
-        const dRes = await fetch("http://localhost:4000/api/nutrition/days", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(tkn ? { Authorization: `Bearer ${tkn}` } : {}),
-          },
-          body: JSON.stringify({ plan_id: planId, day: d.day }),
-        });
-        if (!dRes.ok) throw new Error("Errore creazione giorno");
-        const dj = await dRes.json();
+        const dj = await api.post<{ id: number }>("/nutrition/days", { plan_id: planId, day: d.day });
         dayIdMap[d.day] = dj.id;
       }
 
@@ -919,21 +891,12 @@ export default function NutritionPage() {
       for (const d of editableDaysLocal) {
         const day_id = dayIdMap[d.day];
         for (const meal of d.meals) {
-          const mRes = await fetch("http://localhost:4000/api/nutrition/meals", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(tkn ? { Authorization: `Bearer ${tkn}` } : {}),
-            },
-            body: JSON.stringify({
-              day_id,
-              position: meal.position,
-              name: meal.name,
-              notes: meal.notes || null,
-            }),
+          const mj = await api.post<{ id: number }>("/nutrition/meals", {
+            day_id,
+            position: meal.position,
+            name: meal.name,
+            notes: meal.notes || null,
           });
-          if (!mRes.ok) throw new Error("Errore creazione pasto");
-          const mj = await mRes.json();
           mealIdMap[`${d.day}-${meal.position}`] = mj.id;
         }
       }
@@ -958,17 +921,8 @@ export default function NutritionPage() {
           })
         )
       );
-
       if (itemsPayload.length) {
-        const iRes = await fetch("http://localhost:4000/api/nutrition/items/bulk", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(tkn ? { Authorization: `Bearer ${tkn}` } : {}),
-          },
-          body: JSON.stringify({ items: itemsPayload }),
-        });
-        if (!iRes.ok) throw new Error("Errore salvataggio alimenti");
+        await api.post("/nutrition/items/bulk", { items: itemsPayload });
       }
       setSavedOk({ planId });
       setState((s) => ({ ...s, showPreview: false }));

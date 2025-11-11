@@ -1,5 +1,5 @@
 // client/src/services/chat.ts
-import { api } from "./api";
+import { api, API_BASE } from "./api";
 
 export type ConversationListItem = {
   threadId: number;
@@ -73,12 +73,9 @@ export async function uploadAttachment(
     if (saved) token = JSON.parse(saved)?.token ?? null;
   } catch {}
 
-  const base = (import.meta as any).env?.VITE_API_BASE ?? "/api";
-  const res = await fetch(`${base}/chat/${conversationId}/attachments`, {
+  const res = await fetch(`${API_BASE}/chat/${conversationId}/attachments`, {
     method: "POST",
-    // ✅ se usi cookie di sessione, resta include; se usi solo JWT va bene lo stesso
     credentials: "include",
-    // ✅ aggiungi Authorization se presente
     headers: token ? { Authorization: `Bearer ${token}` } : undefined,
     body: form,
   });
