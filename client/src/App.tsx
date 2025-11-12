@@ -1,5 +1,5 @@
 // client/src/App.tsx
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
 import ScrollToTop from "./components/ScrollToTop";
 import Layout from "./components/Layouts/Layout";
@@ -17,14 +17,32 @@ import ProfessionistaDettaglio from "./pages/ProfessionistaDettaglio";
 import ChatPage from "./pages/ChatPage";
 
 import NutritionPage from "./pages/NutritionPage";
-import NutritionPlanDetailPage from "./pages/NutritionPlanDetailPage.tsx";
+import NutritionPlanDetailPage from "./pages/NutritionPlanDetailPage";
 
-// (opzionale) protezione rotta
 import { useAuth } from "./hooks/useAuth";
+
+// 🔒 Protezione rotta
 function RequireAuth({ children }: { children: ReactNode }) {
-  const { authData, isLoading } = useAuth();
-  if (isLoading) return null;
-  if (!authData) return <Navigate to="/" replace />;
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return <div className="p-6 text-center">Caricamento…</div>;
+  }
+
+  if (!isAuthenticated) {
+    // Apri il LoginModal globale
+    if (typeof (window as any).openLoginModal === "function") {
+      (window as any).openLoginModal();
+    } else {
+      window.dispatchEvent(new Event("myfit:login:open"));
+    }
+    // Torna alla home e, opzionalmente, conserva la destinazione
+    // per un redirect post-login (se vuoi usarla nel tuo LoginModal)
+    sessionStorage.setItem("postLoginRedirect", location.pathname + location.search);
+    return <Navigate to="/" replace />;
+  }
+
   return <>{children}</>;
 }
 
@@ -37,13 +55,13 @@ export default function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/shop" element={<ShopPage />} />
 
-          {/* 🔹 pagine principali */}
+          {/* Pagine principali */}
           <Route path="/workout" element={<WorkoutPage />} />
           <Route path="/nutrizione" element={<NutritionPage />} />
 
-          {/* redirect legacy */}
+          {/* Redirect legacy */}
           <Route path="/workout/nutrition" element={<Navigate to="/nutrizione" replace />} />
-          <Route path="/workout/workout"   element={<Navigate to="/workout" replace />} />
+          <Route path="/workout/workout" element={<Navigate to="/workout" replace />} />
 
           <Route path="/chat" element={<ChatPage />} />
 
