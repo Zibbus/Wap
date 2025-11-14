@@ -354,7 +354,7 @@ router.post("/read", requireAuth, async (req: any, res) => {
     `UPDATE chat_participants
      SET last_read_message_id = GREATEST(IFNULL(last_read_message_id,0), ?)
      WHERE thread_id = ? AND user_id = ?`,
-    [maxId, me, tid]
+    [maxId, tid, me]
   );
 
   res.json({ ok: true, last_read_message_id: maxId });
