@@ -22,7 +22,6 @@ router.get("/", requireAuth, async (req: any, res) => {
     const user = (uRows as any[])[0];
     if (!user) return res.status(404).json({ error: "Utente non trovato" });
 
-    // customer: ora non ha più weight/height, tieni solo id (se esiste)
     let customer: any = null;
     if (user.type === "utente") {
       const [cRows] = await db.query(
