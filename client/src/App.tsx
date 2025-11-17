@@ -60,8 +60,9 @@ export default function App() {
           <Route path="/nutrizione" element={<NutritionPage />} />
 
           {/* Redirect legacy */}
-          <Route path="/workout/nutrition" element={<Navigate to="/nutrizione" replace />} />
-          <Route path="/workout/workout" element={<Navigate to="/workout" replace />} />
+          <Route path="/workout" element={ <RequireAuth> <WorkoutPage /> </RequireAuth> }/>
+          <Route path="/nutrizione" element={ <RequireAuth> <NutritionPage /> </RequireAuth> }/>
+
 
           <Route path="/chat" element={<ChatPage />} />
 
