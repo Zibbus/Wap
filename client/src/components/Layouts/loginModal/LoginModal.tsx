@@ -459,36 +459,52 @@ export default function LoginModal() {
             </>
           )}
 
-          {/* Footer form */}
-          <div className="flex justify-between items-center pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                resetMessages();
-                setIsRegister((s) => !s);
-              }}
-              className="text-sm text-indigo-700 hover:underline dark:text-indigo-300"
-            >
-              {isRegister ? "Hai già un account? Accedi" : "Non hai un account? Registrati!"}
-            </button>
-
-            <div className="flex gap-2">
+            {/* Footer form */}
+            <div className="flex justify-between items-center pt-2">
               <button
                 type="button"
-                className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-                onClick={closeLoginModal}
+                onClick={() => {
+                  resetMessages();
+                  setIsRegister((s) => !s);
+                }}
+                className="text-sm text-indigo-700 hover:underline dark:text-indigo-300"
               >
-                Annulla
+                {isRegister ? "Hai già un account? Accedi" : "Non hai un account? Registrati!"}
               </button>
-              <button
-                type="submit"
-                disabled={loading}
-                className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400"
-              >
-                {loading ? "Attendi..." : isRegister ? "Registrati" : "Entra"}
-              </button>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                  onClick={closeLoginModal}
+                >
+                  Annulla
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-1.5 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                >
+                  {loading ? "Attendi..." : isRegister ? "Registrati" : "Entra"}
+                </button>
+              </div>
             </div>
-          </div>
+
+            {/* 👉 Testo GDPR sotto TUTTO, solo in registrazione */}
+            {isRegister && (
+              <p className="mt-3 text-[11px] text-gray-500 dark:text-gray-400 text-center leading-snug">
+                Tutte le informazioni fornite sono trattate nel rispetto del{" "}
+                <a
+                  href="https://eur-lex.europa.eu/eli/reg/2016/679/oj"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2 text-indigo-600 dark:text-indigo-300 hover:text-indigo-700 dark:hover:text-indigo-200"
+                >
+                  GDPR
+                </a>{" "}
+                e della normativa vigente sulla protezione dei dati personali.
+              </p>
+            )}
         </form>
       </div>
     </div>
