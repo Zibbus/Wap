@@ -17,11 +17,16 @@ import { useAuth } from "../hooks/useAuth";
 import { getMyProfile, updateMyProfile, uploadAvatar, type MeResponse } from "../services/profile";
 import { usePageTitle } from "../hooks/usePageTitle";
 
+// Componenti
+import { ProfileHero } from "../components/profile/ProfileHero";
+import { ProfileSectionCard } from "../components/profile/ProfileSectionCard";
+
 // Stili condivisi (light/dark) per i campi "ghost"
 const wrapBase = "mt-1 flex items-center px-0 py-2 border-b transition";
-// const wrapRead = "border-transparent"; // RIMOSSO: non usato
-const wrapEdit = "border-gray-200 focus-within:border-indigo-500 dark:border-gray-700 dark:focus-within:border-indigo-400";
-const inputBase = "flex-1 bg-transparent outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-900 dark:text-gray-100";
+const wrapEdit =
+  "border-gray-200 focus-within:border-indigo-500 dark:border-gray-700 dark:focus-within:border-indigo-400";
+const inputBase =
+  "flex-1 bg-transparent outline-none placeholder:text-gray-400 dark:placeholder:text-gray-500 text-gray-900 dark:text-gray-100";
 const labelTitle = "text-base font-semibold text-gray-800 dark:text-gray-100";
 const iconMuted = "w-4 h-4 mr-2 text-gray-400 dark:text-gray-500";
 
@@ -39,7 +44,7 @@ function getInitials(a?: string | null, b?: string | null, fallback?: string) {
 function toDateOnly(v?: string | null): string {
   if (!v) return "";
   if (v.includes("T")) return v.split("T")[0];
-  if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0,10);
+  if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
   const d = new Date(v);
   if (isNaN(d.getTime())) return "";
   const yyyy = d.getFullYear();
@@ -90,7 +95,7 @@ export default function ProfilePage() {
   const [languages, setLanguages] = useState("");
   const [bio, setBio] = useState("");
 
-  // ✅ avatar: ora considera SEMPRE sia user.avatar_url sia professional.avatar_url (fallback ad authData.avatarUrl)
+  // avatar: considera user.avatar_url, professional.avatar_url, fallback authData.avatarUrl
   const currentAvatar = useMemo(
     () =>
       ((me as any)?.user?.avatar_url as string | undefined) ||
@@ -214,7 +219,7 @@ export default function ProfilePage() {
     setOkMsg(null);
     try {
       const res = await uploadAvatar(avatarFile);
-      // ✅ aggiorna sia user.avatar_url che (se presente) professional.avatar_url
+      // aggiorna sia user.avatar_url che (se presente) professional.avatar_url
       setMe((old) =>
         old
           ? {
@@ -226,7 +231,7 @@ export default function ProfilePage() {
             }
           : old
       );
-      // ✅ sincronizza anche l’header
+      // sincronizza anche l’header
       updateAvatarUrl(res.avatarUrl);
 
       setAvatarFile(null);
@@ -243,29 +248,32 @@ export default function ProfilePage() {
   if (isLoading || loading) {
     return (
       <div className="container mx-auto px-4 py-16">
-        <div className="mx-auto max-w-2xl bg-white dark:bg-gray-900 rounded-2xl shadow-sm p-8 text-center">Caricamento…</div>
+        <div className="mx-auto max-w-2xl bg-white dark:bg-gray-900 rounded-2xl shadow-sm p-8 text-center">
+          Caricamento…
+        </div>
       </div>
     );
   }
-  if (!authData) {
-  return (
-    <div className="container mx-auto px-4 py-16">
-      <div className="mx-auto max-w-2xl rounded-2xl border border-amber-200 bg-amber-50 p-8 text-amber-800 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-300">
-        Devi effettuare l’accesso per vedere il profilo.
-      </div>
-    </div>
-  );
-}
 
-if (!me) {
-  return (
-    <div className="container mx-auto px-4 py-16">
-      <div className="mx-auto max-w-2xl rounded-2xl border border-rose-200 bg-rose-50 p-8 text-rose-800 dark:border-rose-900 dark:bg-rose-900/20 dark:text-rose-300">
-        Impossibile caricare il profilo in questo momento.
+  if (!authData) {
+    return (
+      <div className="container mx-auto px-4 py-16">
+        <div className="mx-auto max-w-2xl rounded-2xl border border-amber-200 bg-amber-50 p-8 text-amber-800 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-300">
+          Devi effettuare l’accesso per vedere il profilo.
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
+
+  if (!me) {
+    return (
+      <div className="container mx-auto px-4 py-16">
+        <div className="mx-auto max-w-2xl rounded-2xl border border-rose-200 bg-rose-50 p-8 text-rose-800 dark:border-rose-900 dark:bg-rose-900/20 dark:text-rose-300">
+          Impossibile caricare il profilo in questo momento.
+        </div>
+      </div>
+    );
+  }
 
   // avatar effettivo (preview > db > default)
   const avatarSrc = avatarPreview || currentAvatar || DEFAULT_AVATAR;
@@ -273,76 +281,67 @@ if (!me) {
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Hero header */}
-      <div className="relative overflow-hidden rounded-2xl from-indigo-600 via-indigo-500 to-indigo-400 dark:from-indigo-700 dark:via-indigo-600 dark:to-indigo-500 p-6 shadow-sm">
-        <div className="flex items-center gap-5">
-          <div className="w-20 h-20 rounded-full bg-white/10 ring-1 ring-white/20 overflow-hidden grid place-items-center shrink-0">
-            {avatarSrc && avatarSrc !== DEFAULT_AVATAR ? (
-              <img src={avatarSrc} alt="Avatar" className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-xl font-semibold text-white/90 leading-none select-none">{initials}</span>
-            )}
-          </div>
-
-          <div className="text-white">
-            <h1 className="text-2xl md:text-3xl font-semibold">
-              {displayName || `${firstName || ""} ${lastName || ""}`.trim() || authData.username}
-            </h1>
-            <p className="text-white/80">
-              {isPro ? (role === "nutrizionista" ? "Nutrizionista" : "Personal Trainer") : "Utente"}
-              {city ? ` • ${city}` : ""}
-            </p>
-          </div>
-
-          <div className="ml-auto flex items-center gap-2">
-            {!editMode ? (
-              <button
-                onClick={onEnterEdit}
-                className="px-4 py-2 rounded-lg bg-white text-indigo-700 hover:bg-white/90 shadow-sm"
-              >
-                Modifica
-              </button>
-            ) : (
-              <>
-                <button onClick={onCancelEdit} className="px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20">
-                  Annulla
-                </button>
-                <button
-                  onClick={onSave}
-                  disabled={saving}
-                  className="px-4 py-2 rounded-lg bg-white text-indigo-700 hover:bg-white/90 shadow-sm disabled:opacity-50"
-                >
-                  {saving ? "Salvataggio…" : "Salva"}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* ✅ Upload avatar in edit mode (NON solo pro) */}
-        {editMode && (
-          <div className="mt-4 flex items-center gap-3">
-            <label className="inline-flex items-center gap-2 cursor-pointer">
-              <span className="px-3 py-1.5 rounded-lg bg-white text-indigo-700 text-sm shadow-sm hover:bg-white/90">
-                Scegli immagine
-              </span>
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/jpg,image/webp"
-                className="hidden"
-                onChange={onPickAvatar}
-              />
-              <span className="text-xs text-white/80">PNG/JPG/WEBP • max 5MB</span>
-            </label>
+      <ProfileHero
+        avatarSrc={avatarSrc}
+        defaultAvatar={DEFAULT_AVATAR}
+        initials={initials}
+        title={displayName || `${(firstName || "")} ${(lastName || "")}`.trim() || authData.username}
+        subtitle={
+          (isPro ? (role === "nutrizionista" ? "Nutrizionista" : "Personal Trainer") : "Utente") +
+          (city ? ` • ${city}` : "")
+        }
+        actions={
+          !editMode ? (
             <button
-              onClick={onUploadAvatar}
-              disabled={!avatarFile || saving}
-              className="px-3 py-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 text-sm disabled:opacity-50"
+              onClick={onEnterEdit}
+              className="px-4 py-2 rounded-lg bg-white text-indigo-700 hover:bg-white/90 shadow-sm"
             >
-              Carica
+              Modifica
             </button>
-          </div>
-        )}
-      </div>
+          ) : (
+            <>
+              <button
+                onClick={onCancelEdit}
+                className="px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20"
+              >
+                Annulla
+              </button>
+              <button
+                onClick={onSave}
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-white text-indigo-700 hover:bg-white/90 shadow-sm disabled:opacity-50"
+              >
+                {saving ? "Salvataggio…" : "Salva"}
+              </button>
+            </>
+          )
+        }
+        bottom={
+          editMode && (
+            <div className="mt-4 flex items-center gap-3">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <span className="px-3 py-1.5 rounded-lg bg-white text-indigo-700 text-sm shadow-sm hover:bg-white/90">
+                  Scegli immagine
+                </span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/jpg,image/webp"
+                  className="hidden"
+                  onChange={onPickAvatar}
+                />
+                <span className="text-xs text-white/80">PNG/JPG/WEBP • max 5MB</span>
+              </label>
+              <button
+                onClick={onUploadAvatar}
+                disabled={!avatarFile || saving}
+                className="px-3 py-1.5 rounded-lg bg-white/10 text-white hover:bg-white/20 text-sm disabled:opacity-50"
+              >
+                Carica
+              </button>
+            </div>
+          )
+        }
+      />
 
       {/* Messaggi */}
       {error && (
@@ -357,16 +356,7 @@ if (!me) {
       )}
 
       {/* Dati personali – stile ghost */}
-      <section className="mt-6 bg-white rounded-2xl shadow-sm p-6 dark:bg-gray-900 dark:border dark:border-gray-800">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Dati personali</h2>
-          {!editMode ? (
-            <span className="text-xs text-gray-500">Modo lettura</span>
-          ) : (
-            <span className="text-xs text-indigo-700">In modifica</span>
-          )}
-        </div>
-
+      <ProfileSectionCard title="Dati personali" editMode={editMode}>
         {!editMode ? (
           /* -------- VIEW MODE -------- */
           <div className="mt-4 grid gap-x-8 gap-y-5 md:grid-cols-2">
@@ -487,20 +477,11 @@ if (!me) {
             </label>
           </div>
         )}
-      </section>
+      </ProfileSectionCard>
 
       {/* Profilo professionista – stile ghost */}
       {me.user.type === "professionista" && (
-        <section className="mt-6 bg-white rounded-2xl shadow-sm p-6 dark:bg-gray-900 dark:border dark:border-gray-800">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Profilo professionista</h2>
-            {!editMode ? (
-              <span className="text-xs text-gray-500">Modo lettura</span>
-            ) : (
-              <span className="text-xs text-indigo-700">In modifica</span>
-            )}
-          </div>
-
+        <ProfileSectionCard title="Profilo professionista" editMode={editMode}>
           {!editMode ? (
             /* -------- VIEW MODE -------- */
             <div className="mt-4 grid gap-x-8 gap-y-5 md:grid-cols-2">
@@ -535,14 +516,16 @@ if (!me) {
                   <span>
                     {pricePerHour === "" || pricePerHour == null
                       ? "—"
-                      : new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(
-                          Number(pricePerHour)
-                        )}
+                      : new Intl.NumberFormat("it-IT", {
+                          style: "currency",
+                          currency: "EUR",
+                          maximumFractionDigits: 0,
+                        }).format(Number(pricePerHour))}
                   </span>
                 </div>
               </div>
 
-              <div className="md:col-span-1">
+              <div className="md-col-span-1">
                 <span className={labelTitle}>Specialità</span>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-gray-700 dark:text-gray-200">
                   <Tag className={iconMuted} />
@@ -633,7 +616,9 @@ if (!me) {
                   <input
                     type="number"
                     value={pricePerHour}
-                    onChange={(e) => setPricePerHour(e.target.value === "" ? "" : Number(e.target.value))}
+                    onChange={(e) =>
+                      setPricePerHour(e.target.value === "" ? "" : Number(e.target.value))
+                    }
                     placeholder="60"
                     className={inputBase}
                   />
@@ -657,7 +642,9 @@ if (!me) {
                   {splitCsv(specialties).length > 0 ? (
                     splitCsv(specialties).map((s) => <Chip key={s}>{s}</Chip>)
                   ) : (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Nessuna specialità • separa con virgole</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Nessuna specialità • separa con virgole
+                    </span>
                   )}
                 </div>
               </label>
@@ -679,7 +666,9 @@ if (!me) {
                   {splitCsv(languages).length > 0 ? (
                     splitCsv(languages).map((l) => <Chip key={l}>{l}</Chip>)
                   ) : (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Nessuna lingua • separa con virgole</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Nessuna lingua • separa con virgole
+                    </span>
                   )}
                 </div>
               </label>
@@ -687,7 +676,10 @@ if (!me) {
               <label className="block md:col-span-2">
                 <span className={labelTitle}>Bio</span>
                 <div className={`${wrapBase} ${wrapEdit}`}>
-                  <FileText className="w-4 h-4 mr-2 mt-1 text-gray-400 dark:text-gray-500" aria-hidden="true" />
+                  <FileText
+                    className="w-4 h-4 mr-2 mt-1 text-gray-400 dark:text-gray-500"
+                    aria-hidden="true"
+                  />
                   <textarea
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
@@ -698,7 +690,7 @@ if (!me) {
               </label>
             </div>
           )}
-        </section>
+        </ProfileSectionCard>
       )}
     </div>
   );

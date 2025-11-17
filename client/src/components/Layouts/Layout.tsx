@@ -6,7 +6,7 @@ import { useLoginModal } from "../../hooks/useLoginModal";
 import Header from "./Header/Header";
 import Footer from "../Layouts/footer/Footer";
 import LoginModal from "../Layouts/loginModal/LoginModal";
-import MyFitBot from "../../components/Chatbot/MyFitBot";
+import MyFitBot from "../chatbot/MyFitBot";
 
 export default function Layout() {
   const { isLoading } = useAuth();
