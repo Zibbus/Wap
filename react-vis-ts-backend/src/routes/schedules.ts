@@ -16,8 +16,32 @@ async function q<T = any>(sql: string, params: any[] = []): Promise<T[]> {
    ========================= */
 router.get("/", requireAuth, async (req: any, res) => {
   try {
-    // days_count via LEFT JOIN su days
-    const rows = await q<any>(`
+    const userId: number | undefined = req.user?.id;
+    const userType: "utente" | "professionista" | "admin" | undefined = req.user?.type;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Non autenticato" });
+    }
+
+    // Costruisco il pezzo di WHERE in base al tipo utente
+    let whereClause = "";
+    const params: any[] = [];
+
+    if (userType === "utente") {
+      // prendo solo le schede del customer collegato a questo user
+      whereClause = "WHERE c.user_id = ?";
+      params.push(userId);
+    } else if (userType === "professionista") {
+      // prendo solo le schede dove il professionista collegato è questo user
+      whereClause = "WHERE f.user_id = ?";
+      params.push(userId);
+    } else {
+      // (eventuale admin: vede tutto)
+      whereClause = "";
+    }
+
+    const rows = await q<any>(
+      `
       SELECT
         s.id,
         s.customer_id,
@@ -44,9 +68,12 @@ router.get("/", requireAuth, async (req: any, res) => {
       LEFT JOIN freelancers f ON f.id = s.freelancer_id
       LEFT JOIN users u_pf    ON u_pf.id = f.user_id
 
+      ${whereClause}
       GROUP BY s.id
       ORDER BY s.id DESC
-    `);
+    `,
+      params
+    );
 
     res.json(rows);
   } catch (e) {
