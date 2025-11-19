@@ -18,6 +18,7 @@ import customersRouter from "./routes/customers.js";
 import profileRoutes from "./routes/profile";
 import settingsRoutes from "./routes/settings";
 import nutritionRouter from "./routes/nutrition.db";
+import weightHistoryRoutes from "./routes/weightHistory";
 import { attachWs } from "./ws.js";
 
 const app = express();
@@ -56,6 +57,7 @@ app.use("/api/customers", customersRouter);
 app.use("/api/profile", profileRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/nutrition", nutritionRouter);
+app.use("/api/weight-history", weightHistoryRoutes);
 
 // Static uploads
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));

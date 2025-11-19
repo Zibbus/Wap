@@ -99,6 +99,7 @@ La home mostra logo, login/logout e schede introduttive. Dopo il login puoi coll
 - framer-motion
 - html2canvas
 - react-select
+- recharts
 
 ---
 

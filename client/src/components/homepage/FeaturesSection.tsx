@@ -14,10 +14,10 @@ type Feature = {
 
 export default function FeaturesSection() {
   const navigate = useNavigate();
-  const { authData } = useAuth();
+  const { isAuthenticated } = useAuth();   // 👈 uso lo stesso flag di RequireAuth
   const { openLoginModal } = useLoginModal();
 
-  const isLoggedIn = !!authData;
+  const isLoggedIn = isAuthenticated;      // 👈 allineato a tutto il resto dell’app
 
   const features: Feature[] = [
     {
